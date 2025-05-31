@@ -88,7 +88,7 @@ function Start-ScriptLogging {
         [LogLevel]$Level = [LogLevel]::INFO,
 
         [Parameter(Mandatory = $false)]
-        [switch]$AppendTimestamp = $true,
+        [switch]$AppendTimestamp,
 
         [Parameter(Mandatory = $false)]
         [switch]$DisableFileLogging = $false,
@@ -132,14 +132,14 @@ function Start-ScriptLogging {
     }
 
     # Log system information
-    Log-SystemInformation
+    Write-SystemInformation
 
     Write-Log "Logging initialized at level: $Level" -Level DEBUG
     Write-Log "Log file: $script:LogPath" -Level DEBUG
     Write-Log "Script started" -Level INFO -ForegroundColor Green
 }
 
-function Log-SystemInformation {
+function Write-SystemInformation {
     [CmdletBinding()]
     param()
 
@@ -190,7 +190,7 @@ function Update-ScriptProgress {
         [string]$Status,
 
         [Parameter(Mandatory = $false)]
-        [switch]$IncrementStep = $true
+        [switch]$IncrementStep
     )
 
     if ($IncrementStep) {
@@ -265,7 +265,7 @@ function Install-PackageManager {
     if (!(Get-Command choco -ErrorAction SilentlyContinue)) {
         Write-Log "Installing Chocolatey Package Manager..." -Level INFO -ForegroundColor Yellow
         try {
-            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+            Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 
             # Refresh environment variables
             $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
@@ -291,7 +291,7 @@ function Install-PackageManager {
     Write-Log "Chocolatey configured" -Level DEBUG
 }
 
-function Refresh-Environment {
+function Update-Environment {
     Write-Log "Refreshing environment variables..." -Level DEBUG
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
     Write-Log "Environment variables refreshed" -Level DEBUG
@@ -558,7 +558,7 @@ function Install-Python {
 
         # Refresh environment variables
         Write-Log "Refreshing environment to detect Python..." -Level DEBUG
-        Refresh-Environment
+        Update-Environment
 
         # Find Python installation - Chocolatey installs to C:\PythonXXX
         Write-Log "Searching for Python installation directory..." -Level DEBUG
@@ -668,7 +668,7 @@ function Install-NvidiaDrivers {
     }
 }
 
-function Configure-Git {
+function Set-GitConfig {
     Write-Log "=== Configuring Git ===" -Level INFO -ForegroundColor Cyan
 
     if (Get-Command git -ErrorAction SilentlyContinue) {
@@ -710,7 +710,7 @@ function Configure-Git {
 function Install-VSCodeExtensions {
     Write-Log "=== Installing VS Code Extensions ===" -Level INFO -ForegroundColor Cyan
 
-    Refresh-Environment
+    Update-Environment
     if (Get-Command code -ErrorAction SilentlyContinue) {
         $extensions = @(
             "ms-python.python",
@@ -745,7 +745,7 @@ function Install-VSCodeExtensions {
     }
 }
 
-function Create-DevelopmentFolders {
+function New-DevelopmentFolders {
     Write-Log "=== Creating Development Folders ===" -Level INFO -ForegroundColor Cyan
 
     $folders = @(
@@ -1063,7 +1063,7 @@ function Install-ApplicationsParallel {
     }
 }
 
-function Verify-Installations {
+function Test-Installations {
     Update-ScriptProgress -Status "Verifying installations"
     Write-Log "=== Verifying Installations ===" -Level INFO -ForegroundColor Cyan
 
@@ -1133,7 +1133,7 @@ function Show-Summary {
     Write-Host "- Check the log file at: $script:LogPath" -ForegroundColor White
 }
 
-function Prompt-Restart {
+function Show-RestartPrompt {
     Write-Host ""
     Write-Log "Script completed!" -Level INFO -ForegroundColor Green
 
@@ -1145,7 +1145,7 @@ function Prompt-Restart {
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     $userInput = $null
 
-    while ($timer.Elapsed.TotalSeconds -lt $timeoutSeconds -and $userInput -eq $null) {
+    while ($timer.Elapsed.TotalSeconds -lt $timeoutSeconds -and $null -eq $userInput) {
         if ([Console]::KeyAvailable) {
             $key = [Console]::ReadKey($true)
             $userInput = $key.KeyChar
@@ -1159,7 +1159,7 @@ function Prompt-Restart {
 
     Write-Host "" # New line after countdown
 
-    if ($userInput -eq 'r' -or $userInput -eq 'R' -or $userInput -eq $null) {
+    if ($userInput -eq 'r' -or $userInput -eq 'R' -or $null -eq $userInput) {
         Write-Log "Restarting computer..." -Level WARNING -ForegroundColor Green
         Restart-Computer -Force
     } else {
@@ -1219,11 +1219,11 @@ try {
 
     # Configure development environment
     Update-ScriptProgress -Status "Setting up development environment"
-    Create-DevelopmentFolders
+    New-DevelopmentFolders
 
     # Configure Git if installed
     if ($selectedApps -contains "git") {
-        Configure-Git
+        Set-GitConfig
     }
 
     # Install VS Code extensions if VS Code is installed
@@ -1233,7 +1233,7 @@ try {
 
     # Verify installations
     Update-ScriptProgress -Status "Verifying installations"
-    Verify-Installations
+    Test-Installations
 
     # Show summary
     Update-ScriptProgress -Status "Script completed successfully"
@@ -1250,7 +1250,7 @@ try {
     }
 
     # Prompt for restart
-    Prompt-Restart
+    Show-RestartPrompt
 } catch {
     Write-Log "Fatal error: $_" -Level CRITICAL -ForegroundColor Red
     Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level ERROR
