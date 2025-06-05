@@ -14,6 +14,7 @@ Both scripts provide:
 - **Bloatware Removal**: Remove pre-installed, unnecessary Windows applications
 - **System Optimization**: Configure Windows for better performance and privacy
 - **Development Environment Setup**: Prepare your system for software development
+- **Reliable Installation Methods**: Multiple fallback options for application installation
 
 ## 🔍 Choosing the Right Script
 
@@ -61,12 +62,22 @@ Both scripts can install the following applications (selectable during execution
 | Python | Programming language | ✓ |
 | PyCharm Community | Python IDE | ✓ |
 | GitHub Desktop | Git GUI | ✓ |
-| VMware Player | Virtualization | Optional |
-| NVIDIA Drivers | GPU drivers | Optional |
+| Postman | API testing tool | ✓ |
 
 **Windows 11 script adds:**
 - Windows Terminal (modern terminal experience)
 - Microsoft PowerToys (productivity toolkit)
+
+## 🧠 Reliable Installation System
+
+The scripts use a progressive installation approach to ensure reliable application setup:
+
+1. **Standard Package Manager**: Try Chocolatey first
+2. **Checksum Bypass**: If standard installation fails due to checksums, retry with `--ignore-checksums` flag
+3. **Direct Download**: If package manager fails, download directly from official sources
+4. **Multiple Verification Paths**: Check multiple common installation locations to verify success
+
+This approach is particularly valuable for frequently updated applications like Spotify, Chrome, and Discord.
 
 ## 🧹 Bloatware Removal
 
@@ -107,10 +118,11 @@ The scripts remove various pre-installed applications, including:
 ## 🛠️ Development Environment Setup
 
 Both scripts:
-- Create project folders structure
+- Create project folders structure (Projects, Python, GitHub, APIs)
 - Configure Git (optional)
 - Install VS Code extensions for Python development
 - Configure Python with proper PATH setup
+- Set up dedicated APIs folder for API testing with Postman
 
 ## 📝 Logging
 

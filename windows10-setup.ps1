@@ -1,5 +1,5 @@
 # Windows 10 Post-Reset Setup Script
-# Installs: Chrome, Spotify, Discord, Steam, PyCharm, VS Code, VMware Player, Python, Git, GitHub Desktop, NVIDIA Drivers
+# Installs: Chrome, Spotify, Discord, Steam, PyCharm, VS Code, Postman, Python, Git, GitHub Desktop
 # Removes: Bloatware, disables telemetry, optimizes Windows settings
 # Run this script as Administrator in PowerShell
 
@@ -330,6 +330,71 @@ function Set-RegistryKey {
     }
 }
 
+# Function to define direct download information for commonly problematic apps
+function Get-AppDirectDownloadInfo {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AppName
+    )
+
+    $downloadInfo = @{
+        "Spotify" = @{
+            Url = "https://download.scdn.co/SpotifySetup.exe"
+            Extension = ".exe"
+            Arguments = "/silent"
+            VerificationPaths = @(
+                "${env:APPDATA}\Spotify\Spotify.exe",
+                "C:\Program Files\Spotify\Spotify.exe",
+                "C:\Program Files (x86)\Spotify\Spotify.exe"
+            )
+        }
+        "Google Chrome" = @{
+            Url = "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi"
+            Extension = ".msi"
+            Arguments = @("/quiet", "/norestart")
+            VerificationPaths = @(
+                "C:\Program Files\Google\Chrome\Application\chrome.exe",
+                "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+            )
+        }
+        "Discord" = @{
+            Url = "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x86"
+            Extension = ".exe"
+            Arguments = "-s"
+            VerificationPaths = @(
+                "${env:LOCALAPPDATA}\Discord\app-*\Discord.exe",
+                "C:\Program Files\Discord\Discord.exe",
+                "C:\Program Files (x86)\Discord\Discord.exe"
+            )
+        }
+        "Visual Studio Code" = @{
+            Url = "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user"
+            Extension = ".exe"
+            Arguments = "/VERYSILENT /NORESTART /MERGETASKS=!runcode"
+            VerificationPaths = @(
+                "C:\Program Files\Microsoft VS Code\Code.exe",
+                "${env:LOCALAPPDATA}\Programs\Microsoft VS Code\Code.exe"
+            )
+        }
+        "Postman" = @{
+            Url = "https://dl.pstmn.io/download/latest/win64"
+            Extension = ".exe"
+            Arguments = "-s"
+            VerificationPaths = @(
+                "${env:LOCALAPPDATA}\Postman\Postman.exe",
+                "C:\Program Files\Postman\Postman.exe",
+                "C:\Program Files (x86)\Postman\Postman.exe"
+            )
+        }
+    }
+
+    if ($downloadInfo.ContainsKey($AppName)) {
+        return $downloadInfo[$AppName]
+    } else {
+        return $null
+    }
+}
+
 function Install-App {
     param(
         [Parameter(Mandatory=$true)]
@@ -341,7 +406,9 @@ function Install-App {
         [Parameter(Mandatory=$false)]
         [string]$PathToAdd = $null,
         [Parameter(Mandatory=$false)]
-        [int]$MaxRetries = 2
+        [int]$MaxRetries = 2,
+        [Parameter(Mandatory=$false)]
+        [hashtable]$DirectDownload = $null
     )
 
     Write-Log "Starting installation of $AppName ($ChocoName)..." -Level INFO -ForegroundColor Yellow
@@ -353,26 +420,97 @@ function Install-App {
         return $true
     }
 
-    # Try installation with retries
-    $retryCount = 0
-    $success = $false
-
-    while (-not $success -and $retryCount -le $MaxRetries) {
-        if ($retryCount -gt 0) {
-            Write-Log "Retry attempt $retryCount of $MaxRetries for $AppName..." -Level WARNING -ForegroundColor Yellow
-            Start-Sleep -Seconds 3
+    # Define array of installation methods to try in order
+    $installationMethods = @(
+        @{
+            Name = "Standard Chocolatey installation"
+            Action = { choco install $ChocoName -y --no-progress 2>&1 }
+        },
+        @{
+            Name = "Chocolatey with checksums ignored"
+            Action = { choco install $ChocoName -y --no-progress --ignore-checksums 2>&1 }
         }
+    )
 
-        Write-Log "Running: choco install $ChocoName -y" -Level DEBUG
-        $result = choco install $ChocoName -y --no-progress 2>&1
+    # Add direct download method if provided
+    if ($DirectDownload) {
+        $installationMethods += @{
+            Name = "Direct download from official source"
+            Action = {
+                try {
+                    Write-Log "Downloading $AppName from official URL..." -Level DEBUG
+                    $downloadUrl = $DirectDownload.Url
+                    $installerPath = Join-Path $env:TEMP "$($AppName -replace '\s', '')Installer$($DirectDownload.Extension)"
+                    
+                    Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -UseBasicParsing
+                    
+                    Write-Log "Running $AppName installer..." -Level DEBUG
+                    
+                    if ($DirectDownload.Extension -eq ".exe") {
+                        $arguments = if ($DirectDownload.Arguments) { $DirectDownload.Arguments } else { "/S" }
+                        Start-Process -FilePath $installerPath -ArgumentList $arguments -Wait
+                    }
+                    elseif ($DirectDownload.Extension -eq ".msi") {
+                        $arguments = if ($DirectDownload.Arguments) { $DirectDownload.Arguments } else { "/quiet", "/norestart" }
+                        Start-Process msiexec.exe -ArgumentList "/i", $installerPath, $arguments -Wait -NoNewWindow
+                    }
+                    
+                    Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+                    
+                    # Check if the installation was successful using verification paths
+                    $installSuccess = $false
+                    foreach ($path in $DirectDownload.VerificationPaths) {
+                        if (Test-Path $path) {
+                            $installSuccess = $true
+                            Write-Log "Verified $AppName installation at: $path" -Level DEBUG
+                            break
+                        }
+                    }
+                    
+                    if ($installSuccess) {
+                        return "Success: $AppName installed via direct download"
+                    } else {
+                        throw "Could not verify $AppName installation"
+                    }
+                }
+                catch {
+                    throw "Direct download failed: $_"
+                }
+            }
+        }
+    }
 
-        if ($LASTEXITCODE -eq 0) {
-            $success = $true
-            Write-Log "Chocolatey reported successful installation of $AppName" -Level DEBUG
-        } else {
-            $retryCount++
-            Write-Log "Installation attempt failed with exit code $LASTEXITCODE" -Level WARNING
-            Write-Log "Error details: $result" -Level DEBUG
+    # Try each installation method in sequence
+    $success = $false
+    $result = $null
+    $methodsAttempted = 0
+    
+    foreach ($method in $installationMethods) {
+        $methodsAttempted++
+        Write-Log "Trying installation method $methodsAttempted/$($installationMethods.Count): $($method.Name)" -Level DEBUG
+        
+        try {
+            $result = & $method.Action
+            
+            # For direct download method, the action returns a string
+            if ($result -is [string] -and $result.StartsWith("Success:")) {
+                $success = $true
+                break
+            }
+            
+            # For Chocolatey methods, check the exit code
+            if ($LASTEXITCODE -eq 0) {
+                $success = $true
+                Write-Log "$($method.Name) successful" -Level DEBUG
+                break
+            } else {
+                Write-Log "$($method.Name) failed with exit code $LASTEXITCODE" -Level WARNING
+                Write-Log "Error details: $result" -Level DEBUG
+            }
+        }
+        catch {
+            Write-Log "$($method.Name) threw an exception: $_" -Level WARNING
+            continue
         }
     }
 
@@ -406,7 +544,7 @@ function Install-App {
 
         return $true
     } else {
-        Write-Log "Failed to install $AppName after $MaxRetries retries" -Level ERROR -ForegroundColor Red
+        Write-Log "Failed to install $AppName after trying $methodsAttempted methods" -Level ERROR -ForegroundColor Red
         Write-Log "Error output: $result" -Level ERROR
         return $false
     }
@@ -426,8 +564,7 @@ function Select-Applications {
         "7" = @{Key="python"; Name="Python"; Default=$true}
         "8" = @{Key="pycharm"; Name="PyCharm Community"; Default=$true}
         "9" = @{Key="github"; Name="GitHub Desktop"; Default=$true}
-        "10" = @{Key="vmware"; Name="VMware Player"; Default=$false}
-        "11" = @{Key="nvidia"; Name="NVIDIA Drivers"; Default=$false}
+        "10" = @{Key="postman"; Name="Postman"; Default=$true}
     }
 
     Write-Log "=== Select Applications to Install ===" -Level INFO -ForegroundColor Cyan
@@ -499,54 +636,11 @@ function Select-Applications {
 }
 
 function Install-Chrome {
-    # Special handling for Chrome due to frequent checksum issues
     Write-Log "Starting Google Chrome installation (special handling)..." -Level INFO -ForegroundColor Yellow
 
-    $chromeInstalled = choco list --local-only | Select-String -Pattern "^googlechrome\s"
-    if ($chromeInstalled) {
-        Write-Log "Google Chrome is already installed" -Level INFO -ForegroundColor Green
-        return $true
-    } else {
-        # Try with checksum bypass due to frequent Google updates
-        Write-Log "Attempting Chocolatey installation with checksum bypass..." -Level DEBUG
-        $errorBefore = $ErrorActionPreference
-        $ErrorActionPreference = "SilentlyContinue"
-
-        choco install googlechrome -y --no-progress --ignore-checksums
-
-        $ErrorActionPreference = $errorBefore
-
-        # Check if Chrome was installed by looking for the executable
-        if ((Test-Path "C:\Program Files\Google\Chrome\Application\chrome.exe") -or
-            (Test-Path "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe")) {
-            Write-Log "Google Chrome installed successfully via Chocolatey!" -Level INFO -ForegroundColor Green
-            return $true
-        } else {
-            Write-Log "Chocolatey installation failed, trying direct download..." -Level WARNING -ForegroundColor Yellow
-            $chromeUrl = "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi"
-            $chromePath = "$env:TEMP\ChromeInstaller.msi"
-            try {
-                Write-Log "Downloading Chrome from official Google URL..." -Level DEBUG
-                Invoke-WebRequest -Uri $chromeUrl -OutFile $chromePath -UseBasicParsing
-
-                Write-Log "Running Chrome installer..." -Level DEBUG
-                Start-Process msiexec.exe -ArgumentList "/i", $chromePath, "/quiet", "/norestart" -Wait -NoNewWindow
-                Remove-Item $chromePath -Force -ErrorAction SilentlyContinue
-
-                if ((Test-Path "C:\Program Files\Google\Chrome\Application\chrome.exe") -or
-                    (Test-Path "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe")) {
-                    Write-Log "Google Chrome installed successfully via direct download!" -Level INFO -ForegroundColor Green
-                    return $true
-                } else {
-                    throw "Chrome installation failed - executable not found after installation."
-                }
-            } catch {
-                Write-Log "Chrome installation failed: $_" -Level ERROR -ForegroundColor Red
-                Write-Log "Please install Chrome manually from https://google.com/chrome" -Level INFO
-                return $false
-            }
-        }
-    }
+    # Get Chrome download info
+    $chromeDownload = Get-AppDirectDownloadInfo -AppName "Google Chrome"
+    return Install-App -AppName "Google Chrome" -ChocoName "googlechrome" -VerifyCommand "chrome" -DirectDownload $chromeDownload
 }
 
 function Install-Python {
@@ -614,58 +708,20 @@ function Install-Python {
     }
 }
 
-function Install-VMware {
-    Write-Log "VMware Player installation (special handling)..." -Level INFO -ForegroundColor Yellow
-    Write-Log "VMware Player installation through Chocolatey often fails due to network issues." -Level INFO
-
-    Write-Host "Would you like to open the VMware download page in your browser? [Y/N] (Default: Y)" -ForegroundColor White
-    $vmwareChoice = Read-Host -Prompt "Your choice"
-    if ($vmwareChoice -eq '' -or $vmwareChoice -eq 'Y') {
-        Write-Log "Opening VMware Player download page in browser..." -Level INFO
-        Start-Process "https://www.vmware.com/products/workstation-player/workstation-player-evaluation.html"
-        Write-Log "After downloading, run the installer manually." -Level INFO
-        Write-Log "NOTE: VMware Player is free for non-commercial use." -Level INFO
-        return $true
-    } else {
-        Write-Log "User skipped VMware Player installation" -Level INFO -ForegroundColor Yellow
-        Write-Log "VMware Player can be downloaded later from: https://www.vmware.com/products/workstation-player/workstation-player-evaluation.html" -Level INFO
-        return $false
-    }
+function Install-Spotify {
+    Write-Log "Starting Spotify installation (special handling)..." -Level INFO -ForegroundColor Yellow
+    
+    # Get Spotify download info
+    $spotifyDownload = Get-AppDirectDownloadInfo -AppName "Spotify"
+    return Install-App -AppName "Spotify" -ChocoName "spotify" -DirectDownload $spotifyDownload
 }
 
-function Install-NvidiaDrivers {
-    Write-Log "NVIDIA driver installation (special handling)..." -Level INFO -ForegroundColor Yellow
-    Write-Log "Note: Automated NVIDIA driver installation can be unreliable" -Level WARNING
-
-    Write-Host "Attempt automatic NVIDIA driver installation? [Y/N] (Default: N)" -ForegroundColor White
-    $nvidiaChoice = Read-Host -Prompt "Your choice"
-    if ($nvidiaChoice -eq '') { $nvidiaChoice = 'N' }
-
-    if ($nvidiaChoice -eq 'Y') {
-        # Try automatic installation
-        Write-Log "Attempting automatic NVIDIA driver installation..." -Level INFO
-        $success = Install-App -AppName "NVIDIA Display Driver" -ChocoName "nvidia-display-driver"
-
-        if (-not $success) {
-            Write-Log "Automatic driver installation failed. Trying GeForce Experience instead..." -Level WARNING -ForegroundColor Yellow
-            $success = Install-App -AppName "GeForce Experience" -ChocoName "geforce-experience"
-            if ($success) {
-                Write-Log "GeForce Experience installed. Use it to download the correct drivers for your GPU" -Level INFO -ForegroundColor Green
-                return $true
-            } else {
-                Write-Log "Failed to install GeForce Experience" -Level ERROR -ForegroundColor Red
-                Write-Log "Please install NVIDIA drivers manually from https://www.nvidia.com/Download/index.aspx" -Level INFO
-                return $false
-            }
-        } else {
-            Write-Log "NVIDIA drivers installed successfully!" -Level INFO -ForegroundColor Green
-            return $true
-        }
-    } else {
-        Write-Log "User skipped NVIDIA driver installation" -Level INFO -ForegroundColor Yellow
-        Write-Log "NVIDIA drivers can be installed manually from: https://www.nvidia.com/Download/index.aspx" -Level INFO
-        return $false
-    }
+function Install-Postman {
+    Write-Log "Starting Postman installation..." -Level INFO -ForegroundColor Yellow
+    
+    # Get Postman download info
+    $postmanDownload = Get-AppDirectDownloadInfo -AppName "Postman"
+    return Install-App -AppName "Postman" -ChocoName "postman" -DirectDownload $postmanDownload
 }
 
 function Set-GitConfig {
@@ -752,7 +808,7 @@ function New-DevelopmentFolders {
         "$env:USERPROFILE\Desktop\Projects",
         "$env:USERPROFILE\Desktop\Projects\Python",
         "$env:USERPROFILE\Desktop\Projects\GitHub",
-        "$env:USERPROFILE\Desktop\VMs",
+        "$env:USERPROFILE\Desktop\APIs",
         "$env:USERPROFILE\.vscode"
     )
 
@@ -979,7 +1035,7 @@ function Install-ApplicationsParallel {
     # Define available applications and their installation methods
     $appDefinitions = @{
         "chrome" = @{Name="Google Chrome"; Special=$true; Method="Install-Chrome"}
-        "spotify" = @{Name="Spotify"; ChocoName="spotify"; Special=$false}
+        "spotify" = @{Name="Spotify"; Special=$true; Method="Install-Spotify"}
         "discord" = @{Name="Discord"; ChocoName="discord"; Special=$false}
         "steam" = @{Name="Steam"; ChocoName="steam-client"; Special=$false}
         "git" = @{Name="Git"; ChocoName="git"; VerifyCommand="git"; PathToAdd="C:\Program Files\Git\bin"; Special=$false}
@@ -987,8 +1043,7 @@ function Install-ApplicationsParallel {
         "python" = @{Name="Python"; Special=$true; Method="Install-Python"}
         "pycharm" = @{Name="PyCharm Community"; ChocoName="pycharm-community"; Special=$false}
         "github" = @{Name="GitHub Desktop"; ChocoName="github-desktop"; Special=$false}
-        "vmware" = @{Name="VMware Player"; Special=$true; Method="Install-VMware"}
-        "nvidia" = @{Name="NVIDIA Drivers"; Special=$true; Method="Install-NvidiaDrivers"}
+        "postman" = @{Name="Postman"; Special=$true; Method="Install-Postman"}
     }
 
     # Track installation results
@@ -1027,7 +1082,14 @@ function Install-ApplicationsParallel {
     foreach ($app in $standardApps) {
         $appInfo = $appDefinitions[$app]
         Write-Log "Installing standard application: $($appInfo.Name)..." -Level INFO
-        $result = Install-App -AppName $appInfo.Name -ChocoName $appInfo.ChocoName -VerifyCommand $appInfo.VerifyCommand -PathToAdd $appInfo.PathToAdd
+        
+        # Get direct download info for fallback
+        $directDownload = Get-AppDirectDownloadInfo -AppName $appInfo.Name
+        
+        $result = Install-App -AppName $appInfo.Name -ChocoName $appInfo.ChocoName `
+                 -VerifyCommand $appInfo.VerifyCommand -PathToAdd $appInfo.PathToAdd `
+                 -DirectDownload $directDownload
+                 
         $installationResults[$app] = $result
     }
 
@@ -1102,11 +1164,10 @@ function Show-Summary {
     Write-Host "✓ Steam" -ForegroundColor White
     Write-Host "✓ PyCharm Community Edition" -ForegroundColor White
     Write-Host "✓ Visual Studio Code (with Python extensions)" -ForegroundColor White
-    Write-Host "✓ VMware Player (manual download)" -ForegroundColor White
+    Write-Host "✓ Postman" -ForegroundColor White
     Write-Host "✓ Python 3.x" -ForegroundColor White
     Write-Host "✓ Git" -ForegroundColor White
     Write-Host "✓ GitHub Desktop" -ForegroundColor White
-    Write-Host "✓ NVIDIA Drivers (if selected)" -ForegroundColor White
 
     Write-Host "`nWindows Optimizations:" -ForegroundColor Cyan
     Write-Host "✓ Removed bloatware apps (Candy Crush, etc.)" -ForegroundColor White
