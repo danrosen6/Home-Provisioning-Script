@@ -79,18 +79,101 @@ The scripts use a progressive installation approach to ensure reliable applicati
 
 This approach is particularly valuable for frequently updated applications like Spotify, Chrome, and Discord.
 
-## 🧹 Bloatware Removal
+## 🧹 Bloatware Removal & Service Optimization
 
-The scripts remove various pre-installed applications, including:
+The scripts provide comprehensive removal of pre-installed Windows applications and disable unnecessary services to improve performance, privacy, and system resources.
 
-- Microsoft Office Hub
-- Bing apps (Weather, News)
-- Xbox apps (on Windows 11)
-- Microsoft Teams (consumer version, on Windows 11)
-- Casual games (Solitaire, Candy Crush)
-- Mixed Reality Portal
-- Various utility apps (3D Viewer, Your Phone, etc.)
-- Store versions of apps we install desktop versions of (Spotify, etc.)
+### Applications Removed (Both Windows 10 & 11)
+
+#### Microsoft Applications
+- **Microsoft Office Hub** - Replaced by standalone Office installations when needed
+- **Microsoft 3D Viewer** - Rarely used 3D model viewing application
+- **Microsoft Mixed Reality Portal** - VR platform rarely used by most users
+- **Microsoft OneNote (Store version)** - Prefer the full desktop version if needed
+- **Microsoft People** - Contact management app with limited functionality
+- **Microsoft Wallet** - Rarely used payment service
+- **Microsoft Messaging** - Legacy messaging app superseded by Teams/other platforms
+- **Microsoft OneConnect** - Mobile plans connector (irrelevant for most PCs)
+
+#### Bing Applications
+- **Bing Weather** - Weather app with unnecessary data collection
+- **Bing News** - News aggregator with personalization tracking
+- **Bing Finance** - Financial news/tracking app
+
+#### Windows Utilities (Replaceable)
+- **Windows Alarms & Clock** - Basic functionality available elsewhere
+- **Windows Camera** - Basic camera app (useful only on devices with cameras)
+- **Windows Mail & Calendar** - Basic email/calendar (better alternatives exist)
+- **Windows Maps** - Map application rarely used on desktop PCs
+- **Windows Feedback Hub** - Microsoft feedback collection tool
+- **Windows Get Help** - Microsoft support tool
+- **Windows Get Started** - Tutorial app for new users
+- **Windows Sound Recorder** - Basic recording tool (better alternatives exist)
+- **Windows Your Phone** - Phone connectivity app (useful only for Android users)
+- **Print 3D** - 3D printing utility rarely used
+
+#### Media Applications
+- **Zune Music** (Groove Music) - Microsoft's music player
+- **Zune Video** (Movies & TV) - Microsoft's video player
+- **Solitaire Collection** - Microsoft's card games bundle
+- **Xbox-related apps** - Gaming overlay, identity provider, speech-to-text
+
+#### Third-Party Bloatware
+- **Candy Crush games** - Pre-installed games
+- **Spotify (Store version)** - Replaced with standalone desktop version
+- **Facebook** - Pre-installed app
+- **Twitter** - Pre-installed app
+- **Netflix** - Pre-installed app
+- **Disney+** - Pre-installed app
+- **TikTok** - Pre-installed app
+- **Other partner applications** - Various promotional pre-installs
+
+### Windows 11 Specific Removals
+- **Microsoft Teams (consumer)** - Personal chat app pre-installed on Windows 11
+- **Microsoft Widgets** - News and information sidebar
+- **Microsoft ClipChamp** - Video editor
+- **Microsoft To-Do** - Task management app
+- **Gaming App** - Xbox app center
+- **LinkedIn** - Professional social network app
+
+### Services Disabled (Performance Optimization)
+The scripts can optionally disable these non-essential services:
+
+- **Connected User Experiences and Telemetry (DiagTrack)** - Collects usage data for Microsoft
+- **WAP Push Service** - Legacy mobile device messaging service
+- **Superfetch/SysMain** - Preloading system (minimal benefit on modern SSDs)
+- **Windows Media Player Network Sharing** - Network media sharing
+- **Remote Registry** - Remote registry editing (security improvement)
+- **Routing and Remote Access** - Network routing capabilities
+- **Printer Extensions and Notifications** - Enhanced printer functionality
+- **Fax Service** - Legacy fax capabilities
+- **Windows Insider Service** - Preview builds management
+- **Retail Demo Service** - Used only in store display units
+- **Downloaded Maps Manager** - Offline maps functionality
+- **Program Compatibility Assistant** - Legacy program compatibility
+- **Parental Controls** - Family safety features
+- **Offline Files** - Document synchronization for network files
+- **Geolocation Service** (Windows 11) - Location tracking
+- **Touch Keyboard and Handwriting** (Windows 11) - Tablet input features
+- **HomeGroup Provider** (if present) - Legacy home network sharing
+- **Wallet Service** (Windows 11) - Payment service
+
+### Impact and Benefits
+Removing these applications and services provides several advantages:
+
+- **Reduced System Resource Usage**: Less RAM and CPU usage from background processes
+- **Improved Privacy**: Fewer apps collecting telemetry and usage data
+- **Cleaner Start Menu**: Less clutter in your application list
+- **Faster Updates**: Fewer components to update during Windows Update
+- **Disk Space Savings**: Up to several GB of storage reclaimed
+- **Reduced Network Activity**: Less background communication with Microsoft servers
+- **Better Performance**: Particularly noticeable on systems with limited resources
+
+### Recovery Options
+If you need any of these applications later:
+- Most can be reinstalled from the Microsoft Store
+- Disabled services can be re-enabled through Services management console
+- System Restore points (if enabled) can revert wholesale changes
 
 ## ⚙️ Windows Optimizations
 
