@@ -1,6 +1,6 @@
-# Windows 10 Post-Reset Setup Script
-# Installs: Chrome, Spotify, Discord, Steam, PyCharm, VS Code, Postman, Python, Git, GitHub Desktop
-# Removes: Bloatware, disables telemetry, optimizes Windows settings
+# Windows 11 Post-Reset Setup Script
+# Installs: Chrome, Spotify, Discord, Steam, PyCharm, VS Code, Postman, Python, Git, GitHub Desktop, Windows Terminal, PowerToys
+# Removes: Bloatware, disables telemetry, optimizes Windows 11 settings
 # Run this script as Administrator in PowerShell
 
 #region Functions
@@ -9,6 +9,27 @@ function Test-Administrator {
     $user = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($user)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Test-Windows11 {
+    $osInfo = Get-CimInstance Win32_OperatingSystem
+    $osVersion = [Version]$osInfo.Version
+    $osName = $osInfo.Caption
+    
+    if ($osVersion.Major -eq 10 -and $osVersion.Build -ge 22000) {
+        Write-Log "Detected Windows 11 ($osVersion)" -Level INFO -ForegroundColor Green
+        return $true
+    } else {
+        Write-Log "WARNING: This script is designed for Windows 11, but detected: $osName ($osVersion)" -Level WARNING -ForegroundColor Red
+        Write-Host "This script is optimized for Windows 11. Some functions may not work correctly." -ForegroundColor Yellow
+        
+        $proceed = Read-Host "Do you want to proceed anyway? [Y/N] (Default: N)"
+        if ($proceed -eq 'Y') {
+            return $true
+        } else {
+            return $false
+        }
+    }
 }
 
 #region Logging System
@@ -119,7 +140,7 @@ function Start-ScriptLogging {
 
     # Initialize log file
     if ($script:EnableFileLogging) {
-        $header = "=== Windows 10 Post-Reset Setup Script Log ==="
+        $header = "=== Windows 11 Post-Reset Setup Script Log ==="
         $startTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $separator = "=" * 50
 
@@ -177,9 +198,38 @@ function Write-SystemInformation {
         # Check if script is running as admin
         $isAdmin = Test-Administrator
         Write-Log "Running as Administrator: $isAdmin" -Level INFO
+
+        # Check TPM and Secure Boot status for Windows 11
+        $tpmVersion = Get-TPMVersion
+        Write-Log "TPM Version: $tpmVersion" -Level INFO
+
+        $secureBootEnabled = Get-SecureBootStatus
+        Write-Log "Secure Boot Enabled: $secureBootEnabled" -Level INFO
     }
     catch {
         Write-Log "Error collecting system information: $_" -Level ERROR
+    }
+}
+
+function Get-TPMVersion {
+    try {
+        $tpm = Get-CimInstance -Namespace "root\CIMV2\Security\MicrosoftTpm" -ClassName "Win32_Tpm" -ErrorAction SilentlyContinue
+        if ($tpm) {
+            return $tpm.SpecVersion
+        } else {
+            return "Not detected"
+        }
+    } catch {
+        return "Error checking"
+    }
+}
+
+function Get-SecureBootStatus {
+    try {
+        $secureBootStatus = Confirm-SecureBootUEFI -ErrorAction SilentlyContinue
+        return $secureBootStatus
+    } catch {
+        return "Unknown"
     }
 }
 
@@ -239,6 +289,13 @@ function Initialize-Environment {
     # Set execution policy to allow script execution
     Set-ExecutionPolicy Bypass -Scope Process -Force
 
+    # Check if running on Windows 11
+    $isWin11 = Test-Windows11
+    if (-not $isWin11) {
+        Write-Log "Exiting script as system is not Windows 11" -Level CRITICAL
+        exit 1
+    }
+
     # Initialize logging system
     Start-ScriptLogging -Level INFO -AppendTimestamp
 
@@ -256,8 +313,8 @@ function Initialize-Environment {
 
     Update-ScriptProgress -Status "Environment initialized"
 
-    Write-Log "Starting Windows 10 Post-Reset Setup..." -Level INFO -ForegroundColor Green
-    Write-Log "This will install selected applications and optimize Windows" -Level INFO -ForegroundColor Cyan
+    Write-Log "Starting Windows 11 Post-Reset Setup..." -Level INFO -ForegroundColor Green
+    Write-Log "This will install selected applications and optimize Windows 11" -Level INFO -ForegroundColor Cyan
 }
 
 function Install-PackageManager {
@@ -386,6 +443,23 @@ function Get-AppDirectDownloadInfo {
                 "C:\Program Files (x86)\Postman\Postman.exe"
             )
         }
+        "Windows Terminal" = @{
+            Url = "https://github.com/microsoft/terminal/releases/latest/download/Microsoft.WindowsTerminal_Win10.msixbundle"
+            Extension = ".msixbundle"
+            Arguments = ""  # Special handling for MSIX bundles
+            VerificationPaths = @(
+                "${env:LOCALAPPDATA}\Microsoft\WindowsApps\wt.exe"
+            )
+        }
+        "Microsoft PowerToys" = @{
+            Url = "https://github.com/microsoft/PowerToys/releases/latest/download/PowerToysSetup-x64.exe"
+            Extension = ".exe"
+            Arguments = "-silent"
+            VerificationPaths = @(
+                "${env:LOCALAPPDATA}\Programs\PowerToys\PowerToys.exe",
+                "C:\Program Files\PowerToys\PowerToys.exe"
+            )
+        }
     }
 
     if ($downloadInfo.ContainsKey($AppName)) {
@@ -453,6 +527,28 @@ function Install-App {
                     elseif ($DirectDownload.Extension -eq ".msi") {
                         $arguments = if ($DirectDownload.Arguments) { $DirectDownload.Arguments } else { "/quiet", "/norestart" }
                         Start-Process msiexec.exe -ArgumentList "/i", $installerPath, $arguments -Wait -NoNewWindow
+                    }
+                    elseif ($DirectDownload.Extension -eq ".msixbundle") {
+                        # Special handling for MSIX bundles (Windows Terminal, etc.)
+                        Write-Log "Installing MSIX bundle..." -Level DEBUG
+                        
+                        try {
+                            # Try using Add-AppxPackage
+                            Add-AppxPackage -Path $installerPath -ErrorAction Stop
+                        }
+                        catch {
+                            # Try using DISM if Add-AppxPackage fails
+                            Write-Log "Add-AppxPackage failed, trying DISM: $_" -Level WARNING
+                            
+                            # Try using winget if available
+                            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                                Write-Log "Using winget to install $AppName..." -Level DEBUG
+                                winget install --id Microsoft.WindowsTerminal -e --accept-source-agreements --accept-package-agreements --silent
+                            }
+                            else {
+                                throw "Failed to install MSIX bundle: $_"
+                            }
+                        }
                     }
                     
                     Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
@@ -565,6 +661,8 @@ function Select-Applications {
         "8" = @{Key="pycharm"; Name="PyCharm Community"; Default=$true}
         "9" = @{Key="github"; Name="GitHub Desktop"; Default=$true}
         "10" = @{Key="postman"; Name="Postman"; Default=$true}
+        "11" = @{Key="terminal"; Name="Windows Terminal"; Default=$true}  # Added for Windows 11
+        "12" = @{Key="powertoys"; Name="Microsoft PowerToys"; Default=$true}  # Added for Windows 11
     }
 
     Write-Log "=== Select Applications to Install ===" -Level INFO -ForegroundColor Cyan
@@ -708,6 +806,93 @@ function Install-Python {
     }
 }
 
+function Install-WindowsTerminal {
+    Write-Log "Starting Windows Terminal installation..." -Level INFO -ForegroundColor Yellow
+    
+    # Check if Windows Terminal is already installed
+    if (Get-AppxPackage -Name Microsoft.WindowsTerminal) {
+        Write-Log "Windows Terminal is already installed via Microsoft Store" -Level INFO -ForegroundColor Green
+        return $true
+    }
+    
+    # Windows 11 should have Windows Terminal pre-installed
+    # Try checking if it's there but not registered as an AppxPackage
+    if (Test-Path "${env:LOCALAPPDATA}\Microsoft\WindowsApps\wt.exe") {
+        Write-Log "Windows Terminal is already available in the system" -Level INFO -ForegroundColor Green
+        return $true
+    }
+    
+    # Get Windows Terminal download info
+    $terminalDownload = Get-AppDirectDownloadInfo -AppName "Windows Terminal"
+    
+    # Try to install via Chocolatey first
+    $result = Install-App -AppName "Windows Terminal" -ChocoName "microsoft-windows-terminal" -DirectDownload $terminalDownload
+    
+    if ($result) {
+        return $true
+    } else {
+        # If that fails, try using winget
+        try {
+            # Check if winget is available
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Write-Log "Using winget to install Windows Terminal..." -Level DEBUG
+                winget install --id Microsoft.WindowsTerminal -e --accept-source-agreements --accept-package-agreements --silent
+                
+                if (Get-AppxPackage -Name Microsoft.WindowsTerminal) {
+                    Write-Log "Windows Terminal installed successfully via winget!" -Level INFO -ForegroundColor Green
+                    return $true
+                }
+            }
+            
+            Write-Log "Automated installation methods failed. Opening Microsoft Store..." -Level WARNING -ForegroundColor Yellow
+            Start-Process "ms-windows-store://pdp/?productid=9N0DX20HK701"
+            Write-Log "Please complete the installation in the Microsoft Store" -Level INFO
+            return $true
+        } catch {
+            Write-Log "Windows Terminal installation failed: $_" -Level ERROR -ForegroundColor Red
+            Write-Log "Please install Windows Terminal manually from the Microsoft Store" -Level INFO
+            return $false
+        }
+    }
+}
+
+function Install-PowerToys {
+    Write-Log "Starting Microsoft PowerToys installation..." -Level INFO -ForegroundColor Yellow
+    
+    # Get PowerToys download info
+    $powerToysDownload = Get-AppDirectDownloadInfo -AppName "Microsoft PowerToys"
+    
+    # Try to install via App installer with fallbacks
+    $result = Install-App -AppName "Microsoft PowerToys" -ChocoName "powertoys" -DirectDownload $powerToysDownload
+    
+    if ($result) {
+        return $true
+    } else {
+        # If that fails, try using winget
+        try {
+            # Check if winget is available
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Write-Log "Using winget to install PowerToys..." -Level DEBUG
+                winget install --id Microsoft.PowerToys -e --accept-source-agreements --accept-package-agreements --silent
+                
+                if (Test-Path "$env:LOCALAPPDATA\Programs\PowerToys\PowerToys.exe") {
+                    Write-Log "Microsoft PowerToys installed successfully via winget!" -Level INFO -ForegroundColor Green
+                    return $true
+                }
+            }
+            
+            Write-Log "Automated installation methods failed. Opening GitHub releases page..." -Level WARNING -ForegroundColor Yellow
+            Start-Process "https://github.com/microsoft/PowerToys/releases"
+            Write-Log "Please download and install PowerToys manually" -Level INFO
+            return $false
+        } catch {
+            Write-Log "PowerToys installation failed: $_" -Level ERROR -ForegroundColor Red
+            Write-Log "Please install PowerToys manually from https://github.com/microsoft/PowerToys/releases" -Level INFO
+            return $false
+        }
+    }
+}
+
 function Install-Spotify {
     Write-Log "Starting Spotify installation (special handling)..." -Level INFO -ForegroundColor Yellow
     
@@ -826,9 +1011,9 @@ function New-DevelopmentFolders {
     Write-Log "Created $createdCount new folders" -Level INFO
 }
 
-function Set-OptimalWindowsSettings {
-    Update-ScriptProgress -Status "Configuring Windows settings"
-    Write-Log "Starting Windows optimization..." -Level INFO -ForegroundColor Cyan
+function Set-OptimalWindows11Settings {
+    Update-ScriptProgress -Status "Configuring Windows 11 settings"
+    Write-Log "Starting Windows 11 optimization..." -Level INFO -ForegroundColor Cyan
 
     # Show file extensions
     Write-Log "Showing file extensions..." -Level DEBUG
@@ -874,31 +1059,56 @@ function Set-OptimalWindowsSettings {
     Write-Log "Disabling unnecessary background apps..." -Level DEBUG
     Set-RegistryKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Value 1
 
-    # Clean up taskbar (keeping search functionality)
-    Write-Log "Cleaning up taskbar (keeping search box)..." -Level DEBUG
-    # Hide Cortana button (not the search box)
-    Set-RegistryKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" -Name "ShowCortanaButton" -Value 0
+    # Windows 11 specific settings
+    
+    # Configure taskbar alignment (0 = left, 1 = center)
+    Write-Log "Setting taskbar alignment to left..." -Level DEBUG
+    Set-RegistryKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0
+    
+    # Disable Chat icon on taskbar
+    Write-Log "Disabling Chat icon on taskbar..." -Level DEBUG
+    Set-RegistryKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarMn" -Value 0
+    
+    # Disable Widgets icon on taskbar
+    Write-Log "Disabling Widgets icon on taskbar..." -Level DEBUG
+    Set-RegistryKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0
+    
+    # Enable show more options in right-click menu (classic context menu)
+    Write-Log "Enabling classic context menu..." -Level DEBUG
+    Set-RegistryKey -Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" -Name "(Default)" -Value "" -Type String
 
-    # Configure search box to always show the full search box
-    Write-Log "Configuring taskbar to always show search box..." -Level DEBUG
-    # SearchboxTaskbarMode: 0 = Hidden, 1 = Show search icon, 2 = Show search box
-    Set-RegistryKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 2
+    # Disable new boot animation
+    Write-Log "Configuring boot animation..." -Level DEBUG
+    Set-RegistryKey -Path "HKLM:\SYSTEM\CurrentControlSet\Control\BootControl" -Name "BootProgressAnimation" -Value 0
+    
+    # Disable Windows 11 Snap layouts when hovering maximize button
+    Write-Log "Disabling Snap layouts hover feature..." -Level DEBUG
+    Set-RegistryKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "EnableSnapAssistFlyout" -Value 0
+    
+    # Configure Start Menu (show more pins)
+    Write-Log "Configuring Start Menu layout..." -Level DEBUG
+    Set-RegistryKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "Start_Layout" -Value 1
+    
+    # Disable startup sound
+    Write-Log "Disabling startup sound..." -Level DEBUG
+    Set-RegistryKey -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Name "DisableStartupSound" -Value 1
 
-    # Hide Task View button
-    Set-RegistryKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowTaskViewButton" -Value 0
-
-    # Configure Search to use local search instead of Bing
+    # Configure search to use local search instead of Bing
     Write-Log "Configuring Windows Search to prioritize local results..." -Level DEBUG
     # Disable Bing search in Start Menu
     Set-RegistryKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "BingSearchEnabled" -Value 0
     # Disable Cortana web search
     Set-RegistryKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "CortanaConsent" -Value 0
+    
+    # Disable Teams consumer app from auto-starting
+    Write-Log "Disabling Microsoft Teams auto-start..." -Level DEBUG
+    Set-RegistryKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "com.squirrel.Teams.Teams" -Value 0 -ErrorAction SilentlyContinue
 
-    Write-Log "Windows settings optimization complete" -Level INFO -ForegroundColor Green
+    Write-Log "Windows 11 settings optimization complete" -Level INFO -ForegroundColor Green
 }
 
-function Remove-Bloatware {
-    Update-ScriptProgress -Status "Removing Windows bloatware"
+function Remove-Windows11Bloatware {
+    Update-ScriptProgress -Status "Removing Windows 11 bloatware"
     Write-Log "Starting bloatware removal..." -Level INFO -ForegroundColor Cyan
 
     $bloatware = @(
@@ -926,14 +1136,26 @@ function Remove-Bloatware {
         "Microsoft.BingNews"
         "Microsoft.Messaging"
         "Microsoft.Office.OneNote"  # Use the desktop version instead
+        "Microsoft.MicrosoftTeams"  # Teams consumer version
+        "Microsoft.GamingApp"       # Xbox app
+        "Microsoft.Xbox.TCUI"
+        "Microsoft.XboxGameOverlay"
+        "Microsoft.XboxGamingOverlay"
+        "Microsoft.XboxIdentityProvider"
+        "Microsoft.XboxSpeechToTextOverlay"
+        "MicrosoftTeams"            # Teams consumer version
         "*.CandyCrush*"
-        "*.Spotify*"  # We're installing desktop version
+        "*.Spotify*"                # We're installing desktop version
         "*.Twitter*"
         "*.Facebook*"
         "*.Netflix*"
         "*.Hulu*"
         "*.PicsArt*"
         "*.TikTok*"
+        "*.Disney*"
+        "*.LinkedIn*"
+        "*.ClipChamp*"             # Windows 11 video editor
+        "*.Todos*"                 # Microsoft To-Do app
     )
 
     $totalApps = $bloatware.Count
@@ -963,6 +1185,17 @@ function Remove-Bloatware {
         }
     }
 
+    # Disable Windows 11 Widgets
+    Write-Log "Disabling Windows 11 Widgets..." -Level DEBUG
+    try {
+        Set-RegistryKey -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0
+        Set-RegistryKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0
+        Set-RegistryKey -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0
+        Write-Log "Windows 11 Widgets disabled" -Level INFO -ForegroundColor Green
+    } catch {
+        Write-Log "Failed to disable Widgets: $_" -Level WARNING
+    }
+
     Write-Log "Bloatware removal complete: Removed $removedCount of $totalApps applications" -Level INFO -ForegroundColor Green
     if ($failedCount -gt 0) {
         Write-Log "$failedCount applications could not be removed" -Level WARNING -ForegroundColor Yellow
@@ -988,6 +1221,10 @@ function Disable-UnnecessaryServices {
         "PcaSvc"                      # Program Compatibility Assistant
         "WpcMonSvc"                   # Parental Controls
         "CscService"                  # Offline Files
+        "lfsvc"                       # Geolocation Service
+        "TabletInputService"          # Touch Keyboard and Handwriting Panel Service
+        "HomeGroupProvider"           # HomeGroup Provider (if still exists)
+        "WalletService"               # Microsoft Wallet Service
     )
 
     $disabledCount = 0
@@ -1044,6 +1281,8 @@ function Install-ApplicationsParallel {
         "pycharm" = @{Name="PyCharm Community"; ChocoName="pycharm-community"; Special=$false}
         "github" = @{Name="GitHub Desktop"; ChocoName="github-desktop"; Special=$false}
         "postman" = @{Name="Postman"; Special=$true; Method="Install-Postman"}
+        "terminal" = @{Name="Windows Terminal"; Special=$true; Method="Install-WindowsTerminal"}
+        "powertoys" = @{Name="Microsoft PowerToys"; Special=$true; Method="Install-PowerToys"}
     }
 
     # Track installation results
@@ -1164,20 +1403,24 @@ function Show-Summary {
     Write-Host "✓ Steam" -ForegroundColor White
     Write-Host "✓ PyCharm Community Edition" -ForegroundColor White
     Write-Host "✓ Visual Studio Code (with Python extensions)" -ForegroundColor White
-    Write-Host "✓ Postman" -ForegroundColor White
     Write-Host "✓ Python 3.x" -ForegroundColor White
     Write-Host "✓ Git" -ForegroundColor White
     Write-Host "✓ GitHub Desktop" -ForegroundColor White
+    Write-Host "✓ Postman" -ForegroundColor White
+    Write-Host "✓ Windows Terminal" -ForegroundColor White
+    Write-Host "✓ Microsoft PowerToys" -ForegroundColor White
 
-    Write-Host "`nWindows Optimizations:" -ForegroundColor Cyan
-    Write-Host "✓ Removed bloatware apps (Candy Crush, etc.)" -ForegroundColor White
+    Write-Host "`nWindows 11 Optimizations:" -ForegroundColor Cyan
+    Write-Host "✓ Removed bloatware apps (Teams consumer, widgets, etc.)" -ForegroundColor White
+    Write-Host "✓ Set taskbar alignment to left (classic style)" -ForegroundColor White
+    Write-Host "✓ Restored classic context menu" -ForegroundColor White
     Write-Host "✓ Disabled Cortana" -ForegroundColor White
     Write-Host "✓ Disabled OneDrive auto-start" -ForegroundColor White
     Write-Host "✓ Disabled Windows tips and suggestions" -ForegroundColor White
     Write-Host "✓ Reduced telemetry" -ForegroundColor White
     Write-Host "✓ Disabled activity history" -ForegroundColor White
     Write-Host "✓ Disabled unnecessary background apps" -ForegroundColor White
-    Write-Host "✓ Cleaned up taskbar (kept search box)" -ForegroundColor White
+    Write-Host "✓ Disabled Widgets and Teams icons" -ForegroundColor White
     Write-Host "✓ Configured search for local results (disabled Bing)" -ForegroundColor White
 
     Write-Host "`nIMPORTANT NEXT STEPS:" -ForegroundColor Yellow
@@ -1257,16 +1500,16 @@ try {
     Install-ApplicationsParallel -SelectedApps $selectedApps
 
     # Ask about Windows optimizations
-    Update-ScriptProgress -Status "Configuring Windows optimizations"
-    Write-Log "=== Windows Optimizations ===" -Level INFO -ForegroundColor Cyan
-    Write-Host "Would you like to optimize Windows settings? [Y/N] (Default: Y)" -ForegroundColor Yellow
+    Update-ScriptProgress -Status "Configuring Windows 11 optimizations"
+    Write-Log "=== Windows 11 Optimizations ===" -Level INFO -ForegroundColor Cyan
+    Write-Host "Would you like to optimize Windows 11 settings? [Y/N] (Default: Y)" -ForegroundColor Yellow
     $optimizeWindows = Read-Host -Prompt "Your choice"
     if ($optimizeWindows -eq '' -or $optimizeWindows -eq 'Y') {
         # Remove bloatware
-        Remove-Bloatware
+        Remove-Windows11Bloatware
 
         # Configure Windows settings
-        Set-OptimalWindowsSettings
+        Set-OptimalWindows11Settings
 
         # Ask about disabling services
         Write-Host "`nDisable unnecessary Windows services for better performance? [Y/N] (Default: N)" -ForegroundColor Yellow
@@ -1275,7 +1518,7 @@ try {
             Disable-UnnecessaryServices
         }
     } else {
-        Write-Log "User skipped Windows optimizations" -Level INFO
+        Write-Log "User skipped Windows 11 optimizations" -Level INFO
     }
 
     # Configure development environment
