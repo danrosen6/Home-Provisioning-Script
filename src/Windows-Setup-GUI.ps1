@@ -23,10 +23,10 @@ $script:IsRunning = $false
 $script:TotalSteps = 0
 $script:CurrentStep = 0
 $script:StartTime = $null
-$script:SelectedApps = @()
-$script:SelectedBloatware = @()
-$script:SelectedServices = @()
-$script:SelectedOptimizations = @()
+$script:SelectedApps = @{}
+$script:SelectedBloatware = @{}
+$script:SelectedServices = @{}
+$script:SelectedOptimizations = @{}
 $script:BackgroundJobs = @()
 $script:CancellationTokenSource = $null
 $script:WingetInstallAttempted = $false
@@ -468,6 +468,52 @@ function Cancel-AllOperations {
     }
 }
 
+function Update-LogTextBox {
+    param (
+        [string]$Message,
+        [string]$Level = "INFO"
+    )
+    
+    try {
+        if ($script:txtLog.InvokeRequired) {
+            $script:txtLog.Invoke({
+                param($msg, $lvl)
+                $script:txtLog.SelectionStart = $script:txtLog.TextLength
+                $script:txtLog.SelectionLength = 0
+                
+                # Set color based on level
+                switch ($lvl) {
+                    "ERROR" { $script:txtLog.SelectionColor = [System.Drawing.Color]::Red }
+                    "WARNING" { $script:txtLog.SelectionColor = [System.Drawing.Color]::Orange }
+                    "SUCCESS" { $script:txtLog.SelectionColor = [System.Drawing.Color]::Green }
+                    default { $script:txtLog.SelectionColor = [System.Drawing.Color]::Black }
+                }
+                
+                $script:txtLog.AppendText("${msg}`r`n")
+                $script:txtLog.ScrollToCaret()
+            }, $Message, $Level)
+        }
+        else {
+            $script:txtLog.SelectionStart = $script:txtLog.TextLength
+            $script:txtLog.SelectionLength = 0
+            
+            # Set color based on level
+            switch ($Level) {
+                "ERROR" { $script:txtLog.SelectionColor = [System.Drawing.Color]::Red }
+                "WARNING" { $script:txtLog.SelectionColor = [System.Drawing.Color]::Orange }
+                "SUCCESS" { $script:txtLog.SelectionColor = [System.Drawing.Color]::Green }
+                default { $script:txtLog.SelectionColor = [System.Drawing.Color]::Black }
+            }
+            
+            $script:txtLog.AppendText("${Message}`r`n")
+            $script:txtLog.ScrollToCaret()
+        }
+    }
+    catch {
+        Write-Host "Error updating log textbox: $_"
+    }
+}
+
 #endregion Helper Functions
 
 #region Main Script
@@ -538,13 +584,15 @@ Initialize-Checkboxes -TabPage $tabServices -Categories $script:ServiceCategorie
 Initialize-Checkboxes -TabPage $tabOptimize -Categories $script:OptimizationCategories -Type "Optimization"
 
 # Create log textbox
-$txtLog = New-Object System.Windows.Forms.TextBox
-$txtLog.Multiline = $true
-$txtLog.ScrollBars = "Vertical"
-$txtLog.Dock = [System.Windows.Forms.DockStyle]::Fill
-$txtLog.ReadOnly = $true
-$txtLog.Font = New-Object System.Drawing.Font("Consolas", 9)
-$script:txtLog = $txtLog
+$script:txtLog = New-Object System.Windows.Forms.RichTextBox
+$script:txtLog.Location = New-Object System.Drawing.Point(12, 400)
+$script:txtLog.Size = New-Object System.Drawing.Size(760, 200)
+$script:txtLog.Multiline = $true
+$script:txtLog.ScrollBars = [System.Windows.Forms.RichTextBoxScrollBars]::Vertical
+$script:txtLog.ReadOnly = $true
+$script:txtLog.BackColor = [System.Drawing.Color]::White
+$script:txtLog.Font = New-Object System.Drawing.Font("Consolas", 9)
+$form.Controls.Add($script:txtLog)
 
 # Create progress bar
 $prgProgress = New-Object System.Windows.Forms.ProgressBar
@@ -576,120 +624,103 @@ $script:btnCancel = $btnCancel
 
 # Add controls to form
 $form.Controls.Add($tabControl)
-$form.Controls.Add($txtLog)
-$form.Controls.Add($prgProgress)
-$form.Controls.Add($lblProgress)
-$form.Controls.Add($btnRun)
-$form.Controls.Add($btnCancel)
+$form.Controls.Add($script:txtLog)
+$form.Controls.Add($script:prgProgress)
+$script:lblProgress = $lblProgress
+$form.Controls.Add($script:btnRun)
+$form.Controls.Add($script:btnCancel)
 
 # Add Run button click handler
-$btnRun.Add_Click({
+$script:btnRun.Add_Click({
     if (-not $script:IsRunning) {
         $script:IsRunning = $true
         $script:btnRun.Enabled = $false
         $script:btnCancel.Enabled = $true
         
-        # Start the operations in a background job
-        $script:BackgroundJobs = @()
+        # Create cancellation token
         $script:CancellationTokenSource = New-Object System.Threading.CancellationTokenSource
         
-        $job = Start-Job -ScriptBlock {
-            param($SelectedApps, $SelectedBloatware, $SelectedServices, $SelectedOptimizations, $CancellationToken)
+        # Start background job
+        $script:BackgroundJobs = @()
+        $script:BackgroundJob = Start-Job -ScriptBlock {
+            param($modulePath, $utilsPath, $selectedApps, $selectedBloatware, $selectedServices, $selectedOptimizations)
             
-            # Import the required modules
-            $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-            $modulePath = Join-Path $scriptPath "modules"
-            $utilsPath = Join-Path $scriptPath "utils"
-            
+            # Import modules in the job
             Import-Module (Join-Path $utilsPath "Logging.psm1") -Force
             Import-Module (Join-Path $modulePath "Installers.psm1") -Force
             Import-Module (Join-Path $modulePath "SystemOptimizations.psm1") -Force
             
-            # Process selected applications
-            foreach ($app in $SelectedApps) {
-                if ($CancellationToken.IsCancellationRequested) { break }
-                try {
-                    Install-Application -AppName $app -CancellationToken $CancellationToken
-                } catch {
-                    Write-Log "Failed to install ${app}: $_" -Level "ERROR"
+            try {
+                # Install selected applications
+                foreach ($app in $selectedApps.GetEnumerator()) {
+                    if ($app.Value) {
+                        Write-LogMessage "Installing application: $($app.Key)" -Level "INFO"
+                        Install-Application -AppKey $app.Key
+                    }
                 }
-            }
-            
-            # Process selected bloatware
-            foreach ($bloat in $SelectedBloatware) {
-                if ($CancellationToken.IsCancellationRequested) { break }
-                try {
-                    Remove-Bloatware -AppIdentifier $bloat -CancellationToken $CancellationToken
-                } catch {
-                    Write-Log "Failed to remove ${bloat}: $_" -Level "ERROR"
+                
+                # Remove selected bloatware
+                foreach ($bloat in $selectedBloatware.GetEnumerator()) {
+                    if ($bloat.Value) {
+                        Write-LogMessage "Removing bloatware: $($bloat.Key)" -Level "INFO"
+                        Remove-Bloatware -BloatwareKey $bloat.Key
+                    }
                 }
-            }
-            
-            # Process selected services
-            foreach ($service in $SelectedServices) {
-                if ($CancellationToken.IsCancellationRequested) { break }
-                try {
-                    Set-Service -Name $service -StartupType Disabled
-                    Write-Log "Disabled service: ${service}" -Level "SUCCESS"
-                } catch {
-                    Write-Log "Failed to disable service ${service}: $_" -Level "ERROR"
+                
+                # Disable selected services
+                foreach ($service in $selectedServices.GetEnumerator()) {
+                    if ($service.Value) {
+                        Write-LogMessage "Disabling service: $($service.Key)" -Level "INFO"
+                        Configure-Services -ServiceKey $service.Key
+                    }
                 }
-            }
-            
-            # Process selected optimizations
-            foreach ($opt in $SelectedOptimizations) {
-                if ($CancellationToken.IsCancellationRequested) { break }
-                try {
-                    Apply-Optimization -OptimizationKey $opt
-                } catch {
-                    Write-Log "Failed to apply optimization ${opt}: $_" -Level "ERROR"
+                
+                # Apply selected optimizations
+                foreach ($opt in $selectedOptimizations.GetEnumerator()) {
+                    if ($opt.Value) {
+                        Write-LogMessage "Applying optimization: $($opt.Key)" -Level "INFO"
+                        Set-SystemOptimization -OptimizationKey $opt.Key
+                    }
                 }
+                
+                Write-LogMessage "All operations completed" -Level "SUCCESS"
             }
-            
-        } -ArgumentList $script:SelectedApps, $script:SelectedBloatware, $script:SelectedServices, $script:SelectedOptimizations, $script:CancellationTokenSource.Token
+            catch {
+                Write-LogMessage "Error in background job: $_" -Level "ERROR"
+            }
+        } -ArgumentList $modulePath, $utilsPath, $script:SelectedApps, $script:SelectedBloatware, $script:SelectedServices, $script:SelectedOptimizations
         
-        $script:BackgroundJobs += $job
-        
-        # Create and start the timer
-        $script:timer = New-Object System.Windows.Forms.Timer
-        $script:timer.Interval = 1000
-        $script:timer.Add_Tick({
-            $completed = $true
-            foreach ($job in $script:BackgroundJobs) {
-                if ($job.State -eq "Running") {
-                    $completed = $false
-                    break
-                }
-            }
-            
-            if ($completed) {
-                if ($script:timer -ne $null) {
-                    $script:timer.Stop()
-                    $script:timer.Dispose()
-                    $script:timer = $null
-                }
+        # Create timer to check job status
+        $script:ProgressTimer = New-Object System.Windows.Forms.Timer
+        $script:ProgressTimer.Interval = 1000
+        $script:ProgressTimer.Add_Tick({
+            if ($script:BackgroundJob.State -eq "Completed") {
+                $script:ProgressTimer.Stop()
                 $script:IsRunning = $false
                 $script:btnRun.Enabled = $true
                 $script:btnCancel.Enabled = $false
-                Write-Log "All operations completed" -Level "SUCCESS"
+                $script:CancellationTokenSource = $null
+                $script:BackgroundJob = $null
             }
         })
-        $script:timer.Start()
+        $script:ProgressTimer.Start()
     }
 })
 
 # Add Cancel button click handler
-$btnCancel.Add_Click({
-    Cancel-AllOperations
+$script:btnCancel.Add_Click({
+    if ($script:IsRunning) {
+        Cancel-AllOperations
+    }
 })
 
 # Show the form
 $form.ShowDialog()
 
 # Cleanup
-if ($script:timer -ne $null) {
-    $script:timer.Stop()
-    $script:timer.Dispose()
+if ($script:ProgressTimer -ne $null) {
+    $script:ProgressTimer.Stop()
+    $script:ProgressTimer.Dispose()
 }
 Cleanup-TempFiles
 

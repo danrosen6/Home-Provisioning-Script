@@ -2,118 +2,93 @@
 
 # Global variables
 $script:LogFile = $null
-$script:MaxLogSize = 10MB
+$script:MaxLogSize = 5MB
 $script:MaxLogFiles = 5
 
-function Write-Log {
-    [CmdletBinding()]
-    param(
+function Write-LogMessage {
+    param (
         [Parameter(Mandatory=$true)]
         [string]$Message,
         
         [Parameter(Mandatory=$false)]
         [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS")]
-        [string]$Level = "INFO",
-        
-        [Parameter(Mandatory=$false)]
-        [string]$LogFile = $script:LogFile
+        [string]$Level = "INFO"
     )
     
     try {
+        if (-not $script:LogFile) {
+            Initialize-Logging
+        }
+        
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $logMessage = "[$timestamp] [$Level] $Message"
         
-        # Write to log file
-        if ($LogFile) {
-            # Check if log file exists and rotate if needed
-            if (Test-Path $LogFile) {
-                $fileSize = (Get-Item $LogFile).Length
-                if ($fileSize -gt $script:MaxLogSize) {
-                    Rotate-LogFile -LogFile $LogFile
-                }
-            }
-            
-            # Ensure directory exists
-            $logDir = Split-Path -Parent $LogFile
-            if (-not (Test-Path $logDir)) {
-                New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-            }
-            
-            Add-Content -Path $LogFile -Value $logMessage -ErrorAction Stop
+        # Check if log file exists and create directory if needed
+        $logDir = Split-Path -Parent $script:LogFile
+        if (-not (Test-Path $logDir)) {
+            New-Item -ItemType Directory -Path $logDir -Force | Out-Null
         }
+        
+        # Check log file size and rotate if needed
+        if ((Test-Path $script:LogFile) -and ((Get-Item $script:LogFile).Length -gt $script:MaxLogSize)) {
+            Rotate-LogFile
+        }
+        
+        # Write to log file
+        Add-Content -Path $script:LogFile -Value $logMessage
         
         # Write to console with color
         $color = switch ($Level) {
-            "INFO" { "White" }
-            "WARNING" { "Yellow" }
             "ERROR" { "Red" }
+            "WARNING" { "Yellow" }
             "SUCCESS" { "Green" }
             default { "White" }
         }
-        
         Write-Host $logMessage -ForegroundColor $color
     }
     catch {
-        Write-Host "Failed to write log: $_" -ForegroundColor Red
-    }
-}
-
-function Rotate-LogFile {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$LogFile
-    )
-    
-    try {
-        $logDir = Split-Path -Parent $LogFile
-        $logName = Split-Path -Leaf $LogFile
-        $logBase = [System.IO.Path]::GetFileNameWithoutExtension($logName)
-        $logExt = [System.IO.Path]::GetExtension($logName)
-        
-        # Remove oldest log if we have too many
-        $existingLogs = Get-ChildItem -Path $logDir -Filter "$logBase*$logExt" | Sort-Object LastWriteTime -Descending
-        if ($existingLogs.Count -ge $script:MaxLogFiles) {
-            $existingLogs | Select-Object -Last 1 | Remove-Item -Force
-        }
-        
-        # Rename current log with timestamp
-        $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-        $newName = "$logBase-$timestamp$logExt"
-        $newPath = Join-Path $logDir $newName
-        Rename-Item -Path $LogFile -NewName $newName -Force
-    }
-    catch {
-        Write-Host "Failed to rotate log file: $_" -ForegroundColor Red
+        Write-Host "Failed to write to log: $_"
     }
 }
 
 function Initialize-Logging {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$false)]
-        [string]$LogDirectory = "logs"
-    )
-    
     try {
-        # Create logs directory if it doesn't exist
-        if (-not (Test-Path $LogDirectory)) {
-            New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
+        $logDir = Join-Path $PSScriptRoot "..\logs"
+        if (-not (Test-Path $logDir)) {
+            New-Item -ItemType Directory -Path $logDir -Force | Out-Null
         }
         
-        # Create log file with timestamp
-        $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-        $script:LogFile = Join-Path $LogDirectory "setup-log-$timestamp.txt"
+        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+        $script:LogFile = Join-Path $logDir "setup_${timestamp}.log"
         
         # Test write permissions
-        Add-Content -Path $script:LogFile -Value "Logging initialized" -ErrorAction Stop
+        $testMessage = "[$timestamp] [INFO] Logging initialized"
+        Add-Content -Path $script:LogFile -Value $testMessage
         
-        Write-Log "Logging initialized. Log file: $($script:LogFile)" -Level "INFO"
-        return $true
+        Write-Host $testMessage
     }
     catch {
-        Write-Host "Failed to initialize logging: $_" -ForegroundColor Red
-        return $false
+        Write-Host "Failed to initialize logging: $_"
     }
 }
 
-Export-ModuleMember -Function Write-Log, Initialize-Logging, Rotate-LogFile 
+function Rotate-LogFile {
+    try {
+        $logDir = Split-Path -Parent $script:LogFile
+        $logFiles = Get-ChildItem -Path $logDir -Filter "setup_*.log" | Sort-Object LastWriteTime -Descending
+        
+        # Remove old log files if we have too many
+        if ($logFiles.Count -ge $script:MaxLogFiles) {
+            $logFiles | Select-Object -Skip $script:MaxLogFiles | Remove-Item -Force
+        }
+        
+        # Create new log file
+        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+        $script:LogFile = Join-Path $logDir "setup_${timestamp}.log"
+    }
+    catch {
+        Write-Host "Failed to rotate log file: $_"
+    }
+}
+
+Export-ModuleMember -Function Write-LogMessage, Initialize-Logging, Rotate-LogFile 

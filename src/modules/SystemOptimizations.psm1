@@ -4,7 +4,7 @@
 $script:RegistryBackups = @{}
 $script:ServiceBackups = @{}
 
-function Backup-RegistryValue {
+function Save-RegistryValue {
     param (
         [Parameter(Mandatory=$true)]
         [string]$Path,
@@ -25,12 +25,12 @@ function Backup-RegistryValue {
         return $false
     }
     catch {
-        Write-Log "Failed to backup registry value: $_" -Level "ERROR"
+        Write-LogMessage "Failed to backup registry value: $_" -Level "ERROR"
         return $false
     }
 }
 
-function Backup-Service {
+function Save-ServiceState {
     param (
         [Parameter(Mandatory=$true)]
         [string]$ServiceName
@@ -48,7 +48,7 @@ function Backup-Service {
         return $false
     }
     catch {
-        Write-Log "Failed to backup service: $_" -Level "ERROR"
+        Write-LogMessage "Failed to backup service: $_" -Level "ERROR"
         return $false
     }
 }
@@ -66,18 +66,18 @@ function Restore-RegistryValue {
         $backupKey = "${Path}|${Name}"
         if ($script:RegistryBackups.ContainsKey($backupKey)) {
             Set-ItemProperty -Path $Path -Name $Name -Value $script:RegistryBackups[$backupKey]
-            Write-Log "Restored registry value: ${Path}\${Name}" -Level "INFO"
+            Write-LogMessage "Restored registry value: ${Path}\${Name}" -Level "INFO"
             return $true
         }
         return $false
     }
     catch {
-        Write-Log "Failed to restore registry value: $_" -Level "ERROR"
+        Write-LogMessage "Failed to restore registry value: $_" -Level "ERROR"
         return $false
     }
 }
 
-function Restore-Service {
+function Restore-ServiceState {
     param (
         [Parameter(Mandatory=$true)]
         [string]$ServiceName
@@ -90,13 +90,99 @@ function Restore-Service {
             if ($backup.Status -eq "Running") {
                 Start-Service -Name $ServiceName
             }
-            Write-Log "Restored service: ${ServiceName}" -Level "INFO"
+            Write-LogMessage "Restored service: ${ServiceName}" -Level "INFO"
             return $true
         }
         return $false
     }
     catch {
-        Write-Log "Failed to restore service: $_" -Level "ERROR"
+        Write-LogMessage "Failed to restore service: $_" -Level "ERROR"
+        return $false
+    }
+}
+
+function Set-SystemOptimization {
+    param (
+        [string]$OptimizationKey,
+        [System.Threading.CancellationToken]$CancellationToken
+    )
+
+    Write-LogMessage "Applying optimization: ${OptimizationKey}" -Level "INFO"
+
+    try {
+        switch ($OptimizationKey) {
+            "DisableTelemetry" {
+                # Backup current settings
+                Save-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry"
+                Save-RegistryValue -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry"
+                
+                # Apply changes
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 0
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry" -Value 0
+            }
+            "DisableCortana" {
+                Save-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana"
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0
+            }
+            "DisableWindowsSearch" {
+                Save-ServiceState -ServiceName "WSearch"
+                Stop-Service "WSearch" -Force
+                Set-Service "WSearch" -StartupType Disabled
+            }
+            "DisableWindowsUpdate" {
+                Save-ServiceState -ServiceName "wuauserv"
+                Stop-Service "wuauserv" -Force
+                Set-Service "wuauserv" -StartupType Disabled
+            }
+            "DisableWindowsDefender" {
+                Save-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Name "DisableAntiSpyware"
+                Set-MpPreference -DisableRealtimeMonitoring $true
+                Set-MpPreference -DisableIOAVProtection $true
+            }
+            "DisableWindowsFirewall" {
+                Save-RegistryValue -Path "HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile" -Name "EnableFirewall"
+                Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+            }
+            default {
+                throw "Unknown optimization key: ${OptimizationKey}"
+            }
+        }
+
+        Write-LogMessage "Successfully applied optimization: ${OptimizationKey}" -Level "SUCCESS"
+        return $true
+    }
+    catch {
+        Write-LogMessage "Failed to apply optimization ${OptimizationKey}: $_" -Level "ERROR"
+        
+        # Attempt rollback
+        try {
+            switch ($OptimizationKey) {
+                "DisableTelemetry" {
+                    Restore-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry"
+                    Restore-RegistryValue -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry"
+                }
+                "DisableCortana" {
+                    Restore-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana"
+                }
+                "DisableWindowsSearch" {
+                    Restore-ServiceState -ServiceName "WSearch"
+                }
+                "DisableWindowsUpdate" {
+                    Restore-ServiceState -ServiceName "wuauserv"
+                }
+                "DisableWindowsDefender" {
+                    Restore-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Name "DisableAntiSpyware"
+                }
+                "DisableWindowsFirewall" {
+                    Restore-RegistryValue -Path "HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile" -Name "EnableFirewall"
+                }
+            }
+            Write-LogMessage "Successfully rolled back optimization: ${OptimizationKey}" -Level "INFO"
+        }
+        catch {
+            Write-LogMessage "Failed to roll back optimization ${OptimizationKey}: $_" -Level "ERROR"
+        }
+        
         return $false
     }
 }
@@ -241,90 +327,4 @@ function Configure-Services {
     }
 }
 
-function Apply-Optimization {
-    param (
-        [string]$OptimizationKey,
-        [System.Threading.CancellationToken]$CancellationToken
-    )
-
-    Write-Log "Applying optimization: ${OptimizationKey}" -Level "INFO"
-
-    try {
-        switch ($OptimizationKey) {
-            "DisableTelemetry" {
-                # Backup current settings
-                Backup-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry"
-                Backup-RegistryValue -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry"
-                
-                # Apply changes
-                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 0
-                Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry" -Value 0
-            }
-            "DisableCortana" {
-                Backup-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana"
-                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0
-            }
-            "DisableWindowsSearch" {
-                Backup-Service -ServiceName "WSearch"
-                Stop-Service "WSearch" -Force
-                Set-Service "WSearch" -StartupType Disabled
-            }
-            "DisableWindowsUpdate" {
-                Backup-Service -ServiceName "wuauserv"
-                Stop-Service "wuauserv" -Force
-                Set-Service "wuauserv" -StartupType Disabled
-            }
-            "DisableWindowsDefender" {
-                Backup-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Name "DisableAntiSpyware"
-                Set-MpPreference -DisableRealtimeMonitoring $true
-                Set-MpPreference -DisableIOAVProtection $true
-            }
-            "DisableWindowsFirewall" {
-                Backup-RegistryValue -Path "HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile" -Name "EnableFirewall"
-                Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
-            }
-            default {
-                throw "Unknown optimization key: ${OptimizationKey}"
-            }
-        }
-
-        Write-Log "Successfully applied optimization: ${OptimizationKey}" -Level "SUCCESS"
-        return $true
-    }
-    catch {
-        Write-Log "Failed to apply optimization ${OptimizationKey}: $_" -Level "ERROR"
-        
-        # Attempt rollback
-        try {
-            switch ($OptimizationKey) {
-                "DisableTelemetry" {
-                    Restore-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry"
-                    Restore-RegistryValue -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry"
-                }
-                "DisableCortana" {
-                    Restore-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana"
-                }
-                "DisableWindowsSearch" {
-                    Restore-Service -ServiceName "WSearch"
-                }
-                "DisableWindowsUpdate" {
-                    Restore-Service -ServiceName "wuauserv"
-                }
-                "DisableWindowsDefender" {
-                    Restore-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Name "DisableAntiSpyware"
-                }
-                "DisableWindowsFirewall" {
-                    Restore-RegistryValue -Path "HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile" -Name "EnableFirewall"
-                }
-            }
-            Write-Log "Successfully rolled back optimization: ${OptimizationKey}" -Level "INFO"
-        }
-        catch {
-            Write-Log "Failed to roll back optimization ${OptimizationKey}: $_" -Level "ERROR"
-        }
-        
-        return $false
-    }
-}
-
-Export-ModuleMember -Function Optimize-System, Remove-Bloatware, Configure-Services, Apply-Optimization, Backup-RegistryValue, Backup-Service, Restore-RegistryValue, Restore-Service 
+Export-ModuleMember -Function Set-SystemOptimization, Save-RegistryValue, Save-ServiceState, Restore-RegistryValue, Restore-ServiceState, Optimize-System, Remove-Bloatware, Configure-Services 
