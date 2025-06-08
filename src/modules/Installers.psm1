@@ -535,33 +535,41 @@ function Install-Application {
         if (-not $script:UseDirectDownloadOnly -and (Get-Command winget -ErrorAction SilentlyContinue)) {
             $wingetId = $wingetMappings[$AppName]
             if ($wingetId) {
-                Write-LogMessage "Attempting to install $AppName via winget (ID: $wingetId)..." -Level "INFO"
+                Write-LogMessage "📦 METHOD: Using winget package manager for $AppName" -Level "INFO"
+                Write-LogMessage "🔍 WINGET: Searching for package ID: $wingetId" -Level "INFO"
+                
                 $wingetOutput = winget install --id $wingetId --silent --accept-source-agreements --accept-package-agreements 2>&1
                 if ($LASTEXITCODE -eq 0 -or ($wingetOutput -match "Successfully installed" -or $wingetOutput -match "already installed")) {
-                    Write-LogMessage "Successfully installed $AppName via winget" -Level "SUCCESS"
+                    Write-LogMessage "✅ WINGET: Successfully installed $AppName via winget package manager" -Level "SUCCESS"
                     return $true
                 } else {
-                    Write-LogMessage "Winget installation failed, falling back to direct download..." -Level "WARNING"
+                    Write-LogMessage "❌ WINGET: Installation failed - $wingetOutput" -Level "WARNING"
+                    Write-LogMessage "🔄 FALLBACK: Switching to direct download method for $AppName" -Level "WARNING"
                 }
             } else {
-                Write-LogMessage "No winget package ID found for $AppName, using direct download..." -Level "WARNING"
+                Write-LogMessage "❌ WINGET: No package ID found for $AppName" -Level "WARNING"
+                Write-LogMessage "🔄 FALLBACK: Using direct download method" -Level "WARNING"
             }
         } else {
             if ($script:UseDirectDownloadOnly) {
-                Write-LogMessage "Using direct download method for $AppName (winget unavailable)..." -Level "INFO"
+                Write-LogMessage "📦 METHOD: Using direct download for $AppName (winget unavailable)" -Level "INFO"
             } else {
-                Write-LogMessage "Winget not available, using direct download for $AppName..." -Level "WARNING"
+                Write-LogMessage "❌ WINGET: Package manager not available" -Level "WARNING"
+                Write-LogMessage "📦 METHOD: Using direct download for $AppName" -Level "WARNING"
             }
         }
         
         # Fallback to direct download
         $downloadInfo = Get-AppDirectDownloadInfo -AppName $AppName
         if (-not $downloadInfo) {
-            Write-LogMessage "No download info found for $AppName and winget failed" -Level "ERROR"
+            Write-LogMessage "❌ DIRECT: No download information available for $AppName" -Level "ERROR"
             return $false
         }
         
-        Write-LogMessage "Downloading $AppName from $($downloadInfo.Url)..." -Level "INFO"
+        Write-LogMessage "🌐 DIRECT: Starting direct download for $AppName" -Level "INFO"
+        Write-LogMessage "📂 SOURCE: $($downloadInfo.Url)" -Level "INFO"
+        Write-LogMessage "📄 FILE: $($downloadInfo.FileName) ($($downloadInfo.FileType.ToUpper()))" -Level "INFO"
+        
         $tempFile = Join-Path $env:TEMP $downloadInfo.FileName
         
         # Download with retry logic
@@ -571,13 +579,28 @@ function Install-Application {
         
         while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
             try {
+                Write-LogMessage "⬇️ DOWNLOAD: Attempt $($retryCount + 1)/$maxRetries - Downloading $($downloadInfo.FileName)..." -Level "INFO"
+                
+                # Get file size if possible for progress
+                $downloadStart = Get-Date
                 Invoke-WebRequest -Uri $downloadInfo.Url -OutFile $tempFile -UseBasicParsing -TimeoutSec 30
-                $downloadSuccess = $true
+                $downloadEnd = Get-Date
+                $downloadTime = ($downloadEnd - $downloadStart).TotalSeconds
+                
+                if (Test-Path $tempFile) {
+                    $fileSize = (Get-Item $tempFile).Length
+                    $fileSizeMB = [Math]::Round($fileSize / 1MB, 2)
+                    Write-LogMessage "✅ DOWNLOAD: Completed - $fileSizeMB MB in $([Math]::Round($downloadTime, 1))s" -Level "SUCCESS"
+                    $downloadSuccess = $true
+                } else {
+                    throw "File not created after download"
+                }
             }
             catch {
                 $retryCount++
                 if ($retryCount -lt $maxRetries) {
-                    Write-LogMessage "Download attempt $retryCount failed, retrying..." -Level "WARNING"
+                    Write-LogMessage "❌ DOWNLOAD: Attempt $retryCount failed - $_" -Level "WARNING"
+                    Write-LogMessage "🔄 RETRY: Waiting 2 seconds before retry..." -Level "WARNING"
                     Start-Sleep -Seconds 2
                 } else {
                     throw "Download failed after $maxRetries attempts: $_"
@@ -585,34 +608,55 @@ function Install-Application {
             }
         }
         
-        Write-LogMessage "Installing $AppName from downloaded file..." -Level "INFO"
+        # Install the downloaded file with detailed progress
+        $installStart = Get-Date
+        Write-LogMessage "🔧 INSTALL: Starting installation of $AppName..." -Level "INFO"
+        
         if ($downloadInfo.FileType -eq "msi") {
+            Write-LogMessage "📦 INSTALLER: Using MSI installer (Windows Installer)" -Level "INFO"
+            Write-LogMessage "⚙️ COMMAND: msiexec.exe /i `"$($downloadInfo.FileName)`" /quiet /norestart" -Level "INFO"
+            
             $process = Start-Process msiexec.exe -ArgumentList "/i `"$tempFile`" /quiet /norestart" -Wait -PassThru
+            $installEnd = Get-Date
+            $installTime = ($installEnd - $installStart).TotalSeconds
+            
             if ($process.ExitCode -eq 0) {
-                Write-LogMessage "Successfully installed $AppName via MSI" -Level "SUCCESS"
+                Write-LogMessage "✅ INSTALL: $AppName installed successfully via MSI in $([Math]::Round($installTime, 1))s" -Level "SUCCESS"
                 return $true
             } else {
-                Write-LogMessage "MSI installation failed for $AppName with exit code $($process.ExitCode)" -Level "ERROR"
+                Write-LogMessage "❌ INSTALL: MSI installation failed for $AppName (Exit Code: $($process.ExitCode))" -Level "ERROR"
                 return $false
             }
         } elseif ($downloadInfo.FileType -eq "msixbundle" -or $downloadInfo.FileType -eq "msix") {
-            # Install MSIX bundle using Add-AppxPackage
+            Write-LogMessage "📦 INSTALLER: Using MSIX package installer (Universal Windows Platform)" -Level "INFO"
+            Write-LogMessage "⚙️ COMMAND: Add-AppxPackage -Path `"$($downloadInfo.FileName)`"" -Level "INFO"
+            
             try {
                 Add-AppxPackage -Path $tempFile -ErrorAction Stop
-                Write-LogMessage "Successfully installed $AppName via MSIX package" -Level "SUCCESS"
+                $installEnd = Get-Date
+                $installTime = ($installEnd - $installStart).TotalSeconds
+                Write-LogMessage "✅ INSTALL: $AppName installed successfully via MSIX package in $([Math]::Round($installTime, 1))s" -Level "SUCCESS"
                 return $true
             }
             catch {
-                Write-LogMessage "MSIX installation failed for $AppName : $_" -Level "ERROR"
+                $installEnd = Get-Date
+                $installTime = ($installEnd - $installStart).TotalSeconds
+                Write-LogMessage "❌ INSTALL: MSIX installation failed for $AppName after $([Math]::Round($installTime, 1))s - $_" -Level "ERROR"
                 return $false
             }
         } else {
+            Write-LogMessage "📦 INSTALLER: Using EXE installer (Executable)" -Level "INFO"
+            Write-LogMessage "⚙️ COMMAND: `"$($downloadInfo.FileName)`" $($downloadInfo.Arguments)" -Level "INFO"
+            
             $process = Start-Process $tempFile -ArgumentList $downloadInfo.Arguments -Wait -PassThru
+            $installEnd = Get-Date
+            $installTime = ($installEnd - $installStart).TotalSeconds
+            
             if ($process.ExitCode -eq 0) {
-                Write-LogMessage "Successfully installed $AppName via direct download" -Level "SUCCESS"
+                Write-LogMessage "✅ INSTALL: $AppName installed successfully via EXE in $([Math]::Round($installTime, 1))s" -Level "SUCCESS"
                 return $true
             } else {
-                Write-LogMessage "Installation failed for $AppName with exit code $($process.ExitCode)" -Level "ERROR"
+                Write-LogMessage "❌ INSTALL: EXE installation failed for $AppName (Exit Code: $($process.ExitCode)) after $([Math]::Round($installTime, 1))s" -Level "ERROR"
                 return $false
             }
         }

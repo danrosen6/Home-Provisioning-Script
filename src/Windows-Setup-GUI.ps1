@@ -454,14 +454,42 @@ function Create-SelectionUI {
         $cbSelectAll.Width = 200
         $cbSelectAll.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
         $cbSelectAll.Add_Click({
-            $isChecked = $this.Checked
-            foreach ($control in $scrollPanel.Controls) {
-                if ($control -is [System.Windows.Forms.CheckBox] -and $control -ne $this) {
-                    $control.Checked = $isChecked
+            try {
+                $isChecked = $this.Checked
+                $scrollPanel = $this.Parent
+                
+                # Check/uncheck all checkboxes in this panel
+                foreach ($control in $scrollPanel.Controls) {
+                    if ($control -is [System.Windows.Forms.CheckBox] -and $control -ne $this) {
+                        $control.Checked = $isChecked
+                    }
+                    elseif ($control -is [System.Windows.Forms.FlowLayoutPanel]) {
+                        foreach ($childControl in $control.Controls) {
+                            if ($childControl -is [System.Windows.Forms.CheckBox]) {
+                                $childControl.Checked = $isChecked
+                            }
+                        }
+                    }
+                }
+                
+                # Determine which tab this is and update the appropriate selection
+                $tabPage = $scrollPanel.Parent
+                if ($tabPage -eq $script:tabInstall) {
+                    Update-SelectedItems -Panel $scrollPanel -SelectedItemsArray ([ref]$script:SelectedApps)
+                }
+                elseif ($tabPage -eq $script:tabRemove) {
+                    Update-SelectedItems -Panel $scrollPanel -SelectedItemsArray ([ref]$script:SelectedBloatware)
+                }
+                elseif ($tabPage -eq $script:tabServices) {
+                    Update-SelectedItems -Panel $scrollPanel -SelectedItemsArray ([ref]$script:SelectedServices)
+                }
+                elseif ($tabPage -eq $script:tabOptimize) {
+                    Update-SelectedItems -Panel $scrollPanel -SelectedItemsArray ([ref]$script:SelectedOptimizations)
                 }
             }
-            # Update selected items
-            Update-SelectedItems -Panel $scrollPanel -SelectedItemsArray $SelectedItemsArray
+            catch {
+                # Silently handle any errors
+            }
         })
         $scrollPanel.Controls.Add($cbSelectAll)
         
@@ -505,8 +533,30 @@ function Create-SelectionUI {
                 $cb.Margin = New-Object System.Windows.Forms.Padding(0, 0, 10, 5)
                 $cb.Checked = $item.Default
                 $cb.Add_Click({
-                    # Update selected items
-                    Update-SelectedItems -Panel $scrollPanel -SelectedItemsArray $SelectedItemsArray
+                    # Find the scroll panel (grandparent of checkbox) and update selection
+                    try {
+                        $flowPanel = $this.Parent
+                        $scrollPanel = $flowPanel.Parent
+                        if ($scrollPanel -ne $null) {
+                            # Determine which tab this is based on the panel's parent
+                            $tabPage = $scrollPanel.Parent
+                            if ($tabPage -eq $script:tabInstall) {
+                                Update-SelectedItems -Panel $scrollPanel -SelectedItemsArray ([ref]$script:SelectedApps)
+                            }
+                            elseif ($tabPage -eq $script:tabRemove) {
+                                Update-SelectedItems -Panel $scrollPanel -SelectedItemsArray ([ref]$script:SelectedBloatware)
+                            }
+                            elseif ($tabPage -eq $script:tabServices) {
+                                Update-SelectedItems -Panel $scrollPanel -SelectedItemsArray ([ref]$script:SelectedServices)
+                            }
+                            elseif ($tabPage -eq $script:tabOptimize) {
+                                Update-SelectedItems -Panel $scrollPanel -SelectedItemsArray ([ref]$script:SelectedOptimizations)
+                            }
+                        }
+                    }
+                    catch {
+                        # Silently handle any errors in selection update
+                    }
                 })
                 $flowPanel.Controls.Add($cb)
             }
@@ -873,15 +923,68 @@ function Start-SelectedOperations {
         
         # Import modules in the runspace
         $script:PowerShell.AddScript({
-            param($modulePath, $utilsPath, $selectedApps, $selectedBloatware, $selectedServices, $selectedOptimizations, $totalSteps)
+            param($modulePath, $utilsPath, $selectedApps, $selectedBloatware, $selectedServices, $selectedOptimizations, $totalSteps, $useDirectDownloadOnly)
             
             # Import required modules
             Import-Module (Join-Path $utilsPath "Logging.psm1") -Force
             Import-Module (Join-Path $modulePath "Installers.psm1") -Force
             Import-Module (Join-Path $modulePath "SystemOptimizations.psm1") -Force
             
+            # Set the direct download flag in the runspace
+            $script:UseDirectDownloadOnly = $useDirectDownloadOnly
+            
             $stepCount = 0
             $results = @()
+            
+            # If winget is not available and we haven't tried to install it, try now
+            if ($useDirectDownloadOnly -and -not (Get-Command winget -ErrorAction SilentlyContinue)) {
+                $results += @{
+                    Step = 0
+                    Percentage = 0
+                    Status = "Attempting to install winget..."
+                    Type = "Progress"
+                }
+                
+                # Try to install winget (simplified version for background)
+                try {
+                    # Check Windows version first
+                    $osInfo = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+                    if ($osInfo -and $osInfo.Version) {
+                        $osVersion = [Version]$osInfo.Version
+                        if ($osVersion.Build -ge 17763) {  # Windows 10 1809+
+                            # Try to install via PowerShell
+                            $appInstallerUrl = "https://aka.ms/getwinget"
+                            $tempPath = Join-Path $env:TEMP "Microsoft.DesktopAppInstaller.msixbundle"
+                            
+                            Invoke-WebRequest -Uri $appInstallerUrl -OutFile $tempPath -UseBasicParsing -TimeoutSec 30
+                            Add-AppxPackage -Path $tempPath -ErrorAction Stop
+                            Remove-Item $tempPath -Force -ErrorAction SilentlyContinue
+                            
+                            # Wait and test
+                            Start-Sleep -Seconds 3
+                            $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+                            
+                            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                                $script:UseDirectDownloadOnly = $false
+                                $results += @{
+                                    Step = 0
+                                    Percentage = 0
+                                    Status = "Winget successfully installed!"
+                                    Type = "Success"
+                                }
+                            }
+                        }
+                    }
+                }
+                catch {
+                    $results += @{
+                        Step = 0
+                        Percentage = 0
+                        Status = "Winget installation failed, using direct downloads"
+                        Type = "Warning"
+                    }
+                }
+            }
             
             try {
                 # Install selected applications
@@ -1024,6 +1127,7 @@ function Start-SelectedOperations {
         $script:PowerShell.AddArgument($script:SelectedServices)
         $script:PowerShell.AddArgument($script:SelectedOptimizations)
         $script:PowerShell.AddArgument($script:TotalSteps)
+        $script:PowerShell.AddArgument($script:UseDirectDownloadOnly)
         
         # Start async execution
         $script:AsyncResult = $script:PowerShell.BeginInvoke()
@@ -1050,8 +1154,20 @@ function Start-SelectedOperations {
                         elseif ($result.Type -eq "Error") {
                             Write-Log $result.Status -Level "ERROR"
                         }
+                        elseif ($result.Type -eq "Warning") {
+                            Write-Log $result.Status -Level "WARNING"
+                        }
                         elseif ($result.Type -eq "CriticalError") {
                             Write-Log $result.Status -Level "ERROR"
+                        }
+                        elseif ($result.Type -eq "Method") {
+                            Write-Log $result.Status -Level "INFO"
+                        }
+                        elseif ($result.Type -eq "Download") {
+                            Write-Log $result.Status -Level "INFO"
+                        }
+                        elseif ($result.Type -eq "Install") {
+                            Write-Log $result.Status -Level "INFO"
                         }
                     }
                     
@@ -1205,28 +1321,18 @@ $form.Add_Shown({
     Write-Log "Windows Setup Automation GUI started" -Level "INFO"
     Write-Log "Detected OS: $($script:OSName)" -Level "INFO"
     
-    # Check winget status and attempt installation if missing
+    # Quick winget check without installation attempt
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Write-Log "Winget is not installed. Attempting to install winget..." -Level "WARNING"
-        
-        # Try to install winget
-        $wingetInstalled = Install-Winget
-        
-        if ($wingetInstalled) {
-            Write-Log "Winget is now available and will be used for application installations" -Level "SUCCESS"
-            Write-Log "Select applications and click 'Run Selected Tasks' to begin" -Level "INFO"
-            $script:UseDirectDownloadOnly = $false
-        } else {
-            Write-Log "Failed to install winget. Direct download methods will be used for application installations." -Level "WARNING"
-            Write-Log "Some applications may not install correctly without winget." -Level "WARNING"
-            Write-Log "You can manually install winget from the Microsoft Store (App Installer) and restart this application." -Level "INFO"
-            $script:UseDirectDownloadOnly = $true
-        }
+        Write-Log "Winget is not installed. Direct download methods will be used for application installations." -Level "WARNING"
+        Write-Log "Note: The system will attempt to install winget automatically when you run operations if needed." -Level "INFO"
+        Write-Log "You can also manually install winget from the Microsoft Store (App Installer)." -Level "INFO"
+        $script:UseDirectDownloadOnly = $true
     } else {
         Write-Log "Winget is available and will be used for application installations" -Level "SUCCESS"
-        Write-Log "Select applications and click 'Run Selected Tasks' to begin" -Level "INFO"
         $script:UseDirectDownloadOnly = $false
     }
+    
+    Write-Log "Select applications and click 'Run Selected Tasks' to begin" -Level "INFO"
 })
 
 # Add event handler for form closing
