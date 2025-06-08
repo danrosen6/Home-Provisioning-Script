@@ -4,30 +4,10 @@
 # A GUI-based tool to automate Windows 10/11 setup, install applications, remove bloatware,
 # optimize settings, and manage services.
 
-# Try loading the assemblies with better error handling
-try {
-    Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
-    Add-Type -AssemblyName System.Drawing -ErrorAction Stop
-    Write-Host "Loaded Windows Forms assemblies successfully" -ForegroundColor Green
-} catch {
-    Write-Host "Failed to load Windows Forms assemblies: $_" -ForegroundColor Red
-    Write-Host "Make sure .NET Framework is properly installed" -ForegroundColor Yellow
-    exit 1
-}
-
-# Enable visual styles with error handling
-try {
-    [System.Windows.Forms.Application]::EnableVisualStyles()
-    Write-Host "Enabled visual styles successfully" -ForegroundColor Green
-} catch {
-    Write-Host "Failed to enable visual styles: $_" -ForegroundColor Red
-    # Continue anyway as this is not critical
-}
-
 #region Variables
 
 # Global variables
-$script:LogPath = Join-Path -Path $PSScriptRoot -ChildPath "logs\setup-log-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
+$script:LogPath = Join-Path -Path $PSScriptRoot -ChildPath "setup-log-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
 $script:EnableFileLogging = $true
 $script:IsRunning = $false
 $script:TotalSteps = 0
@@ -44,7 +24,7 @@ $script:UseDirectDownloadOnly = $false
 $script:TempDirectory = Join-Path $env:TEMP "WindowsSetupGUI"
 $script:UISyncContext = [System.Threading.SynchronizationContext]::Current
 
-# Initialize UI elements
+# Initialize UI elements to avoid null reference issues
 $script:txtLog = $null
 $script:prgProgress = $null
 $script:lblProgress = $null
@@ -122,560 +102,341 @@ $script:WingetMappings = @{
     "powertoys" = "Microsoft.PowerToys"
 }
 
-# Function to get direct download info for apps
-function Get-AppDirectDownloadInfo {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$AppName
-    )
+#endregion Variables
 
-    $downloadInfo = @{
-        "Visual Studio Code" = @{
-            Url = "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64"
-            Extension = ".exe"
-            Arguments = "/VERYSILENT /MERGETASKS=!runcode"
-            VerificationPaths = @(
-                "${env:LOCALAPPDATA}\Programs\Microsoft VS Code\Code.exe",
-                "C:\Program Files\Microsoft VS Code\Code.exe"
-            )
-        }
-        "Git" = @{
-            Url = "https://github.com/git-for-windows/git/releases/latest/download/Git-2.42.0.2-64-bit.exe"
-            Extension = ".exe"
-            Arguments = "/VERYSILENT /NORESTART"
-            VerificationPaths = @(
-                "C:\Program Files\Git\cmd\git.exe",
-                "C:\Program Files (x86)\Git\cmd\git.exe"
-            )
-        }
-        "Python" = @{
-            Url = "https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe"
-            Extension = ".exe"
-            Arguments = "/quiet InstallAllUsers=1 PrependPath=1"
-            VerificationPaths = @(
-                "C:\Program Files\Python312\python.exe",
-                "C:\Python312\python.exe"
-            )
-        }
-        "Google Chrome" = @{
-            Url = "https://dl.google.com/chrome/install/latest/chrome_installer.exe"
-            Extension = ".exe"
-            Arguments = "/silent /install"
-            VerificationPaths = @(
-                "C:\Program Files\Google\Chrome\Application\chrome.exe",
-                "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-            )
-        }
-        "Mozilla Firefox" = @{
-            Url = "https://download.mozilla.org/?product=firefox-latest&os=win64&lang=en-US"
-            Extension = ".exe"
-            Arguments = "/S"
-            VerificationPaths = @(
-                "C:\Program Files\Mozilla Firefox\firefox.exe",
-                "C:\Program Files (x86)\Mozilla Firefox\firefox.exe"
-            )
-        }
-        "Brave Browser" = @{
-            Url = "https://referrals.brave.com/latest/BraveBrowserSetup.exe"
-            Extension = ".exe"
-            Arguments = "/silent /install"
-            VerificationPaths = @(
-                "C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
-                "C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe"
-            )
-        }
-        "Spotify" = @{
-            Url = "https://download.scdn.co/SpotifySetup.exe"
-            Extension = ".exe"
-            Arguments = "/silent"
-            VerificationPaths = @(
-                "${env:LOCALAPPDATA}\Spotify\Spotify.exe",
-                "C:\Program Files\Spotify\Spotify.exe"
-            )
-        }
-        "Discord" = @{
-            Url = "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x86"
-            Extension = ".exe"
-            Arguments = "/S"
-            VerificationPaths = @(
-                "${env:LOCALAPPDATA}\Discord\app-*\Discord.exe",
-                "C:\Program Files\Discord\Discord.exe"
-            )
-        }
-        "Steam" = @{
-            Url = "https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe"
-            Extension = ".exe"
-            Arguments = "/S"
-            VerificationPaths = @(
-                "C:\Program Files (x86)\Steam\Steam.exe",
-                "C:\Program Files\Steam\Steam.exe"
-            )
-        }
-        "VLC Media Player" = @{
-            Url = "https://get.videolan.org/vlc/3.0.20/win64/vlc-3.0.20-win64.exe"
-            Extension = ".exe"
-            Arguments = "/S"
-            VerificationPaths = @(
-                "C:\Program Files\VideoLAN\VLC\vlc.exe",
-                "C:\Program Files (x86)\VideoLAN\VLC\vlc.exe"
-            )
-        }
-        "7-Zip" = @{
-            Url = "https://www.7-zip.org/a/7z2401-x64.exe"
-            Extension = ".exe"
-            Arguments = "/S"
-            VerificationPaths = @(
-                "C:\Program Files\7-Zip\7z.exe",
-                "C:\Program Files (x86)\7-Zip\7z.exe"
-            )
-        }
-        "Notepad++" = @{
-            Url = "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/latest/download/npp.8.6.3.Installer.x64.exe"
-            Extension = ".exe"
-            Arguments = "/S"
-            VerificationPaths = @(
-                "C:\Program Files\Notepad++\notepad++.exe",
-                "C:\Program Files (x86)\Notepad++\notepad++.exe"
-            )
-        }
-        "Microsoft PowerToys" = @{
-            Url = "https://github.com/microsoft/PowerToys/releases/latest/download/PowerToysSetup-x64.exe"
-            Extension = ".exe"
-            Arguments = "-silent"
-            VerificationPaths = @(
-                "${env:LOCALAPPDATA}\Programs\PowerToys\PowerToys.exe",
-                "C:\Program Files\PowerToys\PowerToys.exe"
-            )
-        }
-    }
+#region Module Imports
 
-    if ($downloadInfo.ContainsKey($AppName)) {
-        return $downloadInfo[$AppName]
-    } else {
-        return $null
+# Import required modules
+$modulePath = Join-Path $PSScriptRoot "modules"
+$utilsPath = Join-Path $PSScriptRoot "utils"
+$configPath = Join-Path $PSScriptRoot "config"
+
+# Import logging module
+Import-Module (Join-Path $utilsPath "Logging.psm1") -Force
+
+# Import installer and optimization modules
+Import-Module (Join-Path $modulePath "Installers.psm1") -Force
+Import-Module (Join-Path $modulePath "SystemOptimizations.psm1") -Force
+
+# Import configuration
+. (Join-Path $configPath "AppConfig.ps1")
+. (Join-Path $configPath "DownloadConfig.ps1")
+
+#endregion Module Imports
+
+#region Helper Functions
+
+function Initialize-Logging {
+    # Create log directory if it doesn't exist
+    $logDir = Split-Path -Parent $script:LogPath
+    if (-not (Test-Path $logDir)) {
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
     }
+    
+    # Create initial log entry
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $header = "=== Windows Setup Automation Log ==="
+    $header += "`nStarted at: $timestamp"
+    $header += "`nWindows Version: $($script:OSName)"
+    $header += "`n================================`n"
+    
+    Add-Content -Path $script:LogPath -Value $header
+    Write-Log "Logging initialized" -Level "INFO"
 }
 
-# Function to check if an app is compatible with the current Windows version
-function Test-AppCompatibility {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$AppKey
-    )
-
-    # Find the app in categories
-    foreach ($category in $script:AppCategories.Values) {
-        foreach ($app in $category) {
-            if ($app.Key -eq $AppKey) {
-                if ($script:IsWindows11) {
-                    return $app.Win11
-                } else {
-                    return $app.Win10
-                }
-            }
-        }
-    }
-    return $false
-}
-
-# Function to get installed version of an app
-function Get-InstalledVersion {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$AppName
-    )
-
-    try {
-        # Try winget first
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            $wingetInfo = winget list --exact --id $script:WingetMappings[$AppName] 2>&1
-            if ($wingetInfo -match "(\d+\.\d+\.\d+)") {
-                return $matches[1]
-            }
-        }
-
-        # Fall back to specific checks for common apps
-        switch ($AppName) {
-            "vscode" {
-                $paths = @(
-                    "${env:LOCALAPPDATA}\Programs\Microsoft VS Code\Code.exe",
-                    "C:\Program Files\Microsoft VS Code\Code.exe"
-                )
-                foreach ($path in $paths) {
-                    if (Test-Path $path) {
-                        return (Get-Item $path).VersionInfo.ProductVersion
-                    }
-                }
-            }
-            "python" {
-                $paths = @(
-                    "C:\Program Files\Python312\python.exe",
-                    "C:\Python312\python.exe"
-                )
-                foreach ($path in $paths) {
-                    if (Test-Path $path) {
-                        $version = & $path --version 2>&1
-                        if ($version -match "Python (\d+\.\d+\.\d+)") {
-                            return $matches[1]
-                        }
-                    }
-                }
-            }
-            "git" {
-                if (Get-Command git -ErrorAction SilentlyContinue) {
-                    $version = git --version
-                    if ($version -match "git version (\d+\.\d+\.\d+)") {
-                        return $matches[1]
-                    }
-                }
-            }
-            "chrome" {
-                $paths = @(
-                    "C:\Program Files\Google\Chrome\Application\chrome.exe",
-                    "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-                )
-                foreach ($path in $paths) {
-                    if (Test-Path $path) {
-                        return (Get-Item $path).VersionInfo.ProductVersion
-                    }
-                }
-            }
-            "firefox" {
-                $paths = @(
-                    "C:\Program Files\Mozilla Firefox\firefox.exe",
-                    "C:\Program Files (x86)\Mozilla Firefox\firefox.exe"
-                )
-                foreach ($path in $paths) {
-                    if (Test-Path $path) {
-                        return (Get-Item $path).VersionInfo.ProductVersion
-                    }
-                }
-            }
-            "brave" {
-                $paths = @(
-                    "C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
-                    "C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe"
-                )
-                foreach ($path in $paths) {
-                    if (Test-Path $path) {
-                        return (Get-Item $path).VersionInfo.ProductVersion
-                    }
-                }
-            }
-        }
-    }
-    catch {
-        Write-Log ("Error checking version for {0}: {1}" -f $AppName, $_) -Level ERROR
-    }
-    return $null
-}
-
-# Function to update progress in the UI
-function Update-Progress {
-    param(
-        [Parameter(Mandatory=$true)]
+function Write-Log {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
         [string]$Message,
-        
-        [Parameter(Mandatory=$false)]
-        [string]$SubMessage = "",
-        
-        [Parameter(Mandatory=$false)]
-        [int]$PercentComplete = -1
+
+        [Parameter(Mandatory = $false)]
+        [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS", "DEBUG")]
+        [string]$Level = "INFO"
     )
 
-    try {
-        if ($script:txtLog -and $script:txtLog.InvokeRequired) {
-            $script:txtLog.Invoke([System.Action]{
-                $script:txtLog.AppendText("$Message`r`n")
-                if ($SubMessage) {
-                    $script:txtLog.AppendText("  $SubMessage`r`n")
-                }
-                $script:txtLog.ScrollToCaret()
-            })
-        }
+    # Format timestamp
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $formattedMessage = "[$timestamp] [$Level] $Message"
 
-        if ($script:prgProgress -and $PercentComplete -ge 0) {
-            if ($script:prgProgress.InvokeRequired) {
-                $script:prgProgress.Invoke([System.Action]{
-                    $script:prgProgress.Value = $PercentComplete
-                })
+    # Update the log textbox in the GUI if available
+    if ($script:txtLog -ne $null) {
+        try {
+            $color = switch ($Level) {
+                "WARNING" { "Orange" }
+                "ERROR" { "Red" }
+                "SUCCESS" { "Green" }
+                "DEBUG" { "Gray" }
+                default { "Black" }
             }
+            
+            $script:txtLog.SelectionColor = $color
+            $script:txtLog.AppendText("$formattedMessage`r`n")
+            $script:txtLog.SelectionStart = $script:txtLog.Text.Length
+            $script:txtLog.ScrollToCaret()
         }
-
-        if ($script:lblProgress -and $script:lblProgress.InvokeRequired) {
-            $script:lblProgress.Invoke([System.Action]{
-                $script:lblProgress.Text = $Message
-            })
-        }
-
-        Write-Log $Message -Level INFO
-        if ($SubMessage) {
-            Write-Log "  $SubMessage" -Level INFO
+        catch {
+            Write-Host "Error updating log textbox: $_" -ForegroundColor Red
         }
     }
-    catch {
-        Write-Log ("Error updating progress: {0}" -f $_) -Level ERROR
+
+    # Write to log file if enabled
+    if ($script:EnableFileLogging) {
+        try {
+            Add-Content -Path $script:LogPath -Value $formattedMessage -ErrorAction Stop
+        }
+        catch {
+            Write-Host "Failed to write to log file: $_" -ForegroundColor Red
+        }
+    }
+
+    # Also write to host
+    switch ($Level) {
+        "WARNING" { Write-Host $formattedMessage -ForegroundColor Yellow }
+        "ERROR" { Write-Host $formattedMessage -ForegroundColor Red }
+        "SUCCESS" { Write-Host $formattedMessage -ForegroundColor Green }
+        "DEBUG" { Write-Host $formattedMessage -ForegroundColor Gray }
+        default { Write-Host $formattedMessage }
     }
 }
 
-# Function to install an application
-function Install-Application {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$AppName,
-        
-        [Parameter(Mandatory=$true)]
-        [string]$AppKey
-    )
-
+function Cleanup-TempFiles {
     try {
-        # Check compatibility
-        if (-not (Test-AppCompatibility -AppKey $AppKey)) {
-            Update-Progress ("Skipping {0} - not compatible with current Windows version" -f $AppName) -Level WARNING
-            return $false
+        $tempFolder = Join-Path $env:TEMP "WingetInstall"
+        if (Test-Path $tempFolder) {
+            Remove-Item -Path $tempFolder -Recurse -Force -ErrorAction Stop
+            Write-Log "Cleaned up temporary files" -Level "INFO"
         }
-
-        # Check current version
-        $currentVersion = Get-InstalledVersion -AppName $AppKey
-        if ($currentVersion) {
-            Update-Progress ("Current version of {0}: {1}" -f $AppName, $currentVersion)
-        }
-
-        # Try winget first
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            Update-Progress ("Installing {0} via winget..." -f $AppName)
-            $wingetId = $script:WingetMappings[$AppKey]
-            if ($wingetId) {
-                $wingetResult = winget install --id $wingetId --exact --accept-source-agreements --accept-package-agreements --silent
-                if ($LASTEXITCODE -eq 0) {
-                    Update-Progress ("Successfully installed {0} via winget" -f $AppName) -Level SUCCESS
-                    return $true
-                }
-            }
-        }
-
-        # Fall back to direct download
-        Update-Progress ("Falling back to direct download for {0}..." -f $AppName)
-        $downloadInfo = Get-AppDirectDownloadInfo -AppName $AppName
-        if ($downloadInfo) {
-            Update-Progress ("Downloading {0} from: {1}" -f $AppName, $downloadInfo.Url)
-            $installerPath = Join-Path $env:TEMP ("{0}Installer{1}" -f ($AppName -replace '\s', ''), $downloadInfo.Extension)
-            
-            Invoke-WebRequest -Uri $downloadInfo.Url -OutFile $installerPath -UseBasicParsing
-            
-            Update-Progress ("Running {0} installer..." -f $AppName)
-            if ($downloadInfo.Extension -eq ".exe") {
-                Start-Process -FilePath $installerPath -ArgumentList $downloadInfo.Arguments -Wait
-            }
-            elseif ($downloadInfo.Extension -eq ".msi") {
-                Start-Process msiexec.exe -ArgumentList "/i", $installerPath, $downloadInfo.Arguments -Wait -NoNewWindow
-            }
-            
-            Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
-            
-            # Verify installation
-            $installSuccess = $false
-            foreach ($path in $downloadInfo.VerificationPaths) {
-                if (Test-Path $path) {
-                    $installSuccess = $true
-                    Update-Progress ("Verified {0} installation at: {1}" -f $AppName, $path) -Level SUCCESS
-                    break
-                }
-            }
-            
-            if ($installSuccess) {
-                return $true
-            }
-        }
-
-        Update-Progress ("Failed to install {0}" -f $AppName) -Level ERROR
-        return $false
     }
     catch {
-        Update-Progress ("Error installing {0}: {1}" -f $AppName, $_) -Level ERROR
-        return $false
+        Write-Log "Failed to clean up temporary files: $_" -Level "WARNING"
+    }
+}
+
+function Update-Progress {
+    param (
+        [string]$Status,
+        [switch]$IncrementStep
+    )
+
+    if ($IncrementStep) {
+        $script:CurrentStep++
+    }
+
+    $percentage = [Math]::Round(($script:CurrentStep / [Math]::Max($script:TotalSteps, 1)) * 100)
+    
+    if ($script:prgProgress -ne $null) {
+        $script:prgProgress.Value = $percentage
+    }
+    
+    if ($script:lblProgress -ne $null) {
+        $script:lblProgress.Text = if ($Status) { $Status } else { "Progress: $percentage%" }
+    }
+}
+
+function Cancel-AllOperations {
+    if ($script:IsRunning) {
+        Write-Log "Cancelling all operations..." -Level "WARNING"
+        
+        if ($null -ne $script:CancellationTokenSource) {
+            $script:CancellationTokenSource.Cancel()
+        }
+        
+        foreach ($job in $script:BackgroundJobs) {
+            if ($job.IsCompleted -eq $false) {
+                Write-Log "Waiting for job to cancel..." -Level "INFO"
+            }
+        }
+        
+        $script:BackgroundJobs = @()
+        
+        if ($script:btnRun -ne $null) {
+            $script:btnRun.Enabled = $true
+        }
+        if ($script:btnCancel -ne $null) {
+            $script:btnCancel.Enabled = $false
+        }
+        
+        $script:IsRunning = $false
+        Write-Log "All operations cancelled" -Level "WARNING"
     }
 }
 
 #endregion Helper Functions
 
-#region GUI Creation
+#region Main Script
 
-function Create-MainForm {
-    try {
-        $form = New-Object System.Windows.Forms.Form
-        $form.Text = "Windows Setup GUI - $($script:OSName)"
-        $form.Size = New-Object System.Drawing.Size(800, 600)
-        $form.StartPosition = "CenterScreen"
-        $form.Add_FormClosing({
-            # Clean up resources
-            if ($script:CancellationTokenSource) {
-                $script:CancellationTokenSource.Dispose()
-            }
-            Cleanup-TempFiles
-        })
-        
-        # Create tab control
-        $tabControl = New-Object System.Windows.Forms.TabControl
-        $tabControl.Size = New-Object System.Drawing.Size(780, 550)
-        $tabControl.Location = New-Object System.Drawing.Point(10, 10)
-        
-        # Create tabs
-        $tabInstall = New-Object System.Windows.Forms.TabPage
-        $tabInstall.Text = "Install Applications"
-        $tabControl.TabPages.Add($tabInstall)
-        
-        # Create application checkboxes
-        $y = 10
-        foreach ($category in $script:AppCategories.GetEnumerator()) {
-            # Add category label
-            $categoryLabel = New-Object System.Windows.Forms.Label
-            $categoryLabel.Text = $category.Key
-            $categoryLabel.Font = New-Object System.Drawing.Font("Arial", 10, [System.Drawing.FontStyle]::Bold)
-            $categoryLabel.Location = New-Object System.Drawing.Point(10, $y)
-            $categoryLabel.Size = New-Object System.Drawing.Size(200, 20)
-            $tabInstall.Controls.Add($categoryLabel)
-            $y += 30
-            
-            # Add application checkboxes
-            foreach ($app in $category.Value) {
-                $checkbox = New-Object System.Windows.Forms.CheckBox
-                $checkbox.Text = $app.Name
-                $checkbox.Location = New-Object System.Drawing.Point(20, $y)
-                $checkbox.Size = New-Object System.Drawing.Size(400, 20)
-                $checkbox.Tag = $app.Key
-                $checkbox.Checked = $app.Default
-                
-                # Disable if not compatible with current Windows version
-                if (($script:IsWindows11 -and -not $app.Win11) -or (-not $script:IsWindows11 -and -not $app.Win10)) {
-                    $checkbox.Enabled = $false
-                    $checkbox.Text += " (Not compatible with your Windows version)"
-                }
-                
-                $tabInstall.Controls.Add($checkbox)
-                $y += 25
-            }
-            $y += 20
-        }
-        
-        # Create progress bar
-        $progressBar = New-Object System.Windows.Forms.ProgressBar
-        $progressBar.Location = New-Object System.Drawing.Point(10, 560)
-        $progressBar.Size = New-Object System.Drawing.Size(780, 20)
-        $form.Controls.Add($progressBar)
-        
-        # Create status label
-        $statusLabel = New-Object System.Windows.Forms.Label
-        $statusLabel.Location = New-Object System.Drawing.Point(10, 580)
-        $statusLabel.Size = New-Object System.Drawing.Size(780, 20)
-        $form.Controls.Add($statusLabel)
-        
-        # Create start button
-        $startButton = New-Object System.Windows.Forms.Button
-        $startButton.Location = New-Object System.Drawing.Point(700, 560)
-        $startButton.Size = New-Object System.Drawing.Size(90, 40)
-        $startButton.Text = "Start"
-        $form.Controls.Add($startButton)
-        
-        # Add button click handler
-        $startButton.Add_Click({
-            $startButton.Enabled = $false
-            $progressBar.Value = 0
-            $statusLabel.Text = "Starting setup..."
-            
-            # Create cancellation token source
-            $script:CancellationTokenSource = New-Object System.Threading.CancellationTokenSource
-            $cancellationToken = $script:CancellationTokenSource.Token
-            
-            # Get selected applications
-            $selectedApps = @()
-            foreach ($control in $tabInstall.Controls) {
-                if ($control -is [System.Windows.Forms.CheckBox] -and $control.Checked -and $control.Enabled) {
-                    $selectedApps += $control.Tag
-                }
-            }
-            
-            # Start installation process
-            try {
-                # Install winget if not present
-                if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-                    $statusLabel.Text = "Installing winget..."
-                    if (-not (Install-Winget -CancellationToken $cancellationToken)) {
-                        throw "Failed to install winget"
-                    }
-                    $progressBar.Value = 10
-                }
-                
-                # Install selected applications
-                $appCount = $selectedApps.Count
-                $currentApp = 0
-                foreach ($app in $selectedApps) {
-                    $currentApp++
-                    $progress = 10 + ($currentApp / $appCount * 90)
-                    $progressBar.Value = $progress
-                    $statusLabel.Text = "Installing $app..."
-                    
-                    $wingetId = $script:WingetMappings[$app]
-                    if (-not (Install-Application -AppName $app -WingetId $wingetId -CancellationToken $cancellationToken)) {
-                        Write-Log "Failed to install $app" -Level "ERROR"
-                    }
-                }
-                
-                $progressBar.Value = 100
-                $statusLabel.Text = "Setup completed successfully!"
-            }
-            catch {
-                $statusLabel.Text = "Error: $_"
-                Write-Log "Setup failed: $_" -Level "ERROR"
-            }
-            finally {
-                $startButton.Enabled = $true
-                if ($script:CancellationTokenSource) {
-                    $script:CancellationTokenSource.Dispose()
-                    $script:CancellationTokenSource = $null
-                }
-            }
-        })
-        
-        # Add tab control to form
-        $form.Controls.Add($tabControl)
-        
-        return $form
-    }
-    catch {
-        Write-Host "Critical error in Create-MainForm: $_" -ForegroundColor Red
-        Write-Host $_.ScriptStackTrace -ForegroundColor Red
-        
-        # Show error message box to the user
-        try {
-            [System.Windows.Forms.MessageBox]::Show(
-                "An error occurred while creating the application: `n`n$_`n`nPlease make sure .NET Framework and Windows Forms are properly installed.",
-                "Application Error",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Error
-            )
-        }
-        catch {
-            # If even the message box fails, just output to console
-            Write-Host "Could not display error dialog. This system may be missing required components." -ForegroundColor Red
-        }
-        
-        return $null
-    }
+# Try loading the assemblies with better error handling
+try {
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+    Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+    Write-Host "Loaded Windows Forms assemblies successfully" -ForegroundColor Green
+} catch {
+    Write-Host "Failed to load Windows Forms assemblies: $_" -ForegroundColor Red
+    Write-Host "Make sure .NET Framework is properly installed" -ForegroundColor Yellow
+    exit 1
 }
 
-#endregion GUI Creation
-
-#region Main Script
+# Enable visual styles with error handling
+try {
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+    Write-Host "Enabled visual styles successfully" -ForegroundColor Green
+} catch {
+    Write-Host "Failed to enable visual styles: $_" -ForegroundColor Red
+}
 
 # Initialize logging
 Initialize-Logging
 
-# Create and show the main form
-$mainForm = Create-MainForm
-if ($mainForm) {
-    $mainForm.ShowDialog()
-}
+# Create the main form
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Windows Setup Automation"
+$form.Size = New-Object System.Drawing.Size(800, 600)
+$form.StartPosition = "CenterScreen"
+$form.FormBorderStyle = "FixedDialog"
+$form.MaximizeBox = $false
+$form.MinimizeBox = $true
+
+# Create tab control
+$tabControl = New-Object System.Windows.Forms.TabControl
+$tabControl.Dock = [System.Windows.Forms.DockStyle]::Fill
+$tabControl.Size = New-Object System.Drawing.Size(780, 500)
+
+# Create tabs
+$tabInstall = New-Object System.Windows.Forms.TabPage
+$tabInstall.Text = "Install Applications"
+$tabInstall.UseVisualStyleBackColor = $true
+
+$tabRemove = New-Object System.Windows.Forms.TabPage
+$tabRemove.Text = "Remove Bloatware"
+$tabRemove.UseVisualStyleBackColor = $true
+
+$tabServices = New-Object System.Windows.Forms.TabPage
+$tabServices.Text = "Manage Services"
+$tabServices.UseVisualStyleBackColor = $true
+
+$tabOptimize = New-Object System.Windows.Forms.TabPage
+$tabOptimize.Text = "Optimize Windows"
+$tabOptimize.UseVisualStyleBackColor = $true
+
+# Add tabs to control
+$tabControl.TabPages.Add($tabInstall)
+$tabControl.TabPages.Add($tabRemove)
+$tabControl.TabPages.Add($tabServices)
+$tabControl.TabPages.Add($tabOptimize)
+
+# Create log textbox
+$txtLog = New-Object System.Windows.Forms.TextBox
+$txtLog.Multiline = $true
+$txtLog.ScrollBars = "Vertical"
+$txtLog.Dock = [System.Windows.Forms.DockStyle]::Fill
+$txtLog.ReadOnly = $true
+$txtLog.Font = New-Object System.Drawing.Font("Consolas", 9)
+
+# Create progress bar
+$prgProgress = New-Object System.Windows.Forms.ProgressBar
+$prgProgress.Dock = [System.Windows.Forms.DockStyle]::Bottom
+$prgProgress.Height = 20
+
+# Create progress label
+$lblProgress = New-Object System.Windows.Forms.Label
+$lblProgress.Dock = [System.Windows.Forms.DockStyle]::Bottom
+$lblProgress.Height = 20
+$lblProgress.Text = "Ready"
+
+# Create Run button
+$btnRun = New-Object System.Windows.Forms.Button
+$btnRun.Text = "Run Selected Operations"
+$btnRun.Dock = [System.Windows.Forms.DockStyle]::Bottom
+$btnRun.Height = 30
+$btnRun.Add_Click({
+    if (-not $script:IsRunning) {
+        $script:IsRunning = $true
+        $btnRun.Enabled = $false
+        $btnCancel.Enabled = $true
+        
+        # Start the operations in a background job
+        $script:BackgroundJobs = @()
+        $script:CancellationTokenSource = New-Object System.Threading.CancellationTokenSource
+        
+        $job = Start-Job -ScriptBlock {
+            param($SelectedApps, $SelectedBloatware, $SelectedServices, $SelectedOptimizations, $CancellationToken)
+            
+            # Import the script's functions
+            . $using:script:LogPath
+            
+            # Process selected applications
+            foreach ($app in $SelectedApps) {
+                if ($CancellationToken.IsCancellationRequested) { break }
+                Install-Application -AppName $app -CancellationToken $CancellationToken
+            }
+            
+            # Process selected bloatware
+            foreach ($bloat in $SelectedBloatware) {
+                if ($CancellationToken.IsCancellationRequested) { break }
+                Remove-Bloatware -AppIdentifier $bloat -CancellationToken $CancellationToken
+            }
+            
+            # Process selected services
+            foreach ($service in $SelectedServices) {
+                if ($CancellationToken.IsCancellationRequested) { break }
+                Set-Service -Name $service -StartupType Disabled
+            }
+            
+            # Process selected optimizations
+            foreach ($opt in $SelectedOptimizations) {
+                if ($CancellationToken.IsCancellationRequested) { break }
+                Apply-Optimization -OptimizationKey $opt
+            }
+            
+        } -ArgumentList $script:SelectedApps, $script:SelectedBloatware, $script:SelectedServices, $script:SelectedOptimizations, $script:CancellationTokenSource.Token
+        
+        $script:BackgroundJobs += $job
+        
+        # Monitor the job
+        $timer = New-Object System.Windows.Forms.Timer
+        $timer.Interval = 1000
+        $timer.Add_Tick({
+            $completed = $true
+            foreach ($job in $script:BackgroundJobs) {
+                if ($job.State -eq "Running") {
+                    $completed = $false
+                    break
+                }
+            }
+            
+            if ($completed) {
+                $timer.Stop()
+                $script:IsRunning = $false
+                $btnRun.Enabled = $true
+                $btnCancel.Enabled = $false
+                Write-Log "All operations completed" -Level "SUCCESS"
+            }
+        })
+        $timer.Start()
+    }
+})
+
+# Create Cancel button
+$btnCancel = New-Object System.Windows.Forms.Button
+$btnCancel.Text = "Cancel Operations"
+$btnCancel.Dock = [System.Windows.Forms.DockStyle]::Bottom
+$btnCancel.Height = 30
+$btnCancel.Enabled = $false
+$btnCancel.Add_Click({
+    Cancel-AllOperations
+})
+
+# Add controls to form
+$form.Controls.Add($tabControl)
+$form.Controls.Add($txtLog)
+$form.Controls.Add($prgProgress)
+$form.Controls.Add($lblProgress)
+$form.Controls.Add($btnRun)
+$form.Controls.Add($btnCancel)
+
+# Show the form
+$form.ShowDialog()
 
 # Cleanup
 Cleanup-TempFiles
