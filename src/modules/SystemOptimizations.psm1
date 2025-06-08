@@ -4,6 +4,30 @@
 $script:RegistryBackups = @{}
 $script:ServiceBackups = @{}
 
+# Define Write-LogMessage function for module compatibility
+function Write-LogMessage {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS")]
+        [string]$Level = "INFO"
+    )
+    
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logMessage = "[$timestamp] [$Level] $Message"
+    
+    # Write to console with color
+    $color = switch ($Level) {
+        "ERROR" { "Red" }
+        "WARNING" { "Yellow" }
+        "SUCCESS" { "Green" }
+        default { "White" }
+    }
+    Write-Host $logMessage -ForegroundColor $color
+}
+
 function Save-RegistryValue {
     param (
         [Parameter(Mandatory=$true)]
@@ -111,40 +135,95 @@ function Set-SystemOptimization {
 
     try {
         switch ($OptimizationKey) {
-            "DisableTelemetry" {
-                # Backup current settings
-                Save-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry"
-                Save-RegistryValue -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry"
-                
-                # Apply changes
-                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 0
-                Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry" -Value 0
+            # Service optimizations
+            "diagtrack" {
+                Save-ServiceState -ServiceName "DiagTrack"
+                Stop-Service "DiagTrack" -Force -ErrorAction SilentlyContinue
+                Set-Service "DiagTrack" -StartupType Disabled
             }
-            "DisableCortana" {
-                Save-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana"
+            "dmwappushsvc" {
+                Save-ServiceState -ServiceName "dmwappushservice"
+                Stop-Service "dmwappushservice" -Force -ErrorAction SilentlyContinue
+                Set-Service "dmwappushservice" -StartupType Disabled
+            }
+            "sysmain" {
+                Save-ServiceState -ServiceName "SysMain"
+                Stop-Service "SysMain" -Force -ErrorAction SilentlyContinue
+                Set-Service "SysMain" -StartupType Disabled
+            }
+            "wmpnetworksvc" {
+                Save-ServiceState -ServiceName "WMPNetworkSvc"
+                Stop-Service "WMPNetworkSvc" -Force -ErrorAction SilentlyContinue
+                Set-Service "WMPNetworkSvc" -StartupType Disabled
+            }
+            "remoteregistry" {
+                Save-ServiceState -ServiceName "RemoteRegistry"
+                Stop-Service "RemoteRegistry" -Force -ErrorAction SilentlyContinue
+                Set-Service "RemoteRegistry" -StartupType Disabled
+            }
+            "remoteaccess" {
+                Save-ServiceState -ServiceName "RemoteAccess"
+                Stop-Service "RemoteAccess" -Force -ErrorAction SilentlyContinue
+                Set-Service "RemoteAccess" -StartupType Disabled
+            }
+            "fax" {
+                Save-ServiceState -ServiceName "Fax"
+                Stop-Service "Fax" -Force -ErrorAction SilentlyContinue
+                Set-Service "Fax" -StartupType Disabled
+            }
+            
+            # System optimizations
+            "show-extensions" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "HideFileExt" -Value 0
+            }
+            "show-hidden" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "Hidden" -Value 1
+            }
+            "dev-mode" {
+                if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock")) {
+                    New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" -Name "AllowDevelopmentWithoutDevLicense" -Value 1
+            }
+            "disable-cortana" {
+                if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search")) {
+                    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Force | Out-Null
+                }
                 Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0
             }
-            "DisableWindowsSearch" {
-                Save-ServiceState -ServiceName "WSearch"
-                Stop-Service "WSearch" -Force
-                Set-Service "WSearch" -StartupType Disabled
+            "reduce-telemetry" {
+                if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection")) {
+                    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 0
             }
-            "DisableWindowsUpdate" {
-                Save-ServiceState -ServiceName "wuauserv"
-                Stop-Service "wuauserv" -Force
-                Set-Service "wuauserv" -StartupType Disabled
+            "taskbar-left" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0
             }
-            "DisableWindowsDefender" {
-                Save-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Name "DisableAntiSpyware"
-                Set-MpPreference -DisableRealtimeMonitoring $true
-                Set-MpPreference -DisableIOAVProtection $true
+            "disable-chat" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarMn" -Value 0
             }
-            "DisableWindowsFirewall" {
-                Save-RegistryValue -Path "HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile" -Name "EnableFirewall"
-                Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+            "disable-widgets" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0
             }
             default {
-                throw "Unknown optimization key: ${OptimizationKey}"
+                Write-LogMessage "Unknown optimization key: ${OptimizationKey}" -Level "WARNING"
+                return $false
             }
         }
 
@@ -323,6 +402,78 @@ function Configure-Services {
     }
     catch {
         Write-Log "Failed to configure services: $_" -Level "ERROR"
+        return $false
+    }
+}
+
+# Add simplified Remove-Bloatware function for compatibility
+function Remove-Bloatware {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$BloatwareKey
+    )
+    
+    Write-LogMessage "Removing bloatware: $BloatwareKey" -Level "INFO"
+    
+    # Map keys to actual package names
+    $packageMap = @{
+        "ms-officehub" = "*Microsoft.Office*"
+        "ms-teams" = "*MicrosoftTeams*"
+        "ms-todo" = "*Microsoft.Todos*"
+        "ms-3dviewer" = "*Microsoft.Microsoft3DViewer*"
+        "ms-mixedreality" = "*Microsoft.MixedReality*"
+        "ms-onenote" = "*Microsoft.Office.OneNote*"
+        "ms-people" = "*Microsoft.People*"
+        "ms-wallet" = "*Microsoft.Wallet*"
+        "ms-messaging" = "*Microsoft.Messaging*"
+        "ms-oneconnect" = "*Microsoft.OneConnect*"
+        "bing-weather" = "*Microsoft.BingWeather*"
+        "bing-news" = "*Microsoft.BingNews*"
+        "bing-finance" = "*Microsoft.BingFinance*"
+        "win-alarms" = "*Microsoft.WindowsAlarms*"
+        "win-camera" = "*Microsoft.WindowsCamera*"
+        "win-mail" = "*microsoft.windowscommunicationsapps*"
+        "win-maps" = "*Microsoft.WindowsMaps*"
+        "win-feedback" = "*Microsoft.WindowsFeedbackHub*"
+        "win-gethelp" = "*Microsoft.GetHelp*"
+        "win-getstarted" = "*Microsoft.Getstarted*"
+        "win-soundrec" = "*Microsoft.WindowsSoundRecorder*"
+        "win-yourphone" = "*Microsoft.YourPhone*"
+        "win-print3d" = "*Microsoft.Print3D*"
+        "zune-music" = "*Microsoft.ZuneMusic*"
+        "zune-video" = "*Microsoft.ZuneVideo*"
+        "solitaire" = "*Microsoft.MicrosoftSolitaireCollection*"
+        "xbox-apps" = "*Microsoft.Xbox*"
+        "candy-crush" = "*king.com.CandyCrush*"
+        "spotify-store" = "*SpotifyAB.SpotifyMusic*"
+        "facebook" = "*Facebook*"
+        "twitter" = "*Twitter*"
+        "netflix" = "*Netflix*"
+        "disney" = "*Disney*"
+        "tiktok" = "*TikTok*"
+        "ms-widgets" = "*MicrosoftWindows.Client.WebExperience*"
+        "ms-clipchamp" = "*Clipchamp.Clipchamp*"
+        "gaming-app" = "*Microsoft.GamingApp*"
+        "linkedin" = "*LinkedIn*"
+    }
+    
+    $packageName = $packageMap[$BloatwareKey]
+    if (-not $packageName) {
+        Write-LogMessage "Unknown bloatware key: $BloatwareKey" -Level "WARNING"
+        return $false
+    }
+    
+    try {
+        # Remove for all users
+        Get-AppxPackage $packageName -AllUsers | Remove-AppxPackage -ErrorAction SilentlyContinue
+        # Remove provisioned packages
+        Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $packageName | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+        
+        Write-LogMessage "Successfully removed: $BloatwareKey" -Level "SUCCESS"
+        return $true
+    }
+    catch {
+        Write-LogMessage "Failed to remove $BloatwareKey : $_" -Level "ERROR"
         return $false
     }
 }

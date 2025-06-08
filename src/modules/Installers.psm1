@@ -5,6 +5,30 @@ $script:UseDirectDownloadOnly = $false
 $script:MaxRetries = 3
 $script:RetryDelay = 5 # seconds
 
+# Define Write-LogMessage function for module compatibility
+function Write-LogMessage {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS")]
+        [string]$Level = "INFO"
+    )
+    
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logMessage = "[$timestamp] [$Level] $Message"
+    
+    # Write to console with color
+    $color = switch ($Level) {
+        "ERROR" { "Red" }
+        "WARNING" { "Yellow" }
+        "SUCCESS" { "Green" }
+        default { "White" }
+    }
+    Write-Host $logMessage -ForegroundColor $color
+}
+
 function Get-AppDirectDownloadInfo {
     param (
         [Parameter(Mandatory=$true)]
@@ -412,6 +436,61 @@ function Install-Application {
     
     Write-Log "Failed to install ${AppName} - no valid installation method found" -Level "ERROR"
     return $false
+}
+
+# Add simplified Install-Application function for compatibility
+function Install-Application {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AppName
+    )
+    
+    Write-LogMessage "Installing $AppName..." -Level "INFO"
+    
+    # Get download info
+    $downloadInfo = Get-AppDirectDownloadInfo -AppName $AppName
+    if (-not $downloadInfo) {
+        Write-LogMessage "No download info found for $AppName" -Level "ERROR"
+        return $false
+    }
+    
+    try {
+        # Try winget first if available
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            $wingetOutput = winget install $AppName --silent --accept-source-agreements --accept-package-agreements 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-LogMessage "Successfully installed $AppName via winget" -Level "SUCCESS"
+                return $true
+            }
+        }
+        
+        # Fallback to direct download
+        $tempFile = Join-Path $env:TEMP $downloadInfo.FileName
+        Invoke-WebRequest -Uri $downloadInfo.Url -OutFile $tempFile
+        
+        if ($downloadInfo.FileType -eq "msi") {
+            $process = Start-Process msiexec.exe -ArgumentList "/i `"$tempFile`" /quiet /norestart" -Wait -PassThru
+        } else {
+            $process = Start-Process $tempFile -ArgumentList $downloadInfo.Arguments -Wait -PassThru
+        }
+        
+        if ($process.ExitCode -eq 0) {
+            Write-LogMessage "Successfully installed $AppName" -Level "SUCCESS"
+            return $true
+        } else {
+            Write-LogMessage "Installation failed for $AppName with exit code $($process.ExitCode)" -Level "ERROR"
+            return $false
+        }
+    }
+    catch {
+        Write-LogMessage "Failed to install $AppName : $_" -Level "ERROR"
+        return $false
+    }
+    finally {
+        if (Test-Path $tempFile -ErrorAction SilentlyContinue) {
+            Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 Export-ModuleMember -Function Install-Winget, Install-Python, Update-Environment, Install-Application, Get-AppDirectDownloadInfo 

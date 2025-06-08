@@ -651,36 +651,28 @@ $script:btnRun.Add_Click({
             Import-Module (Join-Path $modulePath "SystemOptimizations.psm1") -Force
             
             try {
-                # Install selected applications
-                foreach ($app in $selectedApps.GetEnumerator()) {
-                    if ($app.Value) {
-                        Write-LogMessage "Installing application: $($app.Key)" -Level "INFO"
-                        Install-Application -AppKey $app.Key
-                    }
+                # Install selected applications  
+                foreach ($app in $selectedApps) {
+                    Write-LogMessage "Installing application: $app" -Level "INFO"
+                    Install-Application -AppName $app
                 }
                 
                 # Remove selected bloatware
-                foreach ($bloat in $selectedBloatware.GetEnumerator()) {
-                    if ($bloat.Value) {
-                        Write-LogMessage "Removing bloatware: $($bloat.Key)" -Level "INFO"
-                        Remove-Bloatware -BloatwareKey $bloat.Key
-                    }
+                foreach ($bloat in $selectedBloatware) {
+                    Write-LogMessage "Removing bloatware: $bloat" -Level "INFO"
+                    Remove-Bloatware -BloatwareKey $bloat
                 }
                 
-                # Disable selected services
-                foreach ($service in $selectedServices.GetEnumerator()) {
-                    if ($service.Value) {
-                        Write-LogMessage "Disabling service: $($service.Key)" -Level "INFO"
-                        Configure-Services -ServiceKey $service.Key
-                    }
+                # Configure selected services
+                foreach ($service in $selectedServices) {
+                    Write-LogMessage "Configuring service: $service" -Level "INFO"
+                    Set-SystemOptimization -OptimizationKey $service
                 }
                 
                 # Apply selected optimizations
-                foreach ($opt in $selectedOptimizations.GetEnumerator()) {
-                    if ($opt.Value) {
-                        Write-LogMessage "Applying optimization: $($opt.Key)" -Level "INFO"
-                        Set-SystemOptimization -OptimizationKey $opt.Key
-                    }
+                foreach ($opt in $selectedOptimizations) {
+                    Write-LogMessage "Applying optimization: $opt" -Level "INFO"
+                    Set-SystemOptimization -OptimizationKey $opt
                 }
                 
                 Write-LogMessage "All operations completed" -Level "SUCCESS"
