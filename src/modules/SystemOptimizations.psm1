@@ -221,6 +221,120 @@ function Set-SystemOptimization {
                 }
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0
             }
+            "disable-onedrive" {
+                Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "OneDrive" -ErrorAction SilentlyContinue
+            }
+            "disable-tips" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name "SubscribedContent-338389Enabled" -Value 0
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name "SystemPaneSuggestionsEnabled" -Value 0
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" -Name "SoftLandingEnabled" -Value 0
+            }
+            "disable-activity" {
+                if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System")) {
+                    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "EnableActivityFeed" -Value 0
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "PublishUserActivities" -Value 0
+            }
+            "disable-background" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Value 1
+            }
+            "search-bing" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "BingSearchEnabled" -Value 0
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "CortanaConsent" -Value 0
+            }
+            "classic-context" {
+                if (-not (Test-Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32")) {
+                    New-Item -Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" -Name "(Default)" -Value "" -Type String
+            }
+            "disable-snap" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "EnableSnapAssistFlyout" -Value 0
+            }
+            "start-menu-pins" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "Start_Layout" -Value 1
+            }
+            "disable-teams-autostart" {
+                Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "com.squirrel.Teams.Teams" -ErrorAction SilentlyContinue
+            }
+            "disable-startup-sound" {
+                if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation")) {
+                    New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Name "DisableStartupSound" -Value 1
+            }
+            # Additional service configurations
+            "printnotify" {
+                Save-ServiceState -ServiceName "PrintNotify"
+                Stop-Service "PrintNotify" -Force -ErrorAction SilentlyContinue
+                Set-Service "PrintNotify" -StartupType Disabled
+            }
+            "wisvc" {
+                Save-ServiceState -ServiceName "wisvc"
+                Stop-Service "wisvc" -Force -ErrorAction SilentlyContinue
+                Set-Service "wisvc" -StartupType Disabled
+            }
+            "retaildemo" {
+                Save-ServiceState -ServiceName "RetailDemo"
+                Stop-Service "RetailDemo" -Force -ErrorAction SilentlyContinue
+                Set-Service "RetailDemo" -StartupType Disabled
+            }
+            "mapsbroker" {
+                Save-ServiceState -ServiceName "MapsBroker"
+                Stop-Service "MapsBroker" -Force -ErrorAction SilentlyContinue
+                Set-Service "MapsBroker" -StartupType Disabled
+            }
+            "pcasvc" {
+                Save-ServiceState -ServiceName "PcaSvc"
+                Stop-Service "PcaSvc" -Force -ErrorAction SilentlyContinue
+                Set-Service "PcaSvc" -StartupType Disabled
+            }
+            "wpcmonsvc" {
+                Save-ServiceState -ServiceName "WpcMonSvc"
+                Stop-Service "WpcMonSvc" -Force -ErrorAction SilentlyContinue
+                Set-Service "WpcMonSvc" -StartupType Disabled
+            }
+            "cscservice" {
+                Save-ServiceState -ServiceName "CscService"
+                Stop-Service "CscService" -Force -ErrorAction SilentlyContinue
+                Set-Service "CscService" -StartupType Disabled
+            }
+            "lfsvc" {
+                Save-ServiceState -ServiceName "lfsvc"
+                Stop-Service "lfsvc" -Force -ErrorAction SilentlyContinue
+                Set-Service "lfsvc" -StartupType Disabled
+            }
+            "tabletinputservice" {
+                Save-ServiceState -ServiceName "TabletInputService"
+                Stop-Service "TabletInputService" -Force -ErrorAction SilentlyContinue
+                Set-Service "TabletInputService" -StartupType Disabled
+            }
+            "homegrpservice" {
+                Save-ServiceState -ServiceName "HomeGroupProvider"
+                Stop-Service "HomeGroupProvider" -Force -ErrorAction SilentlyContinue
+                Set-Service "HomeGroupProvider" -StartupType Disabled
+            }
+            "walletservice" {
+                Save-ServiceState -ServiceName "WalletService"
+                Stop-Service "WalletService" -Force -ErrorAction SilentlyContinue
+                Set-Service "WalletService" -StartupType Disabled
+            }
             default {
                 Write-LogMessage "Unknown optimization key: ${OptimizationKey}" -Level "WARNING"
                 return $false

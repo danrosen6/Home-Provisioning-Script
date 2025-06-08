@@ -35,45 +35,91 @@ function Get-AppDirectDownloadInfo {
         [string]$AppName
     )
     
-    # Define download information for common applications
+    # Define download information for common applications (matching GUI app keys)
     $downloadInfo = @{
-        "Python" = @{
-            Url = "https://www.python.org/ftp/python/3.12.0/python-3.12.0-amd64.exe"
-            FileName = "python-3.12.0-amd64.exe"
-            FileType = "exe"
-            Arguments = "/quiet InstallAllUsers=1 PrependPath=1"
-            Checksum = "SHA256:1234567890abcdef" # Replace with actual checksum
-        }
-        "Git" = @{
-            Url = "https://github.com/git-for-windows/git/releases/download/v2.42.0.windows.2/Git-2.42.0.2-64-bit.exe"
-            FileName = "Git-2.42.0.2-64-bit.exe"
-            FileType = "exe"
-            Arguments = "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS=`"icons,ext\reg\shellhere,assoc,assoc_sh`""
-            Checksum = "SHA256:1234567890abcdef" # Replace with actual checksum
-        }
-        "VSCode" = @{
+        "vscode" = @{
             Url = "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64"
             FileName = "VSCodeSetup-x64.exe"
             FileType = "exe"
             Arguments = "/VERYSILENT /MERGETASKS=!runcode"
         }
-        "Chrome" = @{
+        "git" = @{
+            Url = "https://github.com/git-for-windows/git/releases/download/v2.43.0.windows.1/Git-2.43.0-64-bit.exe"
+            FileName = "Git-2.43.0-64-bit.exe"
+            FileType = "exe"
+            Arguments = "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"
+        }
+        "python" = @{
+            Url = "https://www.python.org/ftp/python/3.12.1/python-3.12.1-amd64.exe"
+            FileName = "python-3.12.1-amd64.exe"
+            FileType = "exe"
+            Arguments = "/quiet InstallAllUsers=1 PrependPath=1"
+        }
+        "pycharm" = @{
+            Url = "https://download.jetbrains.com/python/pycharm-community-2023.3.2.exe"
+            FileName = "pycharm-community-2023.3.2.exe"
+            FileType = "exe"
+            Arguments = "/S /CONFIG=silent.config"
+        }
+        "github" = @{
+            Url = "https://central.github.com/deployments/desktop/desktop/latest/win32"
+            FileName = "GitHubDesktopSetup.exe"
+            FileType = "exe"
+            Arguments = "--silent"
+        }
+        "postman" = @{
+            Url = "https://dl.pstmn.io/download/latest/win64"
+            FileName = "PostmanSetup.exe"
+            FileType = "exe"
+            Arguments = "--silent"
+        }
+        "nodejs" = @{
+            Url = "https://nodejs.org/dist/v20.10.0/node-v20.10.0-x64.msi"
+            FileName = "node-v20.10.0-x64.msi"
+            FileType = "msi"
+            Arguments = "/quiet /norestart"
+        }
+        "chrome" = @{
             Url = "https://dl.google.com/chrome/install/latest/chrome_installer.exe"
             FileName = "chrome_installer.exe"
             FileType = "exe"
             Arguments = "/silent /install"
         }
-        "Firefox" = @{
+        "firefox" = @{
             Url = "https://download.mozilla.org/?product=firefox-latest&os=win64&lang=en-US"
             FileName = "FirefoxSetup.exe"
             FileType = "exe"
             Arguments = "/S"
         }
-        "Brave" = @{
+        "brave" = @{
             Url = "https://referrals.brave.com/latest/BraveBrowserSetup.exe"
             FileName = "BraveBrowserSetup.exe"
             FileType = "exe"
             Arguments = "/silent /install"
+        }
+        "spotify" = @{
+            Url = "https://download.scdn.co/SpotifySetup.exe"
+            FileName = "SpotifySetup.exe"
+            FileType = "exe"
+            Arguments = "/silent"
+        }
+        "discord" = @{
+            Url = "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64"
+            FileName = "DiscordSetup.exe"
+            FileType = "exe"
+            Arguments = "--silent"
+        }
+        "steam" = @{
+            Url = "https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe"
+            FileName = "SteamSetup.exe"
+            FileType = "exe"
+            Arguments = "/S"
+        }
+        "vlc" = @{
+            Url = "https://download.videolan.org/vlc/last/win64/vlc-3.0.20-win64.exe"
+            FileName = "vlc-3.0.20-win64.exe"
+            FileType = "exe"
+            Arguments = "/S"
         }
         "7zip" = @{
             Url = "https://www.7-zip.org/a/7z2301-x64.msi"
@@ -81,11 +127,23 @@ function Get-AppDirectDownloadInfo {
             FileType = "msi"
             Arguments = "/quiet /norestart"
         }
-        "NotepadPlusPlus" = @{
+        "notepadplusplus" = @{
             Url = "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.6.2/npp.8.6.2.Installer.x64.exe"
             FileName = "npp.8.6.2.Installer.x64.exe"
             FileType = "exe"
             Arguments = "/S"
+        }
+        "powertoys" = @{
+            Url = "https://github.com/microsoft/PowerToys/releases/download/v0.78.0/PowerToysSetup-0.78.0-x64.exe"
+            FileName = "PowerToysSetup-0.78.0-x64.exe"
+            FileType = "exe"
+            Arguments = "/silent"
+        }
+        "terminal" = @{
+            Url = "https://github.com/microsoft/terminal/releases/download/v1.18.3282.0/Microsoft.WindowsTerminal_Win11_1.18.3282.0_8wekyb3d8bbwe.msixbundle"
+            FileName = "Microsoft.WindowsTerminal.msixbundle"
+            FileType = "msixbundle"
+            Arguments = ""
         }
     }
     
@@ -447,39 +505,116 @@ function Install-Application {
     
     Write-LogMessage "Installing $AppName..." -Level "INFO"
     
-    # Get download info
-    $downloadInfo = Get-AppDirectDownloadInfo -AppName $AppName
-    if (-not $downloadInfo) {
-        Write-LogMessage "No download info found for $AppName" -Level "ERROR"
-        return $false
+    # Winget package ID mappings
+    $wingetMappings = @{
+        "vscode" = "Microsoft.VisualStudioCode"
+        "git" = "Git.Git"
+        "python" = "Python.Python.3"
+        "pycharm" = "JetBrains.PyCharm.Community"
+        "github" = "GitHub.GitHubDesktop"
+        "postman" = "Postman.Postman"
+        "nodejs" = "OpenJS.NodeJS.LTS"
+        "terminal" = "Microsoft.WindowsTerminal"
+        "chrome" = "Google.Chrome"
+        "firefox" = "Mozilla.Firefox"
+        "brave" = "Brave.Browser"
+        "spotify" = "Spotify.Spotify"
+        "discord" = "Discord.Discord"
+        "steam" = "Valve.Steam"
+        "vlc" = "VideoLAN.VLC"
+        "7zip" = "7zip.7zip"
+        "notepadplusplus" = "Notepad++.Notepad++"
+        "powertoys" = "Microsoft.PowerToys"
     }
     
+    # Initialize temp file variable
+    $tempFile = $null
+    
     try {
-        # Try winget first if available
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            $wingetOutput = winget install $AppName --silent --accept-source-agreements --accept-package-agreements 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-LogMessage "Successfully installed $AppName via winget" -Level "SUCCESS"
-                return $true
+        # Try winget first if available and not in direct-download-only mode
+        if (-not $script:UseDirectDownloadOnly -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+            $wingetId = $wingetMappings[$AppName]
+            if ($wingetId) {
+                Write-LogMessage "Attempting to install $AppName via winget (ID: $wingetId)..." -Level "INFO"
+                $wingetOutput = winget install --id $wingetId --silent --accept-source-agreements --accept-package-agreements 2>&1
+                if ($LASTEXITCODE -eq 0 -or ($wingetOutput -match "Successfully installed" -or $wingetOutput -match "already installed")) {
+                    Write-LogMessage "Successfully installed $AppName via winget" -Level "SUCCESS"
+                    return $true
+                } else {
+                    Write-LogMessage "Winget installation failed, falling back to direct download..." -Level "WARNING"
+                }
+            } else {
+                Write-LogMessage "No winget package ID found for $AppName, using direct download..." -Level "WARNING"
+            }
+        } else {
+            if ($script:UseDirectDownloadOnly) {
+                Write-LogMessage "Using direct download method for $AppName (winget unavailable)..." -Level "INFO"
+            } else {
+                Write-LogMessage "Winget not available, using direct download for $AppName..." -Level "WARNING"
             }
         }
         
         # Fallback to direct download
-        $tempFile = Join-Path $env:TEMP $downloadInfo.FileName
-        Invoke-WebRequest -Uri $downloadInfo.Url -OutFile $tempFile
-        
-        if ($downloadInfo.FileType -eq "msi") {
-            $process = Start-Process msiexec.exe -ArgumentList "/i `"$tempFile`" /quiet /norestart" -Wait -PassThru
-        } else {
-            $process = Start-Process $tempFile -ArgumentList $downloadInfo.Arguments -Wait -PassThru
+        $downloadInfo = Get-AppDirectDownloadInfo -AppName $AppName
+        if (-not $downloadInfo) {
+            Write-LogMessage "No download info found for $AppName and winget failed" -Level "ERROR"
+            return $false
         }
         
-        if ($process.ExitCode -eq 0) {
-            Write-LogMessage "Successfully installed $AppName" -Level "SUCCESS"
-            return $true
+        Write-LogMessage "Downloading $AppName from $($downloadInfo.Url)..." -Level "INFO"
+        $tempFile = Join-Path $env:TEMP $downloadInfo.FileName
+        
+        # Download with retry logic
+        $maxRetries = 3
+        $retryCount = 0
+        $downloadSuccess = $false
+        
+        while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
+            try {
+                Invoke-WebRequest -Uri $downloadInfo.Url -OutFile $tempFile -UseBasicParsing -TimeoutSec 30
+                $downloadSuccess = $true
+            }
+            catch {
+                $retryCount++
+                if ($retryCount -lt $maxRetries) {
+                    Write-LogMessage "Download attempt $retryCount failed, retrying..." -Level "WARNING"
+                    Start-Sleep -Seconds 2
+                } else {
+                    throw "Download failed after $maxRetries attempts: $_"
+                }
+            }
+        }
+        
+        Write-LogMessage "Installing $AppName from downloaded file..." -Level "INFO"
+        if ($downloadInfo.FileType -eq "msi") {
+            $process = Start-Process msiexec.exe -ArgumentList "/i `"$tempFile`" /quiet /norestart" -Wait -PassThru
+            if ($process.ExitCode -eq 0) {
+                Write-LogMessage "Successfully installed $AppName via MSI" -Level "SUCCESS"
+                return $true
+            } else {
+                Write-LogMessage "MSI installation failed for $AppName with exit code $($process.ExitCode)" -Level "ERROR"
+                return $false
+            }
+        } elseif ($downloadInfo.FileType -eq "msixbundle" -or $downloadInfo.FileType -eq "msix") {
+            # Install MSIX bundle using Add-AppxPackage
+            try {
+                Add-AppxPackage -Path $tempFile -ErrorAction Stop
+                Write-LogMessage "Successfully installed $AppName via MSIX package" -Level "SUCCESS"
+                return $true
+            }
+            catch {
+                Write-LogMessage "MSIX installation failed for $AppName : $_" -Level "ERROR"
+                return $false
+            }
         } else {
-            Write-LogMessage "Installation failed for $AppName with exit code $($process.ExitCode)" -Level "ERROR"
-            return $false
+            $process = Start-Process $tempFile -ArgumentList $downloadInfo.Arguments -Wait -PassThru
+            if ($process.ExitCode -eq 0) {
+                Write-LogMessage "Successfully installed $AppName via direct download" -Level "SUCCESS"
+                return $true
+            } else {
+                Write-LogMessage "Installation failed for $AppName with exit code $($process.ExitCode)" -Level "ERROR"
+                return $false
+            }
         }
     }
     catch {
@@ -487,7 +622,7 @@ function Install-Application {
         return $false
     }
     finally {
-        if (Test-Path $tempFile -ErrorAction SilentlyContinue) {
+        if ($tempFile -and (Test-Path $tempFile -ErrorAction SilentlyContinue)) {
             Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
         }
     }

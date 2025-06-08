@@ -28,6 +28,11 @@ $script:SelectedBloatware = @{}
 $script:SelectedServices = @{}
 $script:SelectedOptimizations = @{}
 $script:BackgroundJobs = @()
+$script:BackgroundWorker = $null
+$script:PowerShell = $null
+$script:Runspace = $null
+$script:AsyncResult = $null
+$script:ProgressTimer = $null
 $script:CancellationTokenSource = $null
 $script:WingetInstallAttempted = $false
 $script:UseDirectDownloadOnly = $false
@@ -365,76 +370,185 @@ function Update-Progress {
 function Update-UI {
     param (
         [Parameter(Mandatory=$true)]
-        [string]$Message,
-        [Parameter(Mandatory=$false)]
-        [string]$Level = "INFO"
+        [ScriptBlock]$Code
     )
-
-    if ($script:txtLog -ne $null) {
+    
+    if ($null -eq $script:txtLog) {
+        # If UI hasn't been initialized yet, just run the code directly
+        & $Code
+        return
+    }
+    
+    if ($script:txtLog.InvokeRequired) {
         try {
-            $script:txtLog.Invoke([System.Action]{
-                $script:txtLog.AppendText("$Message`r`n")
-                $script:txtLog.ScrollToCaret()
-            })
+            $script:txtLog.Invoke($Code)
         } catch {
-            Write-Host "Error updating log textbox: $_" -ForegroundColor Red
+            Write-Host "Error updating UI: $_" -ForegroundColor Red
         }
+    } else {
+        & $Code
     }
 }
 
-function Initialize-Checkboxes {
+function Update-ProgressBar {
+    [CmdletBinding()]
     param (
+        [Parameter(Mandatory = $false)]
+        [string]$Status,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$IncrementStep
+    )
+
+    if ($IncrementStep) {
+        $script:CurrentStep++
+    }
+
+    $percentage = if ($script:TotalSteps -gt 0) { 
+        [Math]::Round(($script:CurrentStep / $script:TotalSteps) * 100) 
+    } else { 
+        0 
+    }
+    
+    # Update the progress bar and status label in the GUI
+    try {
+        if ($script:prgProgress -ne $null) {
+            $script:prgProgress.Value = [Math]::Min($percentage, 100)
+        }
+        if ($script:lblProgress -ne $null) {
+            $script:lblProgress.Text = if ($Status) { $Status } else { "Progress: $percentage%" }
+        }
+    }
+    catch {
+        Write-Host "Error updating progress bar: $_" -ForegroundColor Red
+    }
+}
+
+function Create-SelectionUI {
+    param(
         [Parameter(Mandatory=$true)]
-        [System.Windows.Forms.TabPage]$TabPage,
+        [System.Windows.Forms.TabPage]$Panel,
         [Parameter(Mandatory=$true)]
         [hashtable]$Categories,
         [Parameter(Mandatory=$true)]
-        [string]$Type
+        [ref]$SelectedItemsArray
     )
-
-    $y = 10
-    foreach ($category in $Categories.Keys) {
-        # Create category label
-        $label = New-Object System.Windows.Forms.Label
-        $label.Text = $category
-        $label.Location = New-Object System.Drawing.Point(10, $y)
-        $label.AutoSize = $true
-        $label.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-        $TabPage.Controls.Add($label)
-        $y += 25
-
-        # Create checkboxes for each item in the category
-        foreach ($item in $Categories[$category]) {
-            if (($script:IsWindows11 -and $item.Win11) -or (-not $script:IsWindows11 -and $item.Win10)) {
-                $checkbox = New-Object System.Windows.Forms.CheckBox
-                $checkbox.Text = $item.Name
-                $checkbox.Location = New-Object System.Drawing.Point(20, $y)
-                $checkbox.AutoSize = $true
-                $checkbox.Checked = $item.Default
-                $checkbox.Tag = $item.Key
-                $checkbox.Add_CheckedChanged({
-                    $key = $this.Tag
-                    if ($this.Checked) {
-                        switch ($Type) {
-                            "App" { $script:SelectedApps += $key }
-                            "Bloatware" { $script:SelectedBloatware += $key }
-                            "Service" { $script:SelectedServices += $key }
-                            "Optimization" { $script:SelectedOptimizations += $key }
-                        }
-                    } else {
-                        switch ($Type) {
-                            "App" { $script:SelectedApps = $script:SelectedApps | Where-Object { $_ -ne $key } }
-                            "Bloatware" { $script:SelectedBloatware = $script:SelectedBloatware | Where-Object { $_ -ne $key } }
-                            "Service" { $script:SelectedServices = $script:SelectedServices | Where-Object { $_ -ne $key } }
-                            "Optimization" { $script:SelectedOptimizations = $script:SelectedOptimizations | Where-Object { $_ -ne $key } }
-                        }
-                    }
+    
+    try {
+        # Clear the panel
+        $Panel.Controls.Clear()
+        
+        # Panel for checkboxes with auto-scroll
+        $scrollPanel = New-Object System.Windows.Forms.Panel
+        $scrollPanel.AutoScroll = $true
+        $scrollPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
+        $Panel.Controls.Add($scrollPanel)
+        
+        # Y position tracker for controls
+        $yPos = 10
+        
+        # Add select all checkbox
+        $cbSelectAll = New-Object System.Windows.Forms.CheckBox
+        $cbSelectAll.Text = "Select All"
+        $cbSelectAll.Location = New-Object System.Drawing.Point(10, $yPos)
+        $cbSelectAll.Width = 200
+        $cbSelectAll.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+        $cbSelectAll.Add_Click({
+            $isChecked = $this.Checked
+            foreach ($control in $scrollPanel.Controls) {
+                if ($control -is [System.Windows.Forms.CheckBox] -and $control -ne $this) {
+                    $control.Checked = $isChecked
+                }
+            }
+            # Update selected items
+            Update-SelectedItems -Panel $scrollPanel -SelectedItemsArray $SelectedItemsArray
+        })
+        $scrollPanel.Controls.Add($cbSelectAll)
+        
+        $yPos += 30
+        
+        # For each category, create a group
+        foreach ($category in $Categories.Keys | Sort-Object) {
+            # Add category header
+            $categoryLabel = New-Object System.Windows.Forms.Label
+            $categoryLabel.Text = $category
+            $categoryLabel.Location = New-Object System.Drawing.Point(10, $yPos)
+            $categoryLabel.AutoSize = $true
+            $categoryLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+            $categoryLabel.ForeColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+            $scrollPanel.Controls.Add($categoryLabel)
+            
+            $yPos += 25
+            
+            # Create a FlowLayoutPanel for the items in this category
+            $flowPanel = New-Object System.Windows.Forms.FlowLayoutPanel
+            $flowPanel.Location = New-Object System.Drawing.Point(20, $yPos)
+            $flowPanel.Width = $Panel.Width - 60
+            $flowPanel.AutoSize = $true
+            $flowPanel.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
+            $flowPanel.WrapContents = $true
+            $flowPanel.Padding = New-Object System.Windows.Forms.Padding(0)
+            
+            # Add checkboxes for each item in this category
+            foreach ($item in $Categories[$category] | Sort-Object -Property Name) {
+                # Skip items that aren't applicable to this Windows version
+                if (($script:IsWindows11 -and -not $item.Win11) -or 
+                    (-not $script:IsWindows11 -and -not $item.Win10)) {
+                    continue
+                }
+                
+                $cb = New-Object System.Windows.Forms.CheckBox
+                $cb.Text = $item.Name
+                $cb.Tag = $item.Key
+                $cb.AutoSize = $true
+                $cb.Width = 200
+                $cb.Margin = New-Object System.Windows.Forms.Padding(0, 0, 10, 5)
+                $cb.Checked = $item.Default
+                $cb.Add_Click({
+                    # Update selected items
+                    Update-SelectedItems -Panel $scrollPanel -SelectedItemsArray $SelectedItemsArray
                 })
-                $TabPage.Controls.Add($checkbox)
-                $y += 25
+                $flowPanel.Controls.Add($cb)
+            }
+            
+            $scrollPanel.Controls.Add($flowPanel)
+            $yPos += $flowPanel.Height + 20
+        }
+        
+        # Initial population of selected items
+        Update-SelectedItems -Panel $scrollPanel -SelectedItemsArray $SelectedItemsArray
+    } catch {
+        Write-Log "Error in Create-SelectionUI: $_" -Level "ERROR"
+    }
+}
+
+function Update-SelectedItems {
+    param(
+        [Parameter(Mandatory=$true)]
+        [System.Windows.Forms.Panel]$Panel,
+        [Parameter(Mandatory=$true)]
+        [ref]$SelectedItemsArray
+    )
+    
+    try {
+        $selectedItems = @()
+        
+        foreach ($control in $Panel.Controls) {
+            if ($control -is [System.Windows.Forms.CheckBox] -and $control.Tag -and $control.Checked) {
+                $selectedItems += $control.Tag
+            }
+            elseif ($control -is [System.Windows.Forms.FlowLayoutPanel]) {
+                foreach ($childControl in $control.Controls) {
+                    if ($childControl -is [System.Windows.Forms.CheckBox] -and $childControl.Tag -and $childControl.Checked) {
+                        $selectedItems += $childControl.Tag
+                    }
+                }
             }
         }
-        $y += 10
+        
+        $SelectedItemsArray.Value = $selectedItems
+    } catch {
+        Write-Log "Error in Update-SelectedItems: $_" -Level "ERROR"
     }
 }
 
@@ -442,28 +556,64 @@ function Cancel-AllOperations {
     if ($script:IsRunning) {
         Write-Log "Cancelling all operations..." -Level "WARNING"
         
-        if ($script:CancellationTokenSource -ne $null) {
-            $script:CancellationTokenSource.Cancel()
-        }
-        
-        foreach ($job in $script:BackgroundJobs) {
-            if ($job.State -eq "Running") {
-                Write-Log "Waiting for job to cancel..." -Level "INFO"
-                Stop-Job -Job $job
-                Remove-Job -Job $job
+        # Stop PowerShell runspace operations
+        try {
+            if ($script:PowerShell -ne $null) {
+                $script:PowerShell.Stop()
+                Write-Log "PowerShell execution stopped" -Level "INFO"
             }
         }
+        catch {
+            Write-Log "Error stopping PowerShell: $_" -Level "WARNING"
+        }
         
+        # Clean up timers
+        if ($script:ProgressTimer -ne $null) {
+            $script:ProgressTimer.Stop()
+            $script:ProgressTimer.Dispose()
+            $script:ProgressTimer = $null
+        }
+        
+        # Clean up PowerShell and runspace
+        if ($script:PowerShell -ne $null) {
+            $script:PowerShell.Dispose()
+            $script:PowerShell = $null
+        }
+        
+        if ($script:Runspace -ne $null) {
+            $script:Runspace.Close()
+            $script:Runspace.Dispose()
+            $script:Runspace = $null
+        }
+        
+        # Clean up old job-based approach if any jobs exist
+        if ($script:BackgroundJobs.Count -gt 0) {
+            foreach ($job in $script:BackgroundJobs) {
+                if ($job.State -eq "Running") {
+                    Stop-Job -Job $job -ErrorAction SilentlyContinue
+                    Remove-Job -Job $job -ErrorAction SilentlyContinue
+                }
+            }
+            $script:BackgroundJobs = @()
+        }
+        
+        # Clean up BackgroundWorker if it exists
+        if ($script:BackgroundWorker -ne $null -and $script:BackgroundWorker.IsBusy) {
+            $script:BackgroundWorker.CancelAsync()
+        }
+        
+        # Clean up cancellation token
+        if ($script:CancellationTokenSource -ne $null) {
+            $script:CancellationTokenSource.Dispose()
+            $script:CancellationTokenSource = $null
+        }
+        
+        # Reset UI state
         $script:IsRunning = $false
         $script:btnRun.Enabled = $true
         $script:btnCancel.Enabled = $false
         
-        if ($script:timer -ne $null) {
-            $script:timer.Stop()
-            $script:timer.Dispose()
-            $script:timer = $null
-        }
-        
+        Update-ProgressBar -Status "Operations cancelled"
         Write-Log "All operations cancelled" -Level "WARNING"
     }
 }
@@ -540,174 +690,571 @@ try {
 # Initialize logging
 Initialize-Logging
 
-# Create the main form
+# Create the main form using the original's sophisticated layout
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Windows Setup Automation"
-$form.Size = New-Object System.Drawing.Size(800, 600)
-$form.StartPosition = "CenterScreen"
-$form.FormBorderStyle = "FixedDialog"
+$form.Width = 800
+$form.Height = 650
+$form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedSingle
 $form.MaximizeBox = $false
-$form.MinimizeBox = $true
+
+# Calculate sizes based on form dimensions
+$formWidth = $form.Width
+
+# Create header panel
+$headerPanel = New-Object System.Windows.Forms.Panel
+$headerPanel.Dock = [System.Windows.Forms.DockStyle]::Top
+$headerPanel.Height = 60
+$headerPanel.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+$form.Controls.Add($headerPanel)
+
+# Create title label
+$lblTitle = New-Object System.Windows.Forms.Label
+$lblTitle.Text = "Windows Setup Automation"
+$lblTitle.ForeColor = [System.Drawing.Color]::White
+$lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 16, [System.Drawing.FontStyle]::Regular)
+$lblTitle.AutoSize = $true
+$lblTitle.Location = New-Object System.Drawing.Point(15, 15)
+$headerPanel.Controls.Add($lblTitle)
+
+# Create OS badge
+$lblOSBadge = New-Object System.Windows.Forms.Label
+$lblOSBadge.Text = if ($script:IsWindows11) { "Windows 11 Detected" } else { "Windows 10 Detected" }
+$lblOSBadge.ForeColor = [System.Drawing.Color]::White
+$lblOSBadge.BackColor = [System.Drawing.Color]::FromArgb(50, 255, 255, 255)
+$lblOSBadge.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
+$lblOSBadge.AutoSize = $true
+$lblOSBadge.Padding = New-Object System.Windows.Forms.Padding(8, 5, 8, 5)
+$lblOSBadge.Location = New-Object System.Drawing.Point(($formWidth - 180), 15)
+$headerPanel.Controls.Add($lblOSBadge)
 
 # Create tab control
 $tabControl = New-Object System.Windows.Forms.TabControl
+$tabControl.Location = New-Object System.Drawing.Point(0, 60)
+$tabControl.Size = New-Object System.Drawing.Size($formWidth, 400)
 $tabControl.Dock = [System.Windows.Forms.DockStyle]::Fill
-$tabControl.Size = New-Object System.Drawing.Size(780, 500)
+$form.Controls.Add($tabControl)
 
 # Create tabs
-$tabInstall = New-Object System.Windows.Forms.TabPage
-$tabInstall.Text = "Install Applications"
-$tabInstall.UseVisualStyleBackColor = $true
+$script:tabInstall = New-Object System.Windows.Forms.TabPage
+$script:tabInstall.Text = "Install"
+$tabControl.Controls.Add($script:tabInstall)
 
-$tabRemove = New-Object System.Windows.Forms.TabPage
-$tabRemove.Text = "Remove Bloatware"
-$tabRemove.UseVisualStyleBackColor = $true
+$script:tabRemove = New-Object System.Windows.Forms.TabPage
+$script:tabRemove.Text = "Remove"
+$tabControl.Controls.Add($script:tabRemove)
 
-$tabServices = New-Object System.Windows.Forms.TabPage
-$tabServices.Text = "Manage Services"
-$tabServices.UseVisualStyleBackColor = $true
+$script:tabServices = New-Object System.Windows.Forms.TabPage
+$script:tabServices.Text = "Services"
+$tabControl.Controls.Add($script:tabServices)
 
-$tabOptimize = New-Object System.Windows.Forms.TabPage
-$tabOptimize.Text = "Optimize Windows"
-$tabOptimize.UseVisualStyleBackColor = $true
+$script:tabOptimize = New-Object System.Windows.Forms.TabPage
+$script:tabOptimize.Text = "Optimize"
+$tabControl.Controls.Add($script:tabOptimize)
 
-# Add tabs to control
-$tabControl.TabPages.Add($tabInstall)
-$tabControl.TabPages.Add($tabRemove)
-$tabControl.TabPages.Add($tabServices)
-$tabControl.TabPages.Add($tabOptimize)
+# Create footer panel
+$footerPanel = New-Object System.Windows.Forms.Panel
+$footerPanel.Dock = [System.Windows.Forms.DockStyle]::Bottom
+$footerPanel.Height = 170
+$form.Controls.Add($footerPanel)
 
-# Initialize checkboxes for each tab
-Initialize-Checkboxes -TabPage $tabInstall -Categories $script:AppCategories -Type "App"
-Initialize-Checkboxes -TabPage $tabRemove -Categories $script:BloatwareCategories -Type "Bloatware"
-Initialize-Checkboxes -TabPage $tabServices -Categories $script:ServiceCategories -Type "Service"
-Initialize-Checkboxes -TabPage $tabOptimize -Categories $script:OptimizationCategories -Type "Optimization"
+# Create action panel (Run button area)
+$actionPanel = New-Object System.Windows.Forms.Panel
+$actionPanel.Dock = [System.Windows.Forms.DockStyle]::Top
+$actionPanel.Height = 50
+$actionPanel.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+$actionPanel.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+$footerPanel.Controls.Add($actionPanel)
 
-# Create log textbox
+# Run button
+$script:btnRun = New-Object System.Windows.Forms.Button
+$script:btnRun.Text = "Run Selected Tasks"
+$script:btnRun.Size = New-Object System.Drawing.Size(150, 32)
+$script:btnRun.Location = New-Object System.Drawing.Point(($formWidth - 320), 8)
+$script:btnRun.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+$script:btnRun.ForeColor = [System.Drawing.Color]::White
+$script:btnRun.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$actionPanel.Controls.Add($script:btnRun)
+
+# Cancel button
+$script:btnCancel = New-Object System.Windows.Forms.Button
+$script:btnCancel.Text = "Cancel"
+$script:btnCancel.Size = New-Object System.Drawing.Size(100, 32)
+$script:btnCancel.Location = New-Object System.Drawing.Point(($formWidth - 160), 8)
+$script:btnCancel.BackColor = [System.Drawing.Color]::FromArgb(220, 220, 220)
+$script:btnCancel.ForeColor = [System.Drawing.Color]::Black
+$script:btnCancel.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$script:btnCancel.Enabled = $false
+$actionPanel.Controls.Add($script:btnCancel)
+
+# Summary label
+$lblSummary = New-Object System.Windows.Forms.Label
+$lblSummary.Text = "Ready to start"
+$lblSummary.AutoSize = $true
+$lblSummary.Location = New-Object System.Drawing.Point(15, 15)
+$actionPanel.Controls.Add($lblSummary)
+
+# Progress panel
+$progressPanel = New-Object System.Windows.Forms.Panel
+$progressPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
+$progressPanel.Padding = New-Object System.Windows.Forms.Padding(10)
+$footerPanel.Controls.Add($progressPanel)
+
+# Progress status label
+$script:lblProgress = New-Object System.Windows.Forms.Label
+$script:lblProgress.Text = "Status: Ready"
+$script:lblProgress.AutoSize = $true
+$script:lblProgress.Location = New-Object System.Drawing.Point(0, 0)
+$progressPanel.Controls.Add($script:lblProgress)
+
+# Progress bar
+$script:prgProgress = New-Object System.Windows.Forms.ProgressBar
+$script:prgProgress.Location = New-Object System.Drawing.Point(0, 20)
+$script:prgProgress.Size = New-Object System.Drawing.Size(($formWidth - 20), 20)
+$script:prgProgress.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
+$progressPanel.Controls.Add($script:prgProgress)
+
+# Log text box
 $script:txtLog = New-Object System.Windows.Forms.RichTextBox
-$script:txtLog.Location = New-Object System.Drawing.Point(12, 400)
-$script:txtLog.Size = New-Object System.Drawing.Size(760, 200)
-$script:txtLog.Multiline = $true
-$script:txtLog.ScrollBars = [System.Windows.Forms.RichTextBoxScrollBars]::Vertical
+$script:txtLog.Location = New-Object System.Drawing.Point(0, 45)
+$script:txtLog.Size = New-Object System.Drawing.Size(($formWidth - 20), 65)
 $script:txtLog.ReadOnly = $true
-$script:txtLog.BackColor = [System.Drawing.Color]::White
-$script:txtLog.Font = New-Object System.Drawing.Font("Consolas", 9)
-$form.Controls.Add($script:txtLog)
+$script:txtLog.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
+$script:txtLog.Font = New-Object System.Drawing.Font("Consolas", 8)
+$progressPanel.Controls.Add($script:txtLog)
 
-# Create progress bar
-$prgProgress = New-Object System.Windows.Forms.ProgressBar
-$prgProgress.Dock = [System.Windows.Forms.DockStyle]::Bottom
-$prgProgress.Height = 20
-$script:prgProgress = $prgProgress
+# Create selection UI for each tab
+Create-SelectionUI -Panel $script:tabInstall -Categories $script:AppCategories -SelectedItemsArray ([ref]$script:SelectedApps)
+Create-SelectionUI -Panel $script:tabRemove -Categories $script:BloatwareCategories -SelectedItemsArray ([ref]$script:SelectedBloatware)
+Create-SelectionUI -Panel $script:tabServices -Categories $script:ServiceCategories -SelectedItemsArray ([ref]$script:SelectedServices)
+Create-SelectionUI -Panel $script:tabOptimize -Categories $script:OptimizationCategories -SelectedItemsArray ([ref]$script:SelectedOptimizations)
 
-# Create progress label
-$lblProgress = New-Object System.Windows.Forms.Label
-$lblProgress.Dock = [System.Windows.Forms.DockStyle]::Bottom
-$lblProgress.Height = 20
-$lblProgress.Text = "Ready"
-$script:lblProgress = $lblProgress
-
-# Create Run button
-$btnRun = New-Object System.Windows.Forms.Button
-$btnRun.Text = "Run Selected Operations"
-$btnRun.Dock = [System.Windows.Forms.DockStyle]::Bottom
-$btnRun.Height = 30
-$script:btnRun = $btnRun
-
-# Create Cancel button
-$btnCancel = New-Object System.Windows.Forms.Button
-$btnCancel.Text = "Cancel Operations"
-$btnCancel.Dock = [System.Windows.Forms.DockStyle]::Bottom
-$btnCancel.Height = 30
-$btnCancel.Enabled = $false
-$script:btnCancel = $btnCancel
-
-# Add controls to form
-$form.Controls.Add($tabControl)
-$form.Controls.Add($script:txtLog)
-$form.Controls.Add($script:prgProgress)
-$script:lblProgress = $lblProgress
-$form.Controls.Add($script:btnRun)
-$form.Controls.Add($script:btnCancel)
-
-# Add Run button click handler
-$script:btnRun.Add_Click({
-    if (-not $script:IsRunning) {
-        $script:IsRunning = $true
+function Start-SelectedOperations {
+    try {
+        # Prevent multiple runs
+        if ($script:IsRunning) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "Operations are already in progress. Please wait for them to complete.",
+                "Operations in Progress",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Information
+            )
+            return
+        }
+        
+        # Calculate total steps
+        $script:TotalSteps = $script:SelectedApps.Count + $script:SelectedBloatware.Count + 
+                             $script:SelectedServices.Count + $script:SelectedOptimizations.Count
+        
+        if ($script:TotalSteps -eq 0) {
+            Write-Log "No operations selected" -Level "WARNING"
+            [System.Windows.Forms.MessageBox]::Show("Please select at least one operation to perform.", "No Operations Selected", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+            return
+        }
+        
+        # Update UI state
         $script:btnRun.Enabled = $false
         $script:btnCancel.Enabled = $true
+        $script:txtLog.Clear()
         
-        # Create cancellation token
-        $script:CancellationTokenSource = New-Object System.Threading.CancellationTokenSource
+        $script:IsRunning = $true
+        $script:StartTime = Get-Date
+        $script:CurrentStep = 0
         
-        # Start background job
-        $script:BackgroundJobs = @()
-        $script:BackgroundJob = Start-Job -ScriptBlock {
-            param($modulePath, $utilsPath, $selectedApps, $selectedBloatware, $selectedServices, $selectedOptimizations)
+        Write-Log "Starting selected operations..." -Level "INFO"
+        Update-ProgressBar -Status "Starting operations..."
+        
+        # Create PowerShell runspace for background operations
+        $script:PowerShell = [PowerShell]::Create()
+        $script:Runspace = [RunspaceFactory]::CreateRunspace()
+        $script:Runspace.Open()
+        $script:PowerShell.Runspace = $script:Runspace
+        
+        # Import modules in the runspace
+        $script:PowerShell.AddScript({
+            param($modulePath, $utilsPath, $selectedApps, $selectedBloatware, $selectedServices, $selectedOptimizations, $totalSteps)
             
-            # Import modules in the job
+            # Import required modules
             Import-Module (Join-Path $utilsPath "Logging.psm1") -Force
             Import-Module (Join-Path $modulePath "Installers.psm1") -Force
             Import-Module (Join-Path $modulePath "SystemOptimizations.psm1") -Force
             
+            $stepCount = 0
+            $results = @()
+            
             try {
-                # Install selected applications  
+                # Install selected applications
                 foreach ($app in $selectedApps) {
-                    Write-LogMessage "Installing application: $app" -Level "INFO"
-                    Install-Application -AppName $app
+                    $stepCount++
+                    $percentage = [Math]::Round(($stepCount / $totalSteps) * 100)
+                    $results += @{
+                        Step = $stepCount
+                        Percentage = $percentage
+                        Status = "Installing application: $app"
+                        Type = "Progress"
+                    }
+                    
+                    try {
+                        Install-Application -AppName $app
+                        $results += @{
+                            Step = $stepCount
+                            Percentage = $percentage
+                            Status = "[SUCCESS] Installed: $app"
+                            Type = "Success"
+                        }
+                    }
+                    catch {
+                        $results += @{
+                            Step = $stepCount
+                            Percentage = $percentage
+                            Status = "[ERROR] Failed to install: $app - $_"
+                            Type = "Error"
+                        }
+                    }
                 }
                 
                 # Remove selected bloatware
                 foreach ($bloat in $selectedBloatware) {
-                    Write-LogMessage "Removing bloatware: $bloat" -Level "INFO"
-                    Remove-Bloatware -BloatwareKey $bloat
+                    $stepCount++
+                    $percentage = [Math]::Round(($stepCount / $totalSteps) * 100)
+                    $results += @{
+                        Step = $stepCount
+                        Percentage = $percentage
+                        Status = "Removing bloatware: $bloat"
+                        Type = "Progress"
+                    }
+                    
+                    try {
+                        Remove-Bloatware -BloatwareKey $bloat
+                        $results += @{
+                            Step = $stepCount
+                            Percentage = $percentage
+                            Status = "[SUCCESS] Removed: $bloat"
+                            Type = "Success"
+                        }
+                    }
+                    catch {
+                        $results += @{
+                            Step = $stepCount
+                            Percentage = $percentage
+                            Status = "[ERROR] Failed to remove: $bloat - $_"
+                            Type = "Error"
+                        }
+                    }
                 }
                 
                 # Configure selected services
                 foreach ($service in $selectedServices) {
-                    Write-LogMessage "Configuring service: $service" -Level "INFO"
-                    Set-SystemOptimization -OptimizationKey $service
+                    $stepCount++
+                    $percentage = [Math]::Round(($stepCount / $totalSteps) * 100)
+                    $results += @{
+                        Step = $stepCount
+                        Percentage = $percentage
+                        Status = "Configuring service: $service"
+                        Type = "Progress"
+                    }
+                    
+                    try {
+                        Set-SystemOptimization -OptimizationKey $service
+                        $results += @{
+                            Step = $stepCount
+                            Percentage = $percentage
+                            Status = "[SUCCESS] Configured service: $service"
+                            Type = "Success"
+                        }
+                    }
+                    catch {
+                        $results += @{
+                            Step = $stepCount
+                            Percentage = $percentage
+                            Status = "[ERROR] Failed to configure service: $service - $_"
+                            Type = "Error"
+                        }
+                    }
                 }
                 
                 # Apply selected optimizations
                 foreach ($opt in $selectedOptimizations) {
-                    Write-LogMessage "Applying optimization: $opt" -Level "INFO"
-                    Set-SystemOptimization -OptimizationKey $opt
+                    $stepCount++
+                    $percentage = [Math]::Round(($stepCount / $totalSteps) * 100)
+                    $results += @{
+                        Step = $stepCount
+                        Percentage = $percentage
+                        Status = "Applying optimization: $opt"
+                        Type = "Progress"
+                    }
+                    
+                    try {
+                        Set-SystemOptimization -OptimizationKey $opt
+                        $results += @{
+                            Step = $stepCount
+                            Percentage = $percentage
+                            Status = "[SUCCESS] Applied optimization: $opt"
+                            Type = "Success"
+                        }
+                    }
+                    catch {
+                        $results += @{
+                            Step = $stepCount
+                            Percentage = $percentage
+                            Status = "[ERROR] Failed to apply optimization: $opt - $_"
+                            Type = "Error"
+                        }
+                    }
                 }
                 
-                Write-LogMessage "All operations completed" -Level "SUCCESS"
+                return $results
             }
             catch {
-                Write-LogMessage "Error in background job: $_" -Level "ERROR"
+                return @{
+                    Step = -1
+                    Percentage = 0
+                    Status = "Critical error: $_"
+                    Type = "CriticalError"
+                }
             }
-        } -ArgumentList $modulePath, $utilsPath, $script:SelectedApps, $script:SelectedBloatware, $script:SelectedServices, $script:SelectedOptimizations
+        })
         
-        # Create timer to check job status
+        # Add parameters
+        $script:PowerShell.AddArgument($modulePath)
+        $script:PowerShell.AddArgument($utilsPath)
+        $script:PowerShell.AddArgument($script:SelectedApps)
+        $script:PowerShell.AddArgument($script:SelectedBloatware)
+        $script:PowerShell.AddArgument($script:SelectedServices)
+        $script:PowerShell.AddArgument($script:SelectedOptimizations)
+        $script:PowerShell.AddArgument($script:TotalSteps)
+        
+        # Start async execution
+        $script:AsyncResult = $script:PowerShell.BeginInvoke()
+        
+        # Create timer to check for completion and update progress
         $script:ProgressTimer = New-Object System.Windows.Forms.Timer
-        $script:ProgressTimer.Interval = 1000
+        $script:ProgressTimer.Interval = 500
         $script:ProgressTimer.Add_Tick({
-            if ($script:BackgroundJob.State -eq "Completed") {
-                $script:ProgressTimer.Stop()
+            try {
+                if ($script:AsyncResult.IsCompleted) {
+                    # Get results
+                    $results = $script:PowerShell.EndInvoke($script:AsyncResult)
+                    
+                    # Process results and update UI
+                    foreach ($result in $results) {
+                        if ($result.Type -eq "Progress") {
+                            $script:CurrentStep = $result.Step
+                            Update-ProgressBar -Status $result.Status
+                            Write-Log $result.Status -Level "INFO"
+                        }
+                        elseif ($result.Type -eq "Success") {
+                            Write-Log $result.Status -Level "SUCCESS"
+                        }
+                        elseif ($result.Type -eq "Error") {
+                            Write-Log $result.Status -Level "ERROR"
+                        }
+                        elseif ($result.Type -eq "CriticalError") {
+                            Write-Log $result.Status -Level "ERROR"
+                        }
+                    }
+                    
+                    # Calculate elapsed time
+                    $elapsed = (Get-Date) - $script:StartTime
+                    Write-Log "Total time: $($elapsed.ToString('mm\:ss'))" -Level "INFO"
+                    Write-Log "All operations completed!" -Level "SUCCESS"
+                    Update-ProgressBar -Status "All operations completed!"
+                    
+                    # Cleanup and reset UI
+                    $script:ProgressTimer.Stop()
+                    $script:ProgressTimer.Dispose()
+                    $script:ProgressTimer = $null
+                    
+                    if ($script:PowerShell -ne $null) {
+                        $script:PowerShell.Dispose()
+                        $script:PowerShell = $null
+                    }
+                    
+                    if ($script:Runspace -ne $null) {
+                        $script:Runspace.Close()
+                        $script:Runspace.Dispose()
+                        $script:Runspace = $null
+                    }
+                    
+                    $script:IsRunning = $false
+                    $script:btnRun.Enabled = $true
+                    $script:btnCancel.Enabled = $false
+                }
+            }
+            catch {
+                Write-Log "Error in progress timer: $_" -Level "ERROR"
+                # Reset UI on error
                 $script:IsRunning = $false
                 $script:btnRun.Enabled = $true
                 $script:btnCancel.Enabled = $false
-                $script:CancellationTokenSource = $null
-                $script:BackgroundJob = $null
+                if ($script:ProgressTimer -ne $null) {
+                    $script:ProgressTimer.Stop()
+                    $script:ProgressTimer.Dispose()
+                    $script:ProgressTimer = $null
+                }
             }
         })
+        
         $script:ProgressTimer.Start()
     }
+    catch {
+        Write-Log "Error in Start-SelectedOperations: $_" -Level "ERROR"
+        $script:IsRunning = $false
+        $script:btnRun.Enabled = $true
+        $script:btnCancel.Enabled = $false
+    }
+}
+
+# Add Run button click handler
+$script:btnRun.Add_Click({
+    Start-SelectedOperations
 })
 
 # Add Cancel button click handler
 $script:btnCancel.Add_Click({
+    Cancel-AllOperations
+})
+
+function Install-Winget {
+    try {
+        Write-Log "Attempting to install winget..." -Level "INFO"
+        
+        # Check if we're on Windows 10 version 1809 or later (required for winget)
+        if ($script:OSVersion.Build -lt 17763) {
+            Write-Log "Windows version too old for winget (requires Windows 10 1809+)" -Level "WARNING"
+            return $false
+        }
+        
+        # Try to install App Installer from Microsoft Store (contains winget)
+        Write-Log "Installing App Installer package..." -Level "INFO"
+        
+        # Download and install the latest App Installer package
+        $appInstallerUrl = "https://aka.ms/getwinget"
+        $tempPath = Join-Path $env:TEMP "Microsoft.DesktopAppInstaller.msixbundle"
+        
+        try {
+            # Download App Installer
+            Write-Log "Downloading App Installer from Microsoft..." -Level "INFO"
+            Invoke-WebRequest -Uri $appInstallerUrl -OutFile $tempPath -UseBasicParsing
+            
+            # Install the package
+            Write-Log "Installing App Installer package..." -Level "INFO"
+            Add-AppxPackage -Path $tempPath -ErrorAction Stop
+            
+            # Clean up temp file
+            Remove-Item $tempPath -Force -ErrorAction SilentlyContinue
+            
+            # Wait a moment for installation to complete
+            Start-Sleep -Seconds 3
+            
+            # Refresh PATH environment variable
+            $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+            
+            # Test if winget is now available
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Write-Log "Winget successfully installed!" -Level "SUCCESS"
+                return $true
+            } else {
+                Write-Log "Winget installation completed but command not found. May need system restart." -Level "WARNING"
+                return $false
+            }
+        }
+        catch {
+            Write-Log "Failed to install winget via App Installer: $_" -Level "ERROR"
+            
+            # Try alternative method: Install via PowerShell
+            Write-Log "Trying alternative installation method..." -Level "INFO"
+            
+            try {
+                # Install using Add-AppxPackage with online source
+                $msixUrl = "https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+                $msixPath = Join-Path $env:TEMP "winget.msixbundle"
+                
+                Invoke-WebRequest -Uri $msixUrl -OutFile $msixPath -UseBasicParsing
+                Add-AppxPackage -Path $msixPath -ErrorAction Stop
+                
+                Remove-Item $msixPath -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 3
+                
+                # Refresh PATH
+                $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+                
+                if (Get-Command winget -ErrorAction SilentlyContinue) {
+                    Write-Log "Winget successfully installed via alternative method!" -Level "SUCCESS"
+                    return $true
+                } else {
+                    Write-Log "Alternative winget installation failed" -Level "ERROR"
+                    return $false
+                }
+            }
+            catch {
+                Write-Log "Alternative winget installation failed: $_" -Level "ERROR"
+                return $false
+            }
+        }
+    }
+    catch {
+        Write-Log "Error during winget installation: $_" -Level "ERROR"
+        return $false
+    }
+}
+
+# Add event handler for form shown
+$form.Add_Shown({
+    Write-Log "Windows Setup Automation GUI started" -Level "INFO"
+    Write-Log "Detected OS: $($script:OSName)" -Level "INFO"
+    
+    # Check winget status and attempt installation if missing
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        Write-Log "Winget is not installed. Attempting to install winget..." -Level "WARNING"
+        
+        # Try to install winget
+        $wingetInstalled = Install-Winget
+        
+        if ($wingetInstalled) {
+            Write-Log "Winget is now available and will be used for application installations" -Level "SUCCESS"
+            Write-Log "Select applications and click 'Run Selected Tasks' to begin" -Level "INFO"
+            $script:UseDirectDownloadOnly = $false
+        } else {
+            Write-Log "Failed to install winget. Direct download methods will be used for application installations." -Level "WARNING"
+            Write-Log "Some applications may not install correctly without winget." -Level "WARNING"
+            Write-Log "You can manually install winget from the Microsoft Store (App Installer) and restart this application." -Level "INFO"
+            $script:UseDirectDownloadOnly = $true
+        }
+    } else {
+        Write-Log "Winget is available and will be used for application installations" -Level "SUCCESS"
+        Write-Log "Select applications and click 'Run Selected Tasks' to begin" -Level "INFO"
+        $script:UseDirectDownloadOnly = $false
+    }
+})
+
+# Add event handler for form closing
+$form.Add_FormClosing({
+    param($formSender, $e)
+    
+    # If operations are in progress, confirm before closing
     if ($script:IsRunning) {
+        $result = [System.Windows.Forms.MessageBox]::Show(
+            "Operations are still in progress. Are you sure you want to exit?`n`nThis will cancel all running operations.",
+            "Confirm Exit",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        )
+        
+        if ($result -eq [System.Windows.Forms.DialogResult]::No) {
+            $e.Cancel = $true
+            return
+        }
+        
+        # Cancel all operations
         Cancel-AllOperations
     }
 })
 
 # Show the form
-$form.ShowDialog()
+Write-Host "Launching GUI interface..." -ForegroundColor Green
+[void]$form.ShowDialog()
 
 # Cleanup
 if ($script:ProgressTimer -ne $null) {
