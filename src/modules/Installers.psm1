@@ -178,4 +178,72 @@ function Install-Python {
     return $false
 }
 
-Export-ModuleMember -Function Install-Winget, Install-Python 
+function Update-Environment {
+    Write-Log "Updating environment variables..." -Level "INFO"
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+}
+
+function Install-Application {
+    param (
+        [string]$AppName,
+        [string]$WingetId,
+        [hashtable]$DirectDownload,
+        [System.Threading.CancellationToken]$CancellationToken
+    )
+
+    Write-Log "Installing $AppName..." -Level "INFO"
+    
+    # Try winget first if not using direct download only
+    if (-not $script:UseDirectDownloadOnly) {
+        try {
+            if ($WingetId) {
+                Write-Log "Attempting to install $AppName using winget..." -Level "INFO"
+                winget install --id $WingetId --silent --accept-source-agreements --accept-package-agreements
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Log "Successfully installed $AppName using winget" -Level "SUCCESS"
+                    return $true
+                }
+            }
+        } catch {
+            Write-Log "Winget installation failed for $AppName: $_" -Level "WARNING"
+        }
+    }
+    
+    # Try direct download if available
+    if ($DirectDownload) {
+        try {
+            $tempFile = Join-Path $env:TEMP $DirectDownload.FileName
+            Write-Log "Downloading $AppName from direct source..." -Level "INFO"
+            
+            # Download the file
+            Invoke-WebRequest -Uri $DirectDownload.Url -OutFile $tempFile
+            
+            # Install based on file type
+            switch ($DirectDownload.FileType) {
+                "msi" {
+                    Start-Process msiexec.exe -ArgumentList "/i `"$tempFile`" /quiet /norestart" -Wait
+                }
+                "exe" {
+                    Start-Process $tempFile -ArgumentList $DirectDownload.InstallArgs -Wait
+                }
+                default {
+                    Write-Log "Unsupported file type for $AppName: $($DirectDownload.FileType)" -Level "ERROR"
+                    return $false
+                }
+            }
+            
+            # Cleanup
+            Remove-Item $tempFile -Force
+            Write-Log "Successfully installed $AppName using direct download" -Level "SUCCESS"
+            return $true
+        } catch {
+            Write-Log "Direct download installation failed for $AppName: $_" -Level "ERROR"
+            return $false
+        }
+    }
+    
+    Write-Log "Failed to install $AppName - no valid installation method found" -Level "ERROR"
+    return $false
+}
+
+Export-ModuleMember -Function Install-Winget, Install-Python, Update-Environment, Install-Application 

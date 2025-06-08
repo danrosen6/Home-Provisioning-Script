@@ -140,4 +140,45 @@ function Configure-Services {
     }
 }
 
-Export-ModuleMember -Function Optimize-System, Remove-Bloatware, Configure-Services 
+function Apply-Optimization {
+    param (
+        [string]$OptimizationKey,
+        [System.Threading.CancellationToken]$CancellationToken
+    )
+
+    Write-Log "Applying optimization: $OptimizationKey" -Level "INFO"
+
+    switch ($OptimizationKey) {
+        "DisableTelemetry" {
+            Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 0
+            Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry" -Value 0
+        }
+        "DisableCortana" {
+            Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0
+        }
+        "DisableWindowsSearch" {
+            Stop-Service "WSearch" -Force
+            Set-Service "WSearch" -StartupType Disabled
+        }
+        "DisableWindowsUpdate" {
+            Stop-Service "wuauserv" -Force
+            Set-Service "wuauserv" -StartupType Disabled
+        }
+        "DisableWindowsDefender" {
+            Set-MpPreference -DisableRealtimeMonitoring $true
+            Set-MpPreference -DisableIOAVProtection $true
+        }
+        "DisableWindowsFirewall" {
+            Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+        }
+        default {
+            Write-Log "Unknown optimization key: $OptimizationKey" -Level "ERROR"
+            return $false
+        }
+    }
+
+    Write-Log "Successfully applied optimization: $OptimizationKey" -Level "SUCCESS"
+    return $true
+}
+
+Export-ModuleMember -Function Optimize-System, Remove-Bloatware, Configure-Services, Apply-Optimization 
