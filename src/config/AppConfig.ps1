@@ -75,6 +75,4 @@ $script:AppConfig = @{
         "DisableDefender" = $false
         "DisableFirewall" = $false
     }
-}
-
-Export-ModuleMember -Variable AppConfig 
+} 

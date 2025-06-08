@@ -388,4 +388,7 @@ function Get-AppDirectDownloadInfo {
 }
 
 # Export functions
-Export-ModuleMember -Function Get-WindowsVersion, Get-WindowsOSType, Get-WindowsBuildInfo, Get-AppDirectDownloadInfo 
+# Export-ModuleMember -Function Get-WindowsVersion, Get-WindowsOSType, Get-WindowsBuildInfo, Get-AppDirectDownloadInfo
+
+# Remove the Export-ModuleMember line
+# Export-ModuleMember -Function Get-WindowsVersion, Get-WindowsOSType, Get-WindowsBuildInfo, Get-AppDirectDownloadInfo 
