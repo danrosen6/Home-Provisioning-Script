@@ -87,6 +87,15 @@ $script:Bloatware = @{
         @{Name="Messaging"; Key="ms-messaging"; Default=$true; Win10=$true; Win11=$true}
         @{Name="OneConnect"; Key="ms-oneconnect"; Default=$true; Win10=$true; Win11=$true}
         @{Name="ClipChamp"; Key="ms-clipchamp"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="Bing Weather"; Key="bing-weather"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Bing News"; Key="bing-news"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Bing Finance"; Key="bing-finance"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Windows Alarms & Clock"; Key="win-alarms"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Windows Maps"; Key="win-maps"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Windows Feedback Hub"; Key="win-feedback"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Get Help"; Key="win-gethelp"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Get Started"; Key="win-getstarted"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Microsoft Widgets"; Key="ms-widgets"; Default=$true; Win10=$false; Win11=$true}
     )
     "Entertainment & Media" = @(
         @{Name="Xbox Apps"; Key="xbox-apps"; Default=$true; Win10=$true; Win11=$true}
@@ -100,9 +109,12 @@ $script:Bloatware = @{
         @{Name="Netflix"; Key="netflix"; Default=$true; Win10=$true; Win11=$true}
         @{Name="Disney+"; Key="disney"; Default=$true; Win10=$true; Win11=$true}
         @{Name="TikTok"; Key="tiktok"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Spotify"; Key="spotify-store"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Spotify (Store)"; Key="spotify-store"; Default=$true; Win10=$true; Win11=$true}
         @{Name="Twitter"; Key="twitter"; Default=$true; Win10=$true; Win11=$true}
         @{Name="LinkedIn"; Key="linkedin"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="Instagram"; Key="instagram"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="WhatsApp"; Key="whatsapp"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Amazon Prime Video"; Key="amazon-prime"; Default=$true; Win10=$true; Win11=$true}
     )
 }
 
