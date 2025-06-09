@@ -11,11 +11,6 @@ $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 $modulePath = Join-Path $scriptPath "modules"
 $utilsPath = Join-Path $scriptPath "utils"
 
-# Import required modules
-Import-Module (Join-Path $utilsPath "Logging.psm1") -Force
-Import-Module (Join-Path $modulePath "Installers.psm1") -Force
-Import-Module (Join-Path $modulePath "SystemOptimizations.psm1") -Force
-
 # Global variables
 $script:LogPath = Join-Path -Path $PSScriptRoot -ChildPath "setup-log-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
 $script:EnableFileLogging = $true
@@ -38,6 +33,8 @@ $script:WingetInstallAttempted = $false
 $script:UseDirectDownloadOnly = $false
 $script:TempDirectory = Join-Path $env:TEMP "WindowsSetupGUI"
 $script:UISyncContext = [System.Threading.SynchronizationContext]::Current
+$script:RegistryChangesRequiringRestart = @()
+$script:RestartRequired = $false
 
 # Initialize UI elements to avoid null reference issues
 $script:txtLog = $null
@@ -251,6 +248,9 @@ Import-Module (Join-Path $utilsPath "Logging.psm1") -Force
 Import-Module (Join-Path $modulePath "Installers.psm1") -Force
 Import-Module (Join-Path $modulePath "SystemOptimizations.psm1") -Force
 
+# Import recovery utilities
+Import-Module (Join-Path $utilsPath "RecoveryUtils.psm1") -Force
+
 # Import configuration
 . (Join-Path $configPath "AppConfig.ps1")
 . (Join-Path $configPath "DownloadConfig.ps1")
@@ -261,20 +261,24 @@ Import-Module (Join-Path $modulePath "SystemOptimizations.psm1") -Force
 
 function Initialize-Logging {
     # Create log directory if it doesn't exist
-    $logDir = Split-Path -Parent $script:LogPath
+    $logDir = Join-Path $PSScriptRoot "logs"
     if (-not (Test-Path $logDir)) {
         New-Item -ItemType Directory -Path $logDir -Force | Out-Null
     }
     
+    # Set up log file path
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $script:LogPath = Join-Path $logDir "setup_${timestamp}.log"
+    $script:EnableFileLogging = $true
+    
     # Create initial log entry
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $header = "=== Windows Setup Automation Log ==="
-    $header += "`nStarted at: $timestamp"
-    $header += "`nWindows Version: $($script:OSName)"
+    $header += "`nStarted at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    $header += "`nWindows Version: $($script:OSInfo.Caption)"
     $header += "`n================================`n"
     
     Add-Content -Path $script:LogPath -Value $header
-    Write-Log "Logging initialized" -Level "INFO"
+    Write-LogMessage "Logging initialized" -Level "INFO"
 }
 
 function Write-Log {
@@ -903,6 +907,10 @@ function Start-SelectedOperations {
             return
         }
         
+        # Create system restore point
+        Write-Log "Creating system restore point..." -Level "INFO"
+        New-SystemRestorePoint -Description "Windows Setup Automation - Before Changes"
+        
         # Update UI state
         $script:btnRun.Enabled = $false
         $script:btnCancel.Enabled = $true
@@ -929,6 +937,7 @@ function Start-SelectedOperations {
             Import-Module (Join-Path $utilsPath "Logging.psm1") -Force
             Import-Module (Join-Path $modulePath "Installers.psm1") -Force
             Import-Module (Join-Path $modulePath "SystemOptimizations.psm1") -Force
+            Import-Module (Join-Path $utilsPath "RecoveryUtils.psm1") -Force
             
             # Set the direct download flag in the runspace
             $script:UseDirectDownloadOnly = $useDirectDownloadOnly
@@ -1196,6 +1205,35 @@ function Start-SelectedOperations {
                     $script:IsRunning = $false
                     $script:btnRun.Enabled = $true
                     $script:btnCancel.Enabled = $false
+                    
+                    # Check if restart is needed
+                    if ($script:RestartRequired) {
+                        $restartMessage = "The following changes require a restart to fully take effect:`n`n"
+                        $restartMessage += ($script:RegistryChangesRequiringRestart -join "`n")
+                        $restartMessage += "`n`nWould you like to restart your computer now?"
+                        
+                        $result = [System.Windows.Forms.MessageBox]::Show(
+                            $restartMessage,
+                            "Restart Required",
+                            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                            [System.Windows.Forms.MessageBoxIcon]::Question
+                        )
+                        
+                        if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+                            # Give the user a few seconds to save work
+                            Write-Log "System will restart in 15 seconds. Please save your work." -Level "WARNING"
+                            Start-Sleep -Seconds 5
+                            Write-Log "System will restart in 10 seconds..." -Level "WARNING"
+                            Start-Sleep -Seconds 5
+                            Write-Log "System will restart in 5 seconds..." -Level "WARNING"
+                            Start-Sleep -Seconds 5
+                            
+                            # Restart computer
+                            Restart-Computer -Force
+                        } else {
+                            Write-Log "Please restart your computer later to apply all changes." -Level "WARNING"
+                        }
+                    }
                 }
             }
             catch {
@@ -1332,6 +1370,40 @@ $form.Add_Shown({
         $script:UseDirectDownloadOnly = $false
     }
     
+    # Check for failed operations that need recovery
+    try {
+        $failedOps = Get-OperationState
+        if ($failedOps) {
+            $failedCount = 0
+            
+            # Count failed operations
+            foreach ($opType in $failedOps.Keys) {
+                foreach ($itemKey in $failedOps[$opType].Keys) {
+                    if ($failedOps[$opType][$itemKey].Status -eq "Failed" -or $failedOps[$opType][$itemKey].Status -eq "InProgress") {
+                        $failedCount++
+                    }
+                }
+            }
+            
+            if ($failedCount -gt 0) {
+                $recoveryMessage = "There appear to be $failedCount failed operations from a previous run. Would you like to attempt recovery?"
+                $result = [System.Windows.Forms.MessageBox]::Show(
+                    $recoveryMessage,
+                    "Recovery Available",
+                    [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                    [System.Windows.Forms.MessageBoxIcon]::Question
+                )
+                
+                if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+                    Restore-FailedOperations
+                }
+            }
+        }
+    }
+    catch {
+        Write-Log "Error checking for failed operations: $_" -Level "WARNING"
+    }
+    
     Write-Log "Select applications and click 'Run Selected Tasks' to begin" -Level "INFO"
 })
 
@@ -1369,4 +1441,4 @@ if ($script:ProgressTimer -ne $null) {
 }
 Cleanup-TempFiles
 
-#endregion Main Script 
+#endregion Main Script

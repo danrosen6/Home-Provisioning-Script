@@ -27,127 +27,447 @@ function Write-LogMessage {
         default { "White" }
     }
     Write-Host $logMessage -ForegroundColor $color
-}
-
-function Get-AppDirectDownloadInfo {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$AppName
-    )
     
-    # Define download information for common applications (matching GUI app keys)
-    $downloadInfo = @{
-        "vscode" = @{
-            Url = "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64"
-            FileName = "VSCodeSetup-x64.exe"
-            FileType = "exe"
-            Arguments = "/VERYSILENT /MERGETASKS=!runcode"
+    # Try to write to GUI if available
+    if ($script:txtLog -ne $null) {
+        try {
+            $script:txtLog.SelectionColor = switch ($Level) {
+                "ERROR" { [System.Drawing.Color]::Red }
+                "WARNING" { [System.Drawing.Color]::Orange }
+                "SUCCESS" { [System.Drawing.Color]::Green }
+                default { [System.Drawing.Color]::Black }
+            }
+            $script:txtLog.AppendText("$logMessage`r`n")
+            $script:txtLog.SelectionStart = $script:txtLog.Text.Length
+            $script:txtLog.ScrollToCaret()
         }
-        "git" = @{
-            Url = "https://github.com/git-for-windows/git/releases/download/v2.43.0.windows.1/Git-2.43.0-64-bit.exe"
-            FileName = "Git-2.43.0-64-bit.exe"
-            FileType = "exe"
-            Arguments = "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"
-        }
-        "python" = @{
-            Url = "https://www.python.org/ftp/python/3.12.1/python-3.12.1-amd64.exe"
-            FileName = "python-3.12.1-amd64.exe"
-            FileType = "exe"
-            Arguments = "/quiet InstallAllUsers=1 PrependPath=1"
-        }
-        "pycharm" = @{
-            Url = "https://download.jetbrains.com/python/pycharm-community-2023.3.2.exe"
-            FileName = "pycharm-community-2023.3.2.exe"
-            FileType = "exe"
-            Arguments = "/S /CONFIG=silent.config"
-        }
-        "github" = @{
-            Url = "https://central.github.com/deployments/desktop/desktop/latest/win32"
-            FileName = "GitHubDesktopSetup.exe"
-            FileType = "exe"
-            Arguments = "--silent"
-        }
-        "postman" = @{
-            Url = "https://dl.pstmn.io/download/latest/win64"
-            FileName = "PostmanSetup.exe"
-            FileType = "exe"
-            Arguments = "--silent"
-        }
-        "nodejs" = @{
-            Url = "https://nodejs.org/dist/v20.10.0/node-v20.10.0-x64.msi"
-            FileName = "node-v20.10.0-x64.msi"
-            FileType = "msi"
-            Arguments = "/quiet /norestart"
-        }
-        "chrome" = @{
-            Url = "https://dl.google.com/chrome/install/latest/chrome_installer.exe"
-            FileName = "chrome_installer.exe"
-            FileType = "exe"
-            Arguments = "/silent /install"
-        }
-        "firefox" = @{
-            Url = "https://download.mozilla.org/?product=firefox-latest&os=win64&lang=en-US"
-            FileName = "FirefoxSetup.exe"
-            FileType = "exe"
-            Arguments = "/S"
-        }
-        "brave" = @{
-            Url = "https://referrals.brave.com/latest/BraveBrowserSetup.exe"
-            FileName = "BraveBrowserSetup.exe"
-            FileType = "exe"
-            Arguments = "/silent /install"
-        }
-        "spotify" = @{
-            Url = "https://download.scdn.co/SpotifySetup.exe"
-            FileName = "SpotifySetup.exe"
-            FileType = "exe"
-            Arguments = "/silent"
-        }
-        "discord" = @{
-            Url = "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64"
-            FileName = "DiscordSetup.exe"
-            FileType = "exe"
-            Arguments = "--silent"
-        }
-        "steam" = @{
-            Url = "https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe"
-            FileName = "SteamSetup.exe"
-            FileType = "exe"
-            Arguments = "/S"
-        }
-        "vlc" = @{
-            Url = "https://download.videolan.org/vlc/last/win64/vlc-3.0.20-win64.exe"
-            FileName = "vlc-3.0.20-win64.exe"
-            FileType = "exe"
-            Arguments = "/S"
-        }
-        "7zip" = @{
-            Url = "https://www.7-zip.org/a/7z2301-x64.msi"
-            FileName = "7z2301-x64.msi"
-            FileType = "msi"
-            Arguments = "/quiet /norestart"
-        }
-        "notepadplusplus" = @{
-            Url = "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.6.2/npp.8.6.2.Installer.x64.exe"
-            FileName = "npp.8.6.2.Installer.x64.exe"
-            FileType = "exe"
-            Arguments = "/S"
-        }
-        "powertoys" = @{
-            Url = "https://github.com/microsoft/PowerToys/releases/download/v0.78.0/PowerToysSetup-0.78.0-x64.exe"
-            FileName = "PowerToysSetup-0.78.0-x64.exe"
-            FileType = "exe"
-            Arguments = "/silent"
-        }
-        "terminal" = @{
-            Url = "https://github.com/microsoft/terminal/releases/download/v1.18.3282.0/Microsoft.WindowsTerminal_Win11_1.18.3282.0_8wekyb3d8bbwe.msixbundle"
-            FileName = "Microsoft.WindowsTerminal.msixbundle"
-            FileType = "msixbundle"
-            Arguments = ""
+        catch {
+            Write-Host "Error updating log textbox: $_" -ForegroundColor Red
         }
     }
     
-    return $downloadInfo[$AppName]
+    # Write to log file if enabled
+    if ($script:EnableFileLogging -and $script:LogPath) {
+        try {
+            Add-Content -Path $script:LogPath -Value $logMessage -ErrorAction Stop
+        }
+        catch {
+            Write-Host "Failed to write to log file: $_" -ForegroundColor Red
+        }
+    }
+}
+
+# Function to get the latest version URLs dynamically
+function Get-LatestVersionUrl {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$ApplicationName
+    )
+    
+    switch ($ApplicationName) {
+        "Git" {
+            try {
+                # Get latest Git release information
+                $apiUrl = "https://api.github.com/repos/git-for-windows/git/releases/latest"
+                $releaseInfo = Invoke-RestMethod -Uri $apiUrl -TimeoutSec 10 -ErrorAction Stop
+                
+                # Find the 64-bit installer asset
+                $asset = $releaseInfo.assets | Where-Object { $_.name -like "Git-*-64-bit.exe" } | Select-Object -First 1
+                
+                if ($asset) {
+                    return $asset.browser_download_url
+                }
+            } catch {
+                Write-LogMessage "Error getting latest Git version: $_" -Level "WARNING"
+            }
+            # Fallback to a known URL pattern without version
+            return "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe"
+        }
+        "Python" {
+            try {
+                # Get Python versions from the website
+                $webRequest = Invoke-WebRequest -Uri "https://www.python.org/downloads/windows/" -UseBasicParsing -ErrorAction Stop
+                
+                # Extract the latest Python 3 version
+                if ($webRequest.Content -match "Latest Python 3 Release - Python (3\.\d+\.\d+)") {
+                    $latestVersion = $matches[1]
+                    return "https://www.python.org/ftp/python/$latestVersion/python-$latestVersion-amd64.exe"
+                }
+            } catch {
+                Write-LogMessage "Error getting latest Python version: $_" -Level "WARNING"
+            }
+            # Fallback to a reasonably current version
+            return "https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe"
+        }
+        "PyCharm" {
+            try {
+                # Get latest PyCharm version from JetBrains website
+                $webRequest = Invoke-WebRequest -Uri "https://data.services.jetbrains.com/products/releases?code=PCC&latest=true&type=release" -UseBasicParsing -ErrorAction Stop
+                
+                $releaseInfo = $webRequest.Content | ConvertFrom-Json
+                $latestVersion = $releaseInfo.PCC[0].version
+                $downloadUrl = $releaseInfo.PCC[0].downloads.windows.link
+                
+                if ($downloadUrl) {
+                    return $downloadUrl
+                }
+            } catch {
+                Write-LogMessage "Error getting latest PyCharm version: $_" -Level "WARNING"
+            }
+            # Fallback to a known URL pattern
+            return "https://download.jetbrains.com/python/pycharm-community-latest.exe"
+        }
+        "VLC" {
+            try {
+                # Get VLC version information
+                $webRequest = Invoke-WebRequest -Uri "https://www.videolan.org/vlc/download-windows.html" -UseBasicParsing -ErrorAction Stop
+                
+                # Extract the latest version
+                if ($webRequest.Content -match "vlc-(\d+\.\d+\.\d+)-win64.exe") {
+                    $latestVersion = $matches[1]
+                    return "https://get.videolan.org/vlc/$latestVersion/win64/vlc-$latestVersion-win64.exe"
+                }
+            } catch {
+                Write-LogMessage "Error getting latest VLC version: $_" -Level "WARNING"
+            }
+            # Fallback to a mirror that may have the latest version
+            return "https://download.videolan.org/pub/videolan/vlc/last/win64/vlc-latest-win64.exe"
+        }
+        "7-Zip" {
+            try {
+                # Get 7-Zip version from website
+                $webRequest = Invoke-WebRequest -Uri "https://www.7-zip.org/download.html" -UseBasicParsing -ErrorAction Stop
+                
+                # Extract the latest version for 64-bit Windows
+                if ($webRequest.Content -match "Download 7-Zip ([\d\.]+) \((?:\d{4}-\d{2}-\d{2})\) for Windows") {
+                    $latestVersion = $matches[1]
+                    $formattedVersion = $latestVersion -replace "\.", ""
+                    return "https://www.7-zip.org/a/7z$formattedVersion-x64.exe"
+                }
+            } catch {
+                Write-LogMessage "Error getting latest 7-Zip version: $_" -Level "WARNING"
+            }
+            # Fallback to a recent version
+            return "https://www.7-zip.org/a/7z2301-x64.exe"
+        }
+        "Notepad++" {
+            try {
+                # Get latest Notepad++ release from GitHub
+                $apiUrl = "https://api.github.com/repos/notepad-plus-plus/notepad-plus-plus/releases/latest"
+                $releaseInfo = Invoke-RestMethod -Uri $apiUrl -TimeoutSec 10 -ErrorAction Stop
+                
+                # Find the 64-bit installer asset
+                $asset = $releaseInfo.assets | Where-Object { $_.name -like "*Installer.x64.exe" } | Select-Object -First 1
+                
+                if ($asset) {
+                    return $asset.browser_download_url
+                }
+            } catch {
+                Write-LogMessage "Error getting latest Notepad++ version: $_" -Level "WARNING"
+            }
+            # Fallback to a URL that should redirect to the latest version
+            return "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/latest/download/npp.Installer.x64.exe"
+        }
+        default {
+            # For all other applications, use the existing hardcoded URLs
+            return $null
+        }
+    }
+}
+
+# Function to test if an application is installed
+function Test-ApplicationInstalled {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$AppName,
+        
+        [Parameter(Mandatory=$false)]
+        [string[]]$VerificationPaths = @(),
+        
+        [Parameter(Mandatory=$false)]
+        [string]$RegistryPath = "",
+        
+        [Parameter(Mandatory=$false)]
+        [string]$RegistryValue = "",
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$CheckCommand = $false
+    )
+    
+    Write-LogMessage "Verifying installation for $AppName..." -Level "INFO"
+    
+    # First try checking verification paths if provided
+    if ($VerificationPaths -and $VerificationPaths.Count -gt 0) {
+        foreach ($path in $VerificationPaths) {
+            # Handle wildcard paths specially
+            if ($path -match "\*") {
+                $directory = Split-Path -Parent $path
+                $filename = Split-Path -Leaf $path
+                
+                # Skip if the base directory doesn't exist
+                if (-not (Test-Path $directory)) {
+                    continue
+                }
+                
+                # Try to find matching files
+                $matchingFiles = Get-ChildItem -Path $directory -Recurse -Filter $filename -ErrorAction SilentlyContinue
+                if ($matchingFiles -and $matchingFiles.Count -gt 0) {
+                    Write-LogMessage "Installation verified: Found $($matchingFiles[0].FullName) for $AppName" -Level "SUCCESS"
+                    return $true
+                }
+                
+                # For directories like Discord with version-numbered folders
+                if ($path -match "app-\*") {
+                    $parentDir = Split-Path -Parent $directory
+                    $folderPattern = Split-Path -Leaf $directory
+                    $fileNameToFind = $filename
+                    
+                    # Skip if the parent directory doesn't exist
+                    if (-not (Test-Path $parentDir)) {
+                        continue
+                    }
+                    
+                    # Find version folders
+                    $versionFolders = Get-ChildItem -Path $parentDir -Directory -Filter $folderPattern.Replace("*", "*") -ErrorAction SilentlyContinue
+                    
+                    foreach ($folder in $versionFolders) {
+                        $potentialPath = Join-Path $folder.FullName $fileNameToFind
+                        if (Test-Path $potentialPath) {
+                            Write-LogMessage "Installation verified: Found $potentialPath for $AppName" -Level "SUCCESS"
+                            return $true
+                        }
+                    }
+                }
+            }
+            else {
+                if (Test-Path $path) {
+                    Write-LogMessage "Installation verified: Found $path for $AppName" -Level "SUCCESS"
+                    return $true
+                }
+            }
+        }
+    }
+    
+    # Check registry if path provided
+    if ($RegistryPath -and $RegistryValue) {
+        try {
+            $regValue = Get-ItemProperty -Path $RegistryPath -Name $RegistryValue -ErrorAction SilentlyContinue
+            if ($regValue -and $regValue.$RegistryValue) {
+                Write-LogMessage "Installation verified: Found registry entry for $AppName" -Level "SUCCESS"
+                return $true
+            }
+        }
+        catch {
+            # Registry check failed, continue to other methods
+        }
+    }
+    
+    # Check command availability if requested
+    if ($CheckCommand) {
+        $appCommand = $AppName
+        # Map some app names to their command names
+        $commandMap = @{
+            "Visual Studio Code" = "code"
+            "Google Chrome" = "chrome"
+            "Mozilla Firefox" = "firefox"
+            "Git" = "git"
+            "Python" = "python"
+            "Notepad++" = "notepad++"
+            "7-Zip" = "7z"
+        }
+        
+        if ($commandMap.ContainsKey($AppName)) {
+            $appCommand = $commandMap[$AppName]
+        }
+        
+        if (Get-Command $appCommand -ErrorAction SilentlyContinue) {
+            Write-LogMessage "Installation verified: Command '$appCommand' is available for $AppName" -Level "SUCCESS"
+            return $true
+        }
+    }
+    
+    # For Windows 10/11 UWP apps
+    if ($AppName -match "Microsoft|Windows") {
+        try {
+            $appxPackage = Get-AppxPackage -Name "*$AppName*" -ErrorAction SilentlyContinue
+            if ($appxPackage) {
+                Write-LogMessage "Installation verified: Found UWP package for $AppName" -Level "SUCCESS"
+                return $true
+            }
+        }
+        catch {
+            # AppX check failed, continue
+        }
+    }
+    
+    # Try Windows Features for specific items
+    if ($AppName -match "Windows Terminal|PowerToys") {
+        try {
+            # Check Microsoft Store apps
+            $storeApp = Get-AppxPackage -Name "*$AppName*" -ErrorAction SilentlyContinue
+            if ($storeApp) {
+                Write-LogMessage "Installation verified: Found Microsoft Store app for $AppName" -Level "SUCCESS"
+                return $true
+            }
+        }
+        catch {
+            # Store app check failed
+        }
+    }
+    
+    Write-LogMessage "Could not verify installation for $AppName" -Level "WARNING"
+    return $false
+}
+
+function Get-AppDirectDownloadInfo {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AppName
+    )
+
+    # Use dynamic version lookup first for applications with hardcoded versions
+    $latestUrl = Get-LatestVersionUrl -ApplicationName $AppName
+    
+    $downloadInfo = @{
+        "Brave" = @{
+            Url = "https://referrals.brave.com/latest/BraveBrowserSetup.exe"
+            Extension = ".exe"
+            Arguments = "/silent /install"
+            VerificationPaths = @(
+                "${env:ProgramFiles}\BraveSoftware\Brave-Browser\Application\brave.exe",
+                "${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser\Application\brave.exe"
+            )
+        }
+        "Google Chrome" = @{
+            Url = "https://dl.google.com/chrome/install/latest/chrome_installer.exe"
+            Extension = ".exe"
+            Arguments = "/silent /install"
+            VerificationPaths = @(
+                "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe",
+                "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+            )
+        }
+        "Mozilla Firefox" = @{
+            Url = "https://download.mozilla.org/?product=firefox-latest-ssl&os=win64&lang=en-US"
+            Extension = ".exe"
+            Arguments = "-ms"
+            VerificationPaths = @(
+                "${env:ProgramFiles}\Mozilla Firefox\firefox.exe",
+                "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe"
+            )
+        }
+        "Postman" = @{
+            Url = "https://dl.pstmn.io/download/latest/win64"
+            Extension = ".exe"
+            Arguments = "/S"
+            VerificationPaths = @(
+                "${env:LocalAppData}\Postman\Postman.exe"
+            )
+        }
+        "GitHub Desktop" = @{
+            Url = "https://desktop.github.com/releases/latest/GitHubDesktopSetup.exe"
+            Extension = ".exe"
+            Arguments = "/silent"
+            VerificationPaths = @(
+                "${env:LocalAppData}\GitHubDesktop\GitHubDesktop.exe"
+            )
+        }
+        "Git" = @{
+            Url = if ($latestUrl) { $latestUrl } else { "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe" }
+            Extension = ".exe"
+            Arguments = '/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS="icons,ext\reg\shellhere,assoc,assoc_sh"'
+            VerificationPaths = @(
+                "${env:ProgramFiles}\Git\cmd\git.exe",
+                "${env:ProgramFiles(x86)}\Git\cmd\git.exe"
+            )
+        }
+        "Visual Studio Code" = @{
+            Url = "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64"
+            Extension = ".exe"
+            Arguments = "/VERYSILENT /MERGETASKS=!runcode"
+            VerificationPaths = @(
+                "${env:ProgramFiles}\Microsoft VS Code\Code.exe",
+                "${env:ProgramFiles(x86)}\Microsoft VS Code\Code.exe"
+            )
+        }
+        "PyCharm" = @{
+            Url = if ($latestUrl) { $latestUrl } else { "https://download.jetbrains.com/python/pycharm-community-latest.exe" }
+            Extension = ".exe"
+            Arguments = "/S"
+            VerificationPaths = @(
+                "${env:ProgramFiles}\JetBrains\PyCharm Community Edition\bin\pycharm64.exe",
+                "${env:ProgramFiles(x86)}\JetBrains\PyCharm Community Edition\bin\pycharm64.exe"
+            )
+        }
+        "Python" = @{
+            Url = if ($latestUrl) { $latestUrl } else { "https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe" }
+            Extension = ".exe"
+            Arguments = "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0"
+            VerificationPaths = @(
+                "${env:ProgramFiles}\Python*\python.exe",
+                "${env:ProgramFiles(x86)}\Python*\python.exe"
+            )
+        }
+        "Steam" = @{
+            Url = "https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe"
+            Extension = ".exe"
+            Arguments = "/S"
+            VerificationPaths = @(
+                "${env:ProgramFiles(x86)}\Steam\Steam.exe"
+            )
+        }
+        "VLC" = @{
+            Url = if ($latestUrl) { $latestUrl } else { "https://download.videolan.org/pub/videolan/vlc/last/win64/vlc-latest-win64.exe" }
+            Extension = ".exe"
+            Arguments = "/S"
+            VerificationPaths = @(
+                "${env:ProgramFiles}\VideoLAN\VLC\vlc.exe",
+                "${env:ProgramFiles(x86)}\VideoLAN\VLC\vlc.exe"
+            )
+        }
+        "Spotify" = @{
+            Url = "https://download.scdn.co/SpotifySetup.exe"
+            Extension = ".exe"
+            Arguments = "/silent"
+            VerificationPaths = @(
+                "${env:AppData}\Spotify\Spotify.exe",
+                "${env:ProgramFiles}\Spotify\Spotify.exe",
+                "${env:ProgramFiles(x86)}\Spotify\Spotify.exe"
+            )
+        }
+        "Discord" = @{
+            Url = "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x86"
+            Extension = ".exe"
+            Arguments = "/S"
+            VerificationPaths = @(
+                "${env:LocalAppData}\Discord\app-*\Discord.exe"
+            )
+        }
+        "Notepad++" = @{
+            Url = if ($latestUrl) { $latestUrl } else { "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/latest/download/npp.Installer.x64.exe" }
+            Extension = ".exe"
+            Arguments = "/S"
+            VerificationPaths = @(
+                "${env:ProgramFiles}\Notepad++\notepad++.exe",
+                "${env:ProgramFiles(x86)}\Notepad++\notepad++.exe"
+            )
+        }
+        "7-Zip" = @{
+            Url = if ($latestUrl) { $latestUrl } else { "https://www.7-zip.org/a/7z2301-x64.exe" }
+            Extension = ".exe"
+            Arguments = "/S"
+            VerificationPaths = @(
+                "${env:ProgramFiles}\7-Zip\7z.exe",
+                "${env:ProgramFiles(x86)}\7-Zip\7z.exe"
+            )
+        }
+    }
+
+    if ($downloadInfo.ContainsKey($AppName)) {
+        return $downloadInfo[$AppName]
+    } else {
+        return $null
+    }
 }
 
 function Test-InstalledVersion {
@@ -197,7 +517,7 @@ function Test-FileChecksum {
         return $hash.Hash -eq $ExpectedChecksum.Split(':')[1]
     }
     catch {
-        Write-Log "Failed to verify file checksum: $_" -Level "ERROR"
+        Write-LogMessage "Failed to verify file checksum: $_" -Level "ERROR"
         return $false
     }
 }
@@ -208,61 +528,306 @@ function Install-Winget {
         [System.Threading.CancellationToken]$CancellationToken
     )
     
-    Write-Log "Starting winget installation..." -Level "INFO"
+    Write-LogMessage "Starting winget installation..." -Level "INFO"
     
     # Check for cancellation
     if ($CancellationToken.IsCancellationRequested) {
-        Write-Log "Winget installation cancelled" -Level "WARNING"
+        Write-LogMessage "Winget installation cancelled" -Level "WARNING"
         return $false
     }
     
     # Check if winget is already installed
     if (Get-Command winget -ErrorAction SilentlyContinue) {
-        Write-Log "Winget is already installed" -Level "INFO"
+        Write-LogMessage "Winget is already installed" -Level "INFO"
         return $true
     }
     
-    # Try Microsoft Store installation
-    Write-Log "Attempting to install winget via Microsoft Store..." -Level "INFO"
+    # Create src-specific download directory
+    $scriptPath = Split-Path -Parent $PSScriptRoot
+    $downloadDir = Join-Path $scriptPath "downloads"
+    if (-not (Test-Path $downloadDir)) {
+        New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
+        Write-LogMessage "Created download directory at: $downloadDir" -Level "INFO"
+    }
+    
+    # Try Microsoft Store installation first
+    Write-LogMessage "Attempting to install winget via Microsoft Store..." -Level "INFO"
     try {
         $wingetUrl = "ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1"
         Start-Process $wingetUrl
-        Write-Log "Please complete the winget installation from the Microsoft Store" -Level "INFO"
+        Write-LogMessage "Please complete the winget installation from the Microsoft Store" -Level "INFO"
         return $true
     }
     catch {
-        Write-Log "Failed to open Microsoft Store: $_" -Level "WARNING"
+        Write-LogMessage "Failed to open Microsoft Store: $_" -Level "WARNING"
     }
     
     # Fallback to direct download
-    Write-Log "Attempting direct download of winget..." -Level "INFO"
+    Write-LogMessage "Attempting direct download of winget..." -Level "INFO"
     try {
-        $tempDir = Join-Path $env:TEMP "winget-install"
-        if (-not (Test-Path $tempDir)) {
-            New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+        # Create winget-specific directory
+        $wingetDir = Join-Path $downloadDir "winget"
+        if (-not (Test-Path $wingetDir)) {
+            New-Item -ItemType Directory -Path $wingetDir -Force | Out-Null
+            Write-LogMessage "Created winget directory at: $wingetDir" -Level "INFO"
         }
         
         # Download the latest winget release
         $releaseUrl = "https://api.github.com/repos/microsoft/winget-cli/releases/latest"
+        Write-LogMessage "Fetching latest winget release information..." -Level "INFO"
         $release = Invoke-RestMethod -Uri $releaseUrl
         $msixBundle = $release.assets | Where-Object { $_.name -like "*.msixbundle" } | Select-Object -First 1
         
         if ($null -eq $msixBundle) {
-            Write-Log "Could not find winget MSIX bundle" -Level "ERROR"
+            Write-LogMessage "Could not find winget MSIX bundle" -Level "ERROR"
             return $false
         }
         
-        $downloadPath = Join-Path $tempDir $msixBundle.name
-        Invoke-WebRequest -Uri $msixBundle.browser_download_url -OutFile $downloadPath
+        $downloadPath = Join-Path $wingetDir $msixBundle.name
+        Write-LogMessage "Downloading winget bundle to: $downloadPath" -Level "INFO"
+        
+        # Download with progress reporting
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($msixBundle.browser_download_url, $downloadPath)
+        
+        # Verify download
+        if (-not (Test-Path $downloadPath)) {
+            Write-LogMessage "Download failed - file not found at expected location" -Level "ERROR"
+            return $false
+        }
+        
+        Write-LogMessage "Download completed successfully" -Level "SUCCESS"
         
         # Install the bundle
-        Add-AppxPackage -Path $downloadPath
+        Write-LogMessage "Installing winget package..." -Level "INFO"
+        Add-AppxPackage -Path $downloadPath -ErrorAction Stop
         
-        Write-Log "Winget installed successfully!" -Level "SUCCESS"
-        return $true
+        # Clean up download
+        Remove-Item $downloadPath -Force -ErrorAction SilentlyContinue
+        Write-LogMessage "Cleaned up downloaded package" -Level "INFO"
+        
+        # Verify installation
+        Start-Sleep -Seconds 3  # Give time for installation to complete
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            Write-LogMessage "Winget installed successfully!" -Level "SUCCESS"
+            return $true
+        } else {
+            Write-LogMessage "Winget command not found after installation" -Level "ERROR"
+            return $false
+        }
     }
     catch {
-        Write-Log "Failed to install winget: $_" -Level "ERROR"
+        Write-LogMessage "Failed to install winget: $_" -Level "ERROR"
+        return $false
+    }
+}
+
+function Update-Environment {
+    Write-LogMessage "Updating environment variables..." -Level "INFO"
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+}
+
+function Install-Application {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AppName,
+        [Parameter(Mandatory=$false)]
+        [string]$WingetId = "",
+        [Parameter(Mandatory=$false)]
+        [hashtable]$DirectDownload = $null,
+        [Parameter(Mandatory=$false)]
+        [switch]$Force,
+        [System.Threading.CancellationToken]$CancellationToken
+    )
+    
+    Write-LogMessage "Installing application: $AppName" -Level "INFO"
+    
+    # Track in recovery system
+    Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "InProgress"
+    
+    # Check for cancellation
+    if ($CancellationToken.IsCancellationRequested) {
+        Write-LogMessage "Installation cancelled" -Level "WARNING"
+        Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Cancelled"
+        return $false
+    }
+    
+    # Skip if already installed and not forced
+    if (-not $Force) {
+        $isInstalled = Test-ApplicationInstalled -AppName $AppName -CheckCommand
+        if ($isInstalled) {
+            Write-LogMessage "$AppName is already installed, skipping installation" -Level "INFO"
+            Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Skipped" -AdditionalData @{
+                Reason = "Already installed"
+            }
+            return $true
+        }
+    }
+    
+    # Try winget first
+    if (-not $script:UseDirectDownloadOnly -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+        # Map app name to winget ID if not provided
+        if (-not $WingetId) {
+            $WingetId = switch ($AppName) {
+                "Visual Studio Code" { "Microsoft.VisualStudioCode" }
+                "Git" { "Git.Git" }
+                "Python" { "Python.Python.3" }
+                "PyCharm" { "JetBrains.PyCharm.Community" }
+                "GitHub Desktop" { "GitHub.GitHubDesktop" }
+                "Postman" { "Postman.Postman" }
+                "Node.js" { "OpenJS.NodeJS.LTS" }
+                "Windows Terminal" { "Microsoft.WindowsTerminal" }
+                "Google Chrome" { "Google.Chrome" }
+                "Mozilla Firefox" { "Mozilla.Firefox" }
+                "Brave Browser" { "Brave.Browser" }
+                "Spotify" { "Spotify.Spotify" }
+                "Discord" { "Discord.Discord" }
+                "Steam" { "Valve.Steam" }
+                "VLC" { "VideoLAN.VLC" }
+                "7-Zip" { "7zip.7zip" }
+                "Notepad++" { "Notepad++.Notepad++" }
+                "Microsoft PowerToys" { "Microsoft.PowerToys" }
+                default { $null }
+            }
+        }
+        
+        if ($WingetId) {
+            Write-LogMessage "Installing $AppName via winget (ID: $WingetId)..." -Level "INFO"
+            try {
+                $wingetOutput = winget install --id $WingetId --accept-source-agreements --accept-package-agreements --silent 2>&1
+                
+                if ($LASTEXITCODE -eq 0 -or $wingetOutput -match "Successfully installed") {
+                    Write-LogMessage "$AppName installed successfully via winget!" -Level "SUCCESS"
+                    Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Completed" -AdditionalData @{
+                        Method = "Winget"
+                        WingetId = $WingetId
+                    }
+                    
+                    # Refresh environment variables
+                    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+                    
+                    return $true
+                }
+                else {
+                    Write-LogMessage "Winget installation failed with exit code: $LASTEXITCODE" -Level "WARNING"
+                    Write-LogMessage "Winget output: $wingetOutput" -Level "DEBUG"
+                    # Continue to direct download method
+                }
+            }
+            catch {
+                Write-LogMessage "Error using winget: $_" -Level "WARNING"
+                # Continue to direct download method
+            }
+        }
+    }
+    
+    # If no direct download info was provided, try to get it
+    if ($null -eq $DirectDownload) {
+        # First try to get dynamic latest version
+        $latestUrl = Get-LatestVersionUrl -ApplicationName $AppName
+        
+        # Then get the standard download info
+        $DirectDownload = Get-AppDirectDownloadInfo -AppName $AppName
+        
+        # Update with latest URL if available
+        if ($latestUrl -and $DirectDownload) {
+            Write-LogMessage "Using dynamically retrieved latest version URL for $AppName" -Level "INFO"
+            $DirectDownload.Url = $latestUrl
+        }
+    }
+    
+    if ($null -eq $DirectDownload) {
+        Write-LogMessage "No download information available for $AppName" -Level "ERROR"
+        Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Failed" -AdditionalData @{
+            Error = "No download information available"
+            Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        }
+        return $false
+    }
+    
+    try {
+        # Create download directory
+        $scriptPath = Split-Path -Parent $PSScriptRoot
+        $downloadDir = Join-Path $scriptPath "downloads"
+        if (-not (Test-Path $downloadDir)) {
+            New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
+        }
+        
+        # Create app-specific directory
+        $appDir = Join-Path $downloadDir $AppName
+        if (-not (Test-Path $appDir)) {
+            New-Item -ItemType Directory -Path $appDir -Force | Out-Null
+        }
+        
+        # Download the installer
+        $installerPath = Join-Path $appDir "$AppName$($DirectDownload.Extension)"
+        Write-LogMessage "Downloading from: $($DirectDownload.Url)" -Level "INFO"
+        
+        try {
+            $webClient = New-Object System.Net.WebClient
+            $webClient.DownloadFile($DirectDownload.Url, $installerPath)
+            Write-LogMessage "Download completed successfully" -Level "SUCCESS"
+        }
+        catch {
+            Write-LogMessage "Download failed: $_" -Level "ERROR"
+            Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Failed" -AdditionalData @{
+                Error = "Download failed: $_"
+                Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            }
+            return $false
+        }
+        
+        # Check for cancellation
+        if ($CancellationToken.IsCancellationRequested) {
+            Write-LogMessage "Installation cancelled" -Level "WARNING"
+            Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Cancelled"
+            return $false
+        }
+        
+        # Run the installer
+        Write-LogMessage "Running installer..." -Level "INFO"
+        $process = Start-Process -FilePath $installerPath -ArgumentList $DirectDownload.Arguments -Wait -PassThru
+        
+        if ($process.ExitCode -eq 0) {
+            Write-LogMessage "Installation completed successfully" -Level "SUCCESS"
+            
+            # Verify installation
+            $verificationResult = Test-ApplicationInstalled -AppName $AppName -VerificationPaths $DirectDownload.VerificationPaths -CheckCommand
+            
+            if ($verificationResult) {
+                Write-LogMessage "Installation verified for $AppName" -Level "SUCCESS"
+                Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Completed" -AdditionalData @{
+                    Method = "Direct"
+                    Url = $DirectDownload.Url
+                }
+            } else {
+                Write-LogMessage "Installation completed but verification failed for $AppName" -Level "WARNING"
+                Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "CompletedWithWarning" -AdditionalData @{
+                    Method = "Direct"
+                    Url = $DirectDownload.Url
+                    Warning = "Verification failed"
+                }
+            }
+            
+            # Clean up installer
+            Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+            
+            return $true
+        } else {
+            Write-LogMessage "Installation failed with exit code: $($process.ExitCode)" -Level "ERROR"
+            Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Failed" -AdditionalData @{
+                Error = "Installation failed with exit code: $($process.ExitCode)"
+                Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            }
+            return $false
+        }
+    }
+    catch {
+        Write-LogMessage "Failed to install $AppName : $_" -Level "ERROR"
+        Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Failed" -AdditionalData @{
+            Error = $_.Exception.Message
+            Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        }
         return $false
     }
 }
@@ -282,40 +847,40 @@ function Install-Python {
         [System.Threading.CancellationToken]$CancellationToken
     )
     
-    Write-Log "Starting Python $Version installation..." -Level "INFO"
+    Write-LogMessage "Starting Python $Version installation..." -Level "INFO"
     
     # Check for cancellation
     if ($CancellationToken.IsCancellationRequested) {
-        Write-Log "Python installation cancelled" -Level "WARNING"
+        Write-LogMessage "Python installation cancelled" -Level "WARNING"
         return $false
     }
     
     # Try winget first
     if (-not $script:UseDirectDownloadOnly -and (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Write-Log "Installing Python via winget..." -Level "INFO"
+        Write-LogMessage "Installing Python via winget..." -Level "INFO"
         try {
             $wingetOutput = winget install --id "Python.Python.$Version" --accept-source-agreements --accept-package-agreements --silent 2>&1
             
             if ($LASTEXITCODE -eq 0 -or $wingetOutput -match "Successfully installed") {
-                Write-Log "Python installed successfully via winget!" -Level "SUCCESS"
+                Write-LogMessage "Python installed successfully via winget!" -Level "SUCCESS"
                 
                 # Refresh environment variables
                 Update-Environment
                 
                 # Create virtual environment if requested
                 if ($CreateVirtualEnv) {
-                    Write-Log "Creating Python virtual environment: $VirtualEnvName" -Level "INFO"
+                    Write-LogMessage "Creating Python virtual environment: $VirtualEnvName" -Level "INFO"
                     try {
                         python -m venv $VirtualEnvName
-                        Write-Log "Virtual environment created successfully" -Level "SUCCESS"
+                        Write-LogMessage "Virtual environment created successfully" -Level "SUCCESS"
                         
                         # Activate and upgrade pip
                         & "$VirtualEnvName\Scripts\activate.ps1"
                         python -m pip install --upgrade pip setuptools wheel
-                        Write-Log "Pip upgraded in virtual environment" -Level "SUCCESS"
+                        Write-LogMessage "Pip upgraded in virtual environment" -Level "SUCCESS"
                     }
                     catch {
-                        Write-Log "Failed to create virtual environment: $_" -Level "WARNING"
+                        Write-LogMessage "Failed to create virtual environment: $_" -Level "WARNING"
                     }
                 }
                 
@@ -323,50 +888,58 @@ function Install-Python {
             }
         }
         catch {
-            Write-Log "Winget installation failed: $_" -Level "WARNING"
+            Write-LogMessage "Winget installation failed: $_" -Level "WARNING"
         }
     }
     
     # Fallback to direct download
-    Write-Log "Using direct download method for Python..." -Level "INFO"
+    Write-LogMessage "Using direct download method for Python..." -Level "INFO"
     
+    # Try to get the latest version URL
+    $latestUrl = Get-LatestVersionUrl -ApplicationName "Python"
+    
+    # Get the download info
     $pythonDownload = Get-AppDirectDownloadInfo -AppName "Python"
     if ($null -eq $pythonDownload) {
-        Write-Log "Could not get Python download information" -Level "ERROR"
+        Write-LogMessage "Could not get Python download information" -Level "ERROR"
         return $false
+    }
+    
+    # Update URL if we have a latest version
+    if ($latestUrl) {
+        $pythonDownload.Url = $latestUrl
     }
     
     try {
         # Download and install Python
-        $installerPath = Join-Path $env:TEMP $pythonDownload.FileName
+        $installerPath = Join-Path $env:TEMP "python-installer.exe"
         $webClient = New-Object System.Net.WebClient
         $webClient.DownloadFile($pythonDownload.Url, $installerPath)
         
         # Run installer with custom arguments
-        $arguments = "$($pythonDownload.Arguments) Version=$Version"
-        Start-Process -FilePath $installerPath -ArgumentList $arguments -Wait -NoNewWindow
+        Start-Process -FilePath $installerPath -ArgumentList $pythonDownload.Arguments -Wait -NoNewWindow
         
         # Refresh environment variables
         Update-Environment
         
         # Verify installation
         if (Get-Command python -ErrorAction SilentlyContinue) {
-            Write-Log "Python installed successfully!" -Level "SUCCESS"
+            Write-LogMessage "Python installed successfully!" -Level "SUCCESS"
             
             # Create virtual environment if requested
             if ($CreateVirtualEnv) {
-                Write-Log "Creating Python virtual environment: $VirtualEnvName" -Level "INFO"
+                Write-LogMessage "Creating Python virtual environment: $VirtualEnvName" -Level "INFO"
                 try {
                     python -m venv $VirtualEnvName
-                    Write-Log "Virtual environment created successfully" -Level "SUCCESS"
+                    Write-LogMessage "Virtual environment created successfully" -Level "SUCCESS"
                     
                     # Activate and upgrade pip
                     & "$VirtualEnvName\Scripts\activate.ps1"
                     python -m pip install --upgrade pip setuptools wheel
-                    Write-Log "Pip upgraded in virtual environment" -Level "SUCCESS"
+                    Write-LogMessage "Pip upgraded in virtual environment" -Level "SUCCESS"
                 }
                 catch {
-                    Write-Log "Failed to create virtual environment: $_" -Level "WARNING"
+                    Write-LogMessage "Failed to create virtual environment: $_" -Level "WARNING"
                 }
             }
             
@@ -374,302 +947,20 @@ function Install-Python {
         }
     }
     catch {
-        Write-Log "Failed to install Python: $_" -Level "ERROR"
+        Write-LogMessage ("Failed to install Python: {0}" -f $_.Exception.Message) -Level "ERROR"
     }
     
     return $false
 }
 
-function Update-Environment {
-    Write-Log "Updating environment variables..." -Level "INFO"
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-}
-
-function Install-Application {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$AppName,
-        
-        [Parameter(Mandatory=$false)]
-        [string]$WingetId,
-        
-        [Parameter(Mandatory=$false)]
-        [hashtable]$DirectDownload,
-        
-        [System.Threading.CancellationToken]$CancellationToken
-    )
-
-    Write-Log "Installing ${AppName}..." -Level "INFO"
-    
-    # Check for cancellation
-    if ($CancellationToken.IsCancellationRequested) {
-        Write-Log "Installation cancelled" -Level "WARNING"
-        return $false
-    }
-    
-    # Check if already installed with correct version
-    $installedVersion = Test-InstalledVersion -AppName $AppName
-    if ($installedVersion) {
-        Write-Log "${AppName} version $installedVersion is already installed" -Level "INFO"
-        return $true
-    }
-    
-    # Try winget first if not using direct download only
-    if (-not $script:UseDirectDownloadOnly) {
-        try {
-            if ($WingetId) {
-                Write-Log "Attempting to install ${AppName} using winget..." -Level "INFO"
-                $wingetOutput = winget install --id $WingetId --silent --accept-source-agreements --accept-package-agreements 2>&1
-                
-                if ($LASTEXITCODE -eq 0 -or $wingetOutput -match "Successfully installed") {
-                    Write-Log "Successfully installed ${AppName} using winget" -Level "SUCCESS"
-                    return $true
-                } else {
-                    Write-Log "Winget installation failed for ${AppName} with exit code $LASTEXITCODE" -Level "WARNING"
-                }
-            }
-        } catch {
-            Write-Log "Winget installation failed for ${AppName}: $($_.Exception.Message)" -Level "WARNING"
-        }
-    }
-    
-    # Try direct download if available
-    if ($DirectDownload) {
-        $tempFile = Join-Path $env:TEMP $DirectDownload.FileName
-        $retryCount = 0
-        
-        while ($retryCount -lt $script:MaxRetries) {
-            try {
-                Write-Log "Downloading ${AppName} from direct source (Attempt $($retryCount + 1))..." -Level "INFO"
-                
-                # Download the file
-                Invoke-WebRequest -Uri $DirectDownload.Url -OutFile $tempFile
-                
-                # Verify checksum if available
-                if ($DirectDownload.Checksum -and -not (Test-FileChecksum -FilePath $tempFile -ExpectedChecksum $DirectDownload.Checksum)) {
-                    throw "File checksum verification failed"
-                }
-                
-                # Install based on file type
-                $success = $false
-                switch ($DirectDownload.FileType) {
-                    "msi" {
-                        $process = Start-Process msiexec.exe -ArgumentList "/i `"$tempFile`" /quiet /norestart" -Wait -PassThru
-                        $success = $process.ExitCode -eq 0
-                    }
-                    "exe" {
-                        $process = Start-Process $tempFile -ArgumentList $DirectDownload.InstallArgs -Wait -PassThru
-                        $success = $process.ExitCode -eq 0
-                    }
-                    default {
-                        throw "Unsupported file type: $($DirectDownload.FileType)"
-                    }
-                }
-                
-                if ($success) {
-                    Write-Log "Successfully installed ${AppName}" -Level "SUCCESS"
-                    return $true
-                } else {
-                    throw "Installation failed with exit code $($process.ExitCode)"
-                }
-            }
-            catch {
-                $retryCount++
-                if ($retryCount -lt $script:MaxRetries) {
-                    Write-Log "Installation attempt $retryCount failed: $_" -Level "WARNING"
-                    Write-Log "Retrying in $script:RetryDelay seconds..." -Level "INFO"
-                    Start-Sleep -Seconds $script:RetryDelay
-                } else {
-                    Write-Log "All installation attempts failed for ${AppName}: $_" -Level "ERROR"
-                }
-            }
-            finally {
-                # Cleanup
-                if (Test-Path $tempFile) {
-                    Remove-Item $tempFile -Force
-                }
-            }
-        }
-    }
-    
-    Write-Log "Failed to install ${AppName} - no valid installation method found" -Level "ERROR"
-    return $false
-}
-
-# Add simplified Install-Application function for compatibility
-function Install-Application {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$AppName
-    )
-    
-    Write-LogMessage "Installing $AppName..." -Level "INFO"
-    
-    # Winget package ID mappings
-    $wingetMappings = @{
-        "vscode" = "Microsoft.VisualStudioCode"
-        "git" = "Git.Git"
-        "python" = "Python.Python.3"
-        "pycharm" = "JetBrains.PyCharm.Community"
-        "github" = "GitHub.GitHubDesktop"
-        "postman" = "Postman.Postman"
-        "nodejs" = "OpenJS.NodeJS.LTS"
-        "terminal" = "Microsoft.WindowsTerminal"
-        "chrome" = "Google.Chrome"
-        "firefox" = "Mozilla.Firefox"
-        "brave" = "Brave.Browser"
-        "spotify" = "Spotify.Spotify"
-        "discord" = "Discord.Discord"
-        "steam" = "Valve.Steam"
-        "vlc" = "VideoLAN.VLC"
-        "7zip" = "7zip.7zip"
-        "notepadplusplus" = "Notepad++.Notepad++"
-        "powertoys" = "Microsoft.PowerToys"
-    }
-    
-    # Initialize temp file variable
-    $tempFile = $null
-    
-    try {
-        # Try winget first if available and not in direct-download-only mode
-        if (-not $script:UseDirectDownloadOnly -and (Get-Command winget -ErrorAction SilentlyContinue)) {
-            $wingetId = $wingetMappings[$AppName]
-            if ($wingetId) {
-                Write-LogMessage "📦 METHOD: Using winget package manager for $AppName" -Level "INFO"
-                Write-LogMessage "🔍 WINGET: Searching for package ID: $wingetId" -Level "INFO"
-                
-                $wingetOutput = winget install --id $wingetId --silent --accept-source-agreements --accept-package-agreements 2>&1
-                if ($LASTEXITCODE -eq 0 -or ($wingetOutput -match "Successfully installed" -or $wingetOutput -match "already installed")) {
-                    Write-LogMessage "✅ WINGET: Successfully installed $AppName via winget package manager" -Level "SUCCESS"
-                    return $true
-                } else {
-                    Write-LogMessage "❌ WINGET: Installation failed - $wingetOutput" -Level "WARNING"
-                    Write-LogMessage "🔄 FALLBACK: Switching to direct download method for $AppName" -Level "WARNING"
-                }
-            } else {
-                Write-LogMessage "❌ WINGET: No package ID found for $AppName" -Level "WARNING"
-                Write-LogMessage "🔄 FALLBACK: Using direct download method" -Level "WARNING"
-            }
-        } else {
-            if ($script:UseDirectDownloadOnly) {
-                Write-LogMessage "📦 METHOD: Using direct download for $AppName (winget unavailable)" -Level "INFO"
-            } else {
-                Write-LogMessage "❌ WINGET: Package manager not available" -Level "WARNING"
-                Write-LogMessage "📦 METHOD: Using direct download for $AppName" -Level "WARNING"
-            }
-        }
-        
-        # Fallback to direct download
-        $downloadInfo = Get-AppDirectDownloadInfo -AppName $AppName
-        if (-not $downloadInfo) {
-            Write-LogMessage "❌ DIRECT: No download information available for $AppName" -Level "ERROR"
-            return $false
-        }
-        
-        Write-LogMessage "🌐 DIRECT: Starting direct download for $AppName" -Level "INFO"
-        Write-LogMessage "📂 SOURCE: $($downloadInfo.Url)" -Level "INFO"
-        Write-LogMessage "📄 FILE: $($downloadInfo.FileName) ($($downloadInfo.FileType.ToUpper()))" -Level "INFO"
-        
-        $tempFile = Join-Path $env:TEMP $downloadInfo.FileName
-        
-        # Download with retry logic
-        $maxRetries = 3
-        $retryCount = 0
-        $downloadSuccess = $false
-        
-        while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
-            try {
-                Write-LogMessage "⬇️ DOWNLOAD: Attempt $($retryCount + 1)/$maxRetries - Downloading $($downloadInfo.FileName)..." -Level "INFO"
-                
-                # Get file size if possible for progress
-                $downloadStart = Get-Date
-                Invoke-WebRequest -Uri $downloadInfo.Url -OutFile $tempFile -UseBasicParsing -TimeoutSec 30
-                $downloadEnd = Get-Date
-                $downloadTime = ($downloadEnd - $downloadStart).TotalSeconds
-                
-                if (Test-Path $tempFile) {
-                    $fileSize = (Get-Item $tempFile).Length
-                    $fileSizeMB = [Math]::Round($fileSize / 1MB, 2)
-                    Write-LogMessage "✅ DOWNLOAD: Completed - $fileSizeMB MB in $([Math]::Round($downloadTime, 1))s" -Level "SUCCESS"
-                    $downloadSuccess = $true
-                } else {
-                    throw "File not created after download"
-                }
-            }
-            catch {
-                $retryCount++
-                if ($retryCount -lt $maxRetries) {
-                    Write-LogMessage "❌ DOWNLOAD: Attempt $retryCount failed - $_" -Level "WARNING"
-                    Write-LogMessage "🔄 RETRY: Waiting 2 seconds before retry..." -Level "WARNING"
-                    Start-Sleep -Seconds 2
-                } else {
-                    throw "Download failed after $maxRetries attempts: $_"
-                }
-            }
-        }
-        
-        # Install the downloaded file with detailed progress
-        $installStart = Get-Date
-        Write-LogMessage "🔧 INSTALL: Starting installation of $AppName..." -Level "INFO"
-        
-        if ($downloadInfo.FileType -eq "msi") {
-            Write-LogMessage "📦 INSTALLER: Using MSI installer (Windows Installer)" -Level "INFO"
-            Write-LogMessage "⚙️ COMMAND: msiexec.exe /i `"$($downloadInfo.FileName)`" /quiet /norestart" -Level "INFO"
-            
-            $process = Start-Process msiexec.exe -ArgumentList "/i `"$tempFile`" /quiet /norestart" -Wait -PassThru
-            $installEnd = Get-Date
-            $installTime = ($installEnd - $installStart).TotalSeconds
-            
-            if ($process.ExitCode -eq 0) {
-                Write-LogMessage "✅ INSTALL: $AppName installed successfully via MSI in $([Math]::Round($installTime, 1))s" -Level "SUCCESS"
-                return $true
-            } else {
-                Write-LogMessage "❌ INSTALL: MSI installation failed for $AppName (Exit Code: $($process.ExitCode))" -Level "ERROR"
-                return $false
-            }
-        } elseif ($downloadInfo.FileType -eq "msixbundle" -or $downloadInfo.FileType -eq "msix") {
-            Write-LogMessage "📦 INSTALLER: Using MSIX package installer (Universal Windows Platform)" -Level "INFO"
-            Write-LogMessage "⚙️ COMMAND: Add-AppxPackage -Path `"$($downloadInfo.FileName)`"" -Level "INFO"
-            
-            try {
-                Add-AppxPackage -Path $tempFile -ErrorAction Stop
-                $installEnd = Get-Date
-                $installTime = ($installEnd - $installStart).TotalSeconds
-                Write-LogMessage "✅ INSTALL: $AppName installed successfully via MSIX package in $([Math]::Round($installTime, 1))s" -Level "SUCCESS"
-                return $true
-            }
-            catch {
-                $installEnd = Get-Date
-                $installTime = ($installEnd - $installStart).TotalSeconds
-                Write-LogMessage "❌ INSTALL: MSIX installation failed for $AppName after $([Math]::Round($installTime, 1))s - $_" -Level "ERROR"
-                return $false
-            }
-        } else {
-            Write-LogMessage "📦 INSTALLER: Using EXE installer (Executable)" -Level "INFO"
-            Write-LogMessage "⚙️ COMMAND: `"$($downloadInfo.FileName)`" $($downloadInfo.Arguments)" -Level "INFO"
-            
-            $process = Start-Process $tempFile -ArgumentList $downloadInfo.Arguments -Wait -PassThru
-            $installEnd = Get-Date
-            $installTime = ($installEnd - $installStart).TotalSeconds
-            
-            if ($process.ExitCode -eq 0) {
-                Write-LogMessage "✅ INSTALL: $AppName installed successfully via EXE in $([Math]::Round($installTime, 1))s" -Level "SUCCESS"
-                return $true
-            } else {
-                Write-LogMessage "❌ INSTALL: EXE installation failed for $AppName (Exit Code: $($process.ExitCode)) after $([Math]::Round($installTime, 1))s" -Level "ERROR"
-                return $false
-            }
-        }
-    }
-    catch {
-        Write-LogMessage "Failed to install $AppName : $_" -Level "ERROR"
-        return $false
-    }
-    finally {
-        if ($tempFile -and (Test-Path $tempFile -ErrorAction SilentlyContinue)) {
-            Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
-        }
-    }
-}
-
-Export-ModuleMember -Function Install-Winget, Install-Python, Update-Environment, Install-Application, Get-AppDirectDownloadInfo 
+# Export functions
+Export-ModuleMember -Function @(
+    'Test-FileChecksum',
+    'Get-AppDirectDownloadInfo',
+    'Install-Application',
+    'Install-Winget',
+    'Test-ApplicationInstalled',
+    'Get-LatestVersionUrl',
+    'Update-Environment',
+    'Install-Python'
+)

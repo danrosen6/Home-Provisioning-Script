@@ -3,6 +3,8 @@
 # Global variables
 $script:RegistryBackups = @{}
 $script:ServiceBackups = @{}
+$script:RegistryChangesRequiringRestart = @()
+$script:RestartRequired = $false
 
 # Define Write-LogMessage function for module compatibility
 function Write-LogMessage {
@@ -26,6 +28,59 @@ function Write-LogMessage {
         default { "White" }
     }
     Write-Host $logMessage -ForegroundColor $color
+}
+
+function Add-RestartRegistryChange {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$ChangeDescription
+    )
+    
+    # Add to global registry changes list
+    $script:RegistryChangesRequiringRestart += $ChangeDescription
+    $script:RestartRequired = $true
+    
+    # Log the change
+    Write-LogMessage "Added registry change requiring restart: $ChangeDescription" -Level "INFO"
+}
+
+function Test-ServiceDependency {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$ServiceName
+    )
+    
+    try {
+        # Get the service
+        $service = Get-Service -Name $ServiceName -ErrorAction Stop
+        
+        # Check if any other services depend on this one
+        $dependentServices = Get-Service | Where-Object { $_.ServicesDependedOn | Where-Object { $_.Name -eq $ServiceName } }
+        
+        if ($dependentServices -and $dependentServices.Count -gt 0) {
+            $dependencyList = $dependentServices | ForEach-Object { $_.DisplayName }
+            return @{
+                HasDependencies = $true
+                DependentServices = $dependentServices
+                DependencyList = $dependencyList
+            }
+        } else {
+            return @{
+                HasDependencies = $false
+                DependentServices = @()
+                DependencyList = @()
+            }
+        }
+    }
+    catch {
+        Write-LogMessage "Error checking dependencies for service $ServiceName : $_" -Level "ERROR"
+        return @{
+            HasDependencies = $false
+            DependentServices = @()
+            DependencyList = @()
+            Error = $_
+        }
+    }
 }
 
 function Save-RegistryValue {
@@ -132,30 +187,179 @@ function Set-SystemOptimization {
     )
 
     Write-LogMessage "Applying optimization: ${OptimizationKey}" -Level "INFO"
+    
+    # Track operation in recovery system
+    Save-OperationState -OperationType "SystemOptimization" -ItemKey $OptimizationKey -Status "InProgress"
 
     try {
         switch ($OptimizationKey) {
-            # Service optimizations
+            # Service optimizations with dependency checks
             "diagtrack" {
+                # Check dependencies first
+                $dependencyCheck = Test-ServiceDependency -ServiceName "DiagTrack"
+                
+                if ($dependencyCheck.HasDependencies) {
+                    $dependencyMessage = "The following services depend on DiagTrack:`n"
+                    $dependencyMessage += ($dependencyCheck.DependencyList -join "`n")
+                    $dependencyMessage += "`n`nDisabling DiagTrack may affect these services. Continue anyway?"
+                    
+                    $result = [System.Windows.Forms.MessageBox]::Show(
+                        $dependencyMessage,
+                        "Service Dependencies Found",
+                        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                        [System.Windows.Forms.MessageBoxIcon]::Warning
+                    )
+                    
+                    if ($result -eq [System.Windows.Forms.DialogResult]::No) {
+                        Write-LogMessage "Skipping DiagTrack service due to dependencies" -Level "WARNING"
+                        Save-OperationState -OperationType "SystemOptimization" -ItemKey $OptimizationKey -Status "Skipped" -AdditionalData @{
+                            Reason = "User opted to skip due to dependencies"
+                            Dependencies = $dependencyCheck.DependencyList -join ", "
+                        }
+                        return $false
+                    }
+                }
+                
                 Save-ServiceState -ServiceName "DiagTrack"
                 Stop-Service "DiagTrack" -Force -ErrorAction SilentlyContinue
                 Set-Service "DiagTrack" -StartupType Disabled
             }
             "dmwappushsvc" {
+                # Check dependencies first
+                $dependencyCheck = Test-ServiceDependency -ServiceName "dmwappushservice"
+                
+                if ($dependencyCheck.HasDependencies) {
+                    $dependencyMessage = "The following services depend on dmwappushservice:`n"
+                    $dependencyMessage += ($dependencyCheck.DependencyList -join "`n")
+                    $dependencyMessage += "`n`nDisabling dmwappushservice may affect these services. Continue anyway?"
+                    
+                    $result = [System.Windows.Forms.MessageBox]::Show(
+                        $dependencyMessage,
+                        "Service Dependencies Found",
+                        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                        [System.Windows.Forms.MessageBoxIcon]::Warning
+                    )
+                    
+                    if ($result -eq [System.Windows.Forms.DialogResult]::No) {
+                        Write-LogMessage "Skipping dmwappushservice service due to dependencies" -Level "WARNING"
+                        Save-OperationState -OperationType "SystemOptimization" -ItemKey $OptimizationKey -Status "Skipped" -AdditionalData @{
+                            Reason = "User opted to skip due to dependencies"
+                            Dependencies = $dependencyCheck.DependencyList -join ", "
+                        }
+                        return $false
+                    }
+                }
+                
                 Save-ServiceState -ServiceName "dmwappushservice"
                 Stop-Service "dmwappushservice" -Force -ErrorAction SilentlyContinue
                 Set-Service "dmwappushservice" -StartupType Disabled
             }
             "sysmain" {
+                # Check dependencies first
+                $dependencyCheck = Test-ServiceDependency -ServiceName "SysMain"
+                
+                if ($dependencyCheck.HasDependencies) {
+                    $dependencyMessage = "The following services depend on SysMain:`n"
+                    $dependencyMessage += ($dependencyCheck.DependencyList -join "`n")
+                    $dependencyMessage += "`n`nDisabling SysMain may affect these services. Continue anyway?"
+                    
+                    $result = [System.Windows.Forms.MessageBox]::Show(
+                        $dependencyMessage,
+                        "Service Dependencies Found",
+                        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                        [System.Windows.Forms.MessageBoxIcon]::Warning
+                    )
+                    
+                    if ($result -eq [System.Windows.Forms.DialogResult]::No) {
+                        Write-LogMessage "Skipping SysMain service due to dependencies" -Level "WARNING"
+                        Save-OperationState -OperationType "SystemOptimization" -ItemKey $OptimizationKey -Status "Skipped" -AdditionalData @{
+                            Reason = "User opted to skip due to dependencies"
+                            Dependencies = $dependencyCheck.DependencyList -join ", "
+                        }
+                        return $false
+                    }
+                }
+                
                 Save-ServiceState -ServiceName "SysMain"
                 Stop-Service "SysMain" -Force -ErrorAction SilentlyContinue
                 Set-Service "SysMain" -StartupType Disabled
             }
             "wmpnetworksvc" {
+                $dependencyCheck = Test-ServiceDependency -ServiceName "WMPNetworkSvc"
+                
+                if ($dependencyCheck.HasDependencies) {
+                    $dependencyMessage = "The following services depend on WMPNetworkSvc:`n"
+                    $dependencyMessage += ($dependencyCheck.DependencyList -join "`n")
+                    $dependencyMessage += "`n`nDisabling WMPNetworkSvc may affect these services. Continue anyway?"
+                    
+                    $result = [System.Windows.Forms.MessageBox]::Show(
+                        $dependencyMessage,
+                        "Service Dependencies Found",
+                        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                        [System.Windows.Forms.MessageBoxIcon]::Warning
+                    )
+                    
+                    if ($result -eq [System.Windows.Forms.DialogResult]::No) {
+                        Write-LogMessage "Skipping WMPNetworkSvc service due to dependencies" -Level "WARNING"
+                        Save-OperationState -OperationType "SystemOptimization" -ItemKey $OptimizationKey -Status "Skipped" -AdditionalData @{
+                            Reason = "User opted to skip due to dependencies"
+                            Dependencies = $dependencyCheck.DependencyList -join ", "
+                        }
+                        return $false
+                    }
+                }
+                
                 Save-ServiceState -ServiceName "WMPNetworkSvc"
                 Stop-Service "WMPNetworkSvc" -Force -ErrorAction SilentlyContinue
                 Set-Service "WMPNetworkSvc" -StartupType Disabled
             }
+            
+            # Registry changes that require restart
+            "disable-cortana" {
+                Save-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana"
+                if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search")) {
+                    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0
+                Add-RestartRegistryChange -ChangeDescription "Disable Cortana"
+            }
+            "classic-context" {
+                if (-not (Test-Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32")) {
+                    New-Item -Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" -Name "(Default)" -Value "" -Type String
+                Add-RestartRegistryChange -ChangeDescription "Restore classic right-click context menu"
+            }
+            "taskbar-left" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0
+                Add-RestartRegistryChange -ChangeDescription "Set taskbar alignment to left (classic style)"
+            }
+            "disable-widgets" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0
+                Add-RestartRegistryChange -ChangeDescription "Disable Widgets icon and service"
+            }
+            "disable-chat" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarMn" -Value 0
+                Add-RestartRegistryChange -ChangeDescription "Disable Chat icon on taskbar"
+            }
+            "disable-snap" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "EnableSnapAssistFlyout" -Value 0
+                Add-RestartRegistryChange -ChangeDescription "Disable Snap layouts when hovering maximize button"
+            }
+            
+            # Other optimizations - keep the rest of the switch cases from original function
             "remoteregistry" {
                 Save-ServiceState -ServiceName "RemoteRegistry"
                 Stop-Service "RemoteRegistry" -Force -ErrorAction SilentlyContinue
@@ -171,8 +375,6 @@ function Set-SystemOptimization {
                 Stop-Service "Fax" -Force -ErrorAction SilentlyContinue
                 Set-Service "Fax" -StartupType Disabled
             }
-            
-            # System optimizations
             "show-extensions" {
                 if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
                     New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
@@ -191,35 +393,11 @@ function Set-SystemOptimization {
                 }
                 Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" -Name "AllowDevelopmentWithoutDevLicense" -Value 1
             }
-            "disable-cortana" {
-                if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search")) {
-                    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Force | Out-Null
-                }
-                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0
-            }
             "reduce-telemetry" {
                 if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection")) {
                     New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Force | Out-Null
                 }
                 Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 0
-            }
-            "taskbar-left" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
-                }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0
-            }
-            "disable-chat" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
-                }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarMn" -Value 0
-            }
-            "disable-widgets" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
-                }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0
             }
             "disable-onedrive" {
                 Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "OneDrive" -ErrorAction SilentlyContinue
@@ -251,18 +429,6 @@ function Set-SystemOptimization {
                 }
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "BingSearchEnabled" -Value 0
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "CortanaConsent" -Value 0
-            }
-            "classic-context" {
-                if (-not (Test-Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32")) {
-                    New-Item -Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" -Force | Out-Null
-                }
-                Set-ItemProperty -Path "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" -Name "(Default)" -Value "" -Type String
-            }
-            "disable-snap" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
-                }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "EnableSnapAssistFlyout" -Value 0
             }
             "start-menu-pins" {
                 if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
@@ -337,15 +503,24 @@ function Set-SystemOptimization {
             }
             default {
                 Write-LogMessage "Unknown optimization key: ${OptimizationKey}" -Level "WARNING"
+                Save-OperationState -OperationType "SystemOptimization" -ItemKey $OptimizationKey -Status "Failed" -AdditionalData @{
+                    Error = "Unknown optimization key"
+                    Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+                }
                 return $false
             }
         }
 
         Write-LogMessage "Successfully applied optimization: ${OptimizationKey}" -Level "SUCCESS"
+        Save-OperationState -OperationType "SystemOptimization" -ItemKey $OptimizationKey -Status "Completed"
         return $true
     }
     catch {
         Write-LogMessage "Failed to apply optimization ${OptimizationKey}: $_" -Level "ERROR"
+        Save-OperationState -OperationType "SystemOptimization" -ItemKey $OptimizationKey -Status "Failed" -AdditionalData @{
+            Error = $_.Exception.Message
+            Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        }
         
         # Attempt rollback
         try {
@@ -380,154 +555,19 @@ function Set-SystemOptimization {
     }
 }
 
-function Optimize-System {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$false)]
-        [hashtable]$Optimizations = $script:AppConfig.Optimizations,
-        
-        [System.Threading.CancellationToken]$CancellationToken
-    )
-    
-    Write-Log "Starting system optimization..." -Level "INFO"
-    
-    # Check for cancellation
-    if ($CancellationToken.IsCancellationRequested) {
-        Write-Log "System optimization cancelled" -Level "WARNING"
-        return $false
-    }
-    
-    try {
-        # Disable Telemetry
-        if ($Optimizations.DisableTelemetry) {
-            Write-Log "Disabling Windows Telemetry..." -Level "INFO"
-            Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 0
-            Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry" -Value 0
-            Write-Log "Windows Telemetry disabled" -Level "SUCCESS"
-        }
-        
-        # Disable Cortana
-        if ($Optimizations.DisableCortana) {
-            Write-Log "Disabling Cortana..." -Level "INFO"
-            Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0
-            Write-Log "Cortana disabled" -Level "SUCCESS"
-        }
-        
-        # Disable Windows Search
-        if ($Optimizations.DisableWindowsSearch) {
-            Write-Log "Disabling Windows Search..." -Level "INFO"
-            Stop-Service "WSearch" -Force
-            Set-Service "WSearch" -StartupType Disabled
-            Write-Log "Windows Search disabled" -Level "SUCCESS"
-        }
-        
-        # Disable Windows Update
-        if ($Optimizations.DisableWindowsUpdate) {
-            Write-Log "Disabling Windows Update..." -Level "INFO"
-            Stop-Service "wuauserv" -Force
-            Set-Service "wuauserv" -StartupType Disabled
-            Write-Log "Windows Update disabled" -Level "SUCCESS"
-        }
-        
-        # Disable Windows Defender
-        if ($Optimizations.DisableDefender) {
-            Write-Log "Disabling Windows Defender..." -Level "INFO"
-            Set-MpPreference -DisableRealtimeMonitoring $true
-            Set-MpPreference -DisableIOAVProtection $true
-            Write-Log "Windows Defender disabled" -Level "SUCCESS"
-        }
-        
-        # Disable Windows Firewall
-        if ($Optimizations.DisableFirewall) {
-            Write-Log "Disabling Windows Firewall..." -Level "INFO"
-            Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
-            Write-Log "Windows Firewall disabled" -Level "SUCCESS"
-        }
-        
-        Write-Log "System optimization completed successfully!" -Level "SUCCESS"
-        return $true
-    }
-    catch {
-        Write-Log "Failed to optimize system: $_" -Level "ERROR"
-        return $false
-    }
-}
-
+# Unified Remove-Bloatware function that handles both direct calls and batch removals
 function Remove-Bloatware {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$false)]
-        [string[]]$Bloatware = $script:AppConfig.Bloatware,
+        [Parameter(Mandatory=$true, ParameterSetName="Key")]
+        [string]$BloatwareKey,
         
+        [Parameter(Mandatory=$true, ParameterSetName="List")]
+        [string[]]$Bloatware,
+        
+        [Parameter(Mandatory=$false)]
         [System.Threading.CancellationToken]$CancellationToken
     )
-    
-    Write-Log "Starting bloatware removal..." -Level "INFO"
-    
-    # Check for cancellation
-    if ($CancellationToken.IsCancellationRequested) {
-        Write-Log "Bloatware removal cancelled" -Level "WARNING"
-        return $false
-    }
-    
-    try {
-        foreach ($app in $Bloatware) {
-            Write-Log "Removing $app..." -Level "INFO"
-            Get-AppxPackage -Name $app -AllUsers | Remove-AppxPackage -ErrorAction SilentlyContinue
-            Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $app | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
-            Write-Log "Removed $app" -Level "SUCCESS"
-        }
-        
-        Write-Log "Bloatware removal completed successfully!" -Level "SUCCESS"
-        return $true
-    }
-    catch {
-        Write-Log "Failed to remove bloatware: $_" -Level "ERROR"
-        return $false
-    }
-}
-
-function Configure-Services {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory=$false)]
-        [hashtable]$Services = $script:AppConfig.Services,
-        
-        [System.Threading.CancellationToken]$CancellationToken
-    )
-    
-    Write-Log "Starting service configuration..." -Level "INFO"
-    
-    # Check for cancellation
-    if ($CancellationToken.IsCancellationRequested) {
-        Write-Log "Service configuration cancelled" -Level "WARNING"
-        return $false
-    }
-    
-    try {
-        foreach ($service in $Services.GetEnumerator()) {
-            Write-Log "Configuring service: $($service.Value.Name)..." -Level "INFO"
-            Set-Service -Name $service.Key -StartupType $service.Value.StartupType
-            Write-Log "Configured service: $($service.Value.Name)" -Level "SUCCESS"
-        }
-        
-        Write-Log "Service configuration completed successfully!" -Level "SUCCESS"
-        return $true
-    }
-    catch {
-        Write-Log "Failed to configure services: $_" -Level "ERROR"
-        return $false
-    }
-}
-
-# Add simplified Remove-Bloatware function for compatibility
-function Remove-Bloatware {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$BloatwareKey
-    )
-    
-    Write-LogMessage "Removing bloatware: $BloatwareKey" -Level "INFO"
     
     # Map keys to actual package names
     $packageMap = @{
@@ -571,25 +611,201 @@ function Remove-Bloatware {
         "linkedin" = "*LinkedIn*"
     }
     
-    $packageName = $packageMap[$BloatwareKey]
-    if (-not $packageName) {
-        Write-LogMessage "Unknown bloatware key: $BloatwareKey" -Level "WARNING"
+    Write-LogMessage "Starting bloatware removal..." -Level "INFO"
+    
+    # Check for cancellation
+    if ($CancellationToken -and $CancellationToken.IsCancellationRequested) {
+        Write-LogMessage "Bloatware removal cancelled" -Level "WARNING"
         return $false
     }
     
     try {
-        # Remove for all users
-        Get-AppxPackage $packageName -AllUsers | Remove-AppxPackage -ErrorAction SilentlyContinue
-        # Remove provisioned packages
-        Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $packageName | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+        # Track operation in recovery system
+        if ($PSCmdlet.ParameterSetName -eq "Key") {
+            Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "InProgress"
+        }
         
-        Write-LogMessage "Successfully removed: $BloatwareKey" -Level "SUCCESS"
-        return $true
+        # Handle different parameter sets
+        if ($PSCmdlet.ParameterSetName -eq "Key") {
+            # Single package removal using key
+            $packageName = $packageMap[$BloatwareKey]
+            if (-not $packageName) {
+                Write-LogMessage "Unknown bloatware key: $BloatwareKey" -Level "WARNING"
+                Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Failed" -AdditionalData @{
+                    Error = "Unknown bloatware key"
+                    Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+                }
+                return $false
+            }
+            
+            Write-LogMessage "Removing bloatware: $BloatwareKey" -Level "INFO"
+            
+            # Remove for all users
+            Get-AppxPackage $packageName -AllUsers | Remove-AppxPackage -ErrorAction SilentlyContinue
+            # Remove provisioned packages
+            Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $packageName | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+            
+            Write-LogMessage "Successfully removed: $BloatwareKey" -Level "SUCCESS"
+            Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Completed"
+            return $true
+        }
+        else {
+            # Multiple package removal from list
+            foreach ($app in $Bloatware) {
+                if ($CancellationToken -and $CancellationToken.IsCancellationRequested) {
+                    Write-LogMessage "Bloatware removal cancelled" -Level "WARNING"
+                    return $false
+                }
+                
+                Write-LogMessage "Removing $app..." -Level "INFO"
+                Get-AppxPackage -Name $app -AllUsers | Remove-AppxPackage -ErrorAction SilentlyContinue
+                Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $app | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+                Write-LogMessage "Removed $app" -Level "SUCCESS"
+            }
+            
+            Write-LogMessage "Bloatware removal completed successfully!" -Level "SUCCESS"
+            return $true
+        }
     }
     catch {
-        Write-LogMessage "Failed to remove $BloatwareKey : $_" -Level "ERROR"
+        if ($PSCmdlet.ParameterSetName -eq "Key") {
+            Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Failed" -AdditionalData @{
+                Error = $_.Exception.Message
+                Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            }
+        }
+        Write-LogMessage "Failed to remove bloatware: $_" -Level "ERROR"
         return $false
     }
 }
 
-Export-ModuleMember -Function Set-SystemOptimization, Save-RegistryValue, Save-ServiceState, Restore-RegistryValue, Restore-ServiceState, Optimize-System, Remove-Bloatware, Configure-Services 
+function Optimize-System {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$false)]
+        [hashtable]$Optimizations = $script:AppConfig.Optimizations,
+        
+        [System.Threading.CancellationToken]$CancellationToken
+    )
+    
+    Write-LogMessage "Starting system optimization..." -Level "INFO"
+    
+    # Check for cancellation
+    if ($CancellationToken.IsCancellationRequested) {
+        Write-LogMessage "System optimization cancelled" -Level "WARNING"
+        return $false
+    }
+    
+    try {
+        # Disable Telemetry
+        if ($Optimizations.DisableTelemetry) {
+            Write-LogMessage "Disabling Windows Telemetry..." -Level "INFO"
+            Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 0
+            Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" -Name "AllowTelemetry" -Value 0
+            Write-LogMessage "Windows Telemetry disabled" -Level "SUCCESS"
+        }
+        
+        # Disable Cortana
+        if ($Optimizations.DisableCortana) {
+            Write-LogMessage "Disabling Cortana..." -Level "INFO"
+            Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0
+            Write-LogMessage "Cortana disabled" -Level "SUCCESS"
+        }
+        
+        # Disable Windows Search
+        if ($Optimizations.DisableWindowsSearch) {
+            Write-LogMessage "Disabling Windows Search..." -Level "INFO"
+            Stop-Service "WSearch" -Force
+            Set-Service "WSearch" -StartupType Disabled
+            Write-LogMessage "Windows Search disabled" -Level "SUCCESS"
+        }
+        
+        # Disable Windows Update
+        if ($Optimizations.DisableWindowsUpdate) {
+            Write-LogMessage "Disabling Windows Update..." -Level "INFO"
+            Stop-Service "wuauserv" -Force
+            Set-Service "wuauserv" -StartupType Disabled
+            Write-LogMessage "Windows Update disabled" -Level "SUCCESS"
+        }
+        
+        # Disable Windows Defender
+        if ($Optimizations.DisableDefender) {
+            Write-LogMessage "Disabling Windows Defender..." -Level "INFO"
+            Set-MpPreference -DisableRealtimeMonitoring $true
+            Set-MpPreference -DisableIOAVProtection $true
+            Write-LogMessage "Windows Defender disabled" -Level "SUCCESS"
+        }
+        
+        # Disable Windows Firewall
+        if ($Optimizations.DisableFirewall) {
+            Write-LogMessage "Disabling Windows Firewall..." -Level "INFO"
+            Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+            Write-LogMessage "Windows Firewall disabled" -Level "SUCCESS"
+        }
+        
+        Write-LogMessage "System optimization completed successfully!" -Level "SUCCESS"
+        return $true
+    }
+    catch {
+        Write-LogMessage "Failed to optimize system: $_" -Level "ERROR"
+        return $false
+    }
+}
+
+function Configure-Services {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$false)]
+        [hashtable]$Services = $script:AppConfig.Services,
+        
+        [System.Threading.CancellationToken]$CancellationToken
+    )
+    
+    Write-LogMessage "Starting service configuration..." -Level "INFO"
+    
+    # Check for cancellation
+    if ($CancellationToken.IsCancellationRequested) {
+        Write-LogMessage "Service configuration cancelled" -Level "WARNING"
+        return $false
+    }
+    
+    try {
+        foreach ($service in $Services.GetEnumerator()) {
+            Write-LogMessage "Configuring service: $($service.Value.Name)..." -Level "INFO"
+            
+            # Check for service dependencies
+            $dependencyCheck = Test-ServiceDependency -ServiceName $service.Key
+            
+            if ($dependencyCheck.HasDependencies) {
+                $dependencyMessage = "The following services depend on $($service.Value.Name):`n"
+                $dependencyMessage += ($dependencyCheck.DependencyList -join "`n")
+                $dependencyMessage += "`n`nConfiguring $($service.Value.Name) may affect these services. Continue anyway?"
+                
+                $result = [System.Windows.Forms.MessageBox]::Show(
+                    $dependencyMessage,
+                    "Service Dependencies Found",
+                    [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                    [System.Windows.Forms.MessageBoxIcon]::Warning
+                )
+                
+                if ($result -eq [System.Windows.Forms.DialogResult]::No) {
+                    Write-LogMessage "Skipping $($service.Value.Name) service configuration due to dependencies" -Level "WARNING"
+                    continue
+                }
+            }
+            
+            Set-Service -Name $service.Key -StartupType $service.Value.StartupType
+            Write-LogMessage "Configured service: $($service.Value.Name)" -Level "SUCCESS"
+        }
+        
+        Write-LogMessage "Service configuration completed successfully!" -Level "SUCCESS"
+        return $true
+    }
+    catch {
+        Write-LogMessage "Failed to configure services: $_" -Level "ERROR"
+        return $false
+    }
+}
+
+# Export updated functions
+Export-ModuleMember -Function Set-SystemOptimization, Save-RegistryValue, Save-ServiceState, Restore-RegistryValue, Restore-ServiceState, Optimize-System, Remove-Bloatware, Configure-Services, Test-ServiceDependency, Add-RestartRegistryChange
