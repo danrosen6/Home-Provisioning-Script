@@ -72,7 +72,7 @@ $script:AppCategories = @{
         @{Key="github"; Name="GitHub Desktop"; Default=$true; Win10=$true; Win11=$true}
         @{Key="postman"; Name="Postman"; Default=$true; Win10=$true; Win11=$true}
         @{Key="nodejs"; Name="Node.js"; Default=$false; Win10=$true; Win11=$true}
-        @{Key="terminal"; Name="Windows Terminal"; Default=$true; Win10=$false; Win11=$true}
+        @{Key="terminal"; Name="Windows Terminal"; Default=$true; Win10=$true; Win11=$true}
     )
     "Browsers" = @(
         @{Key="chrome"; Name="Google Chrome"; Default=$true; Win10=$true; Win11=$true}
@@ -88,7 +88,7 @@ $script:AppCategories = @{
     "Utilities" = @(
         @{Key="7zip"; Name="7-Zip"; Default=$false; Win10=$true; Win11=$true}
         @{Key="notepadplusplus"; Name="Notepad++"; Default=$false; Win10=$true; Win11=$true}
-        @{Key="powertoys"; Name="Microsoft PowerToys"; Default=$true; Win10=$false; Win11=$true}
+        @{Key="powertoys"; Name="Microsoft PowerToys"; Default=$true; Win10=$true; Win11=$true}
     )
 }
 
@@ -515,11 +515,12 @@ function Create-SelectionUI {
             # Create a FlowLayoutPanel for the items in this category
             $flowPanel = New-Object System.Windows.Forms.FlowLayoutPanel
             $flowPanel.Location = New-Object System.Drawing.Point(20, $yPos)
-            $flowPanel.Width = $Panel.Width - 60
+            $flowPanel.Width = [Math]::Max($Panel.Width - 60, 500)
             $flowPanel.AutoSize = $true
             $flowPanel.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
             $flowPanel.WrapContents = $true
             $flowPanel.Padding = New-Object System.Windows.Forms.Padding(0)
+            $flowPanel.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
             
             # Add checkboxes for each item in this category
             foreach ($item in $Categories[$category] | Sort-Object -Property Name) {
@@ -533,7 +534,7 @@ function Create-SelectionUI {
                 $cb.Text = $item.Name
                 $cb.Tag = $item.Key
                 $cb.AutoSize = $true
-                $cb.Width = 200
+                $cb.MaximumSize = New-Object System.Drawing.Size(250, 25)
                 $cb.Margin = New-Object System.Windows.Forms.Padding(0, 0, 10, 5)
                 $cb.Checked = $item.Default
                 $cb.Add_Click({
@@ -747,11 +748,12 @@ Initialize-Logging
 # Create the main form using the original's sophisticated layout
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Windows Setup Automation"
-$form.Width = 800
-$form.Height = 650
+$form.Width = 900
+$form.Height = 700
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
-$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedSingle
-$form.MaximizeBox = $false
+$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::Sizable
+$form.MinimumSize = New-Object System.Drawing.Size(800, 600)
+$form.MaximizeBox = $true
 
 # Calculate sizes based on form dimensions
 $formWidth = $form.Width
@@ -759,7 +761,7 @@ $formWidth = $form.Width
 # Create header panel
 $headerPanel = New-Object System.Windows.Forms.Panel
 $headerPanel.Dock = [System.Windows.Forms.DockStyle]::Top
-$headerPanel.Height = 60
+$headerPanel.Height = 50
 $headerPanel.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
 $form.Controls.Add($headerPanel)
 
@@ -785,9 +787,9 @@ $headerPanel.Controls.Add($lblOSBadge)
 
 # Create tab control
 $tabControl = New-Object System.Windows.Forms.TabControl
-$tabControl.Location = New-Object System.Drawing.Point(0, 60)
-$tabControl.Size = New-Object System.Drawing.Size($formWidth, 400)
 $tabControl.Dock = [System.Windows.Forms.DockStyle]::Fill
+$tabControl.SizeMode = [System.Windows.Forms.TabSizeMode]::Normal
+$tabControl.Multiline = $false
 $form.Controls.Add($tabControl)
 
 # Create tabs
@@ -810,7 +812,7 @@ $tabControl.Controls.Add($script:tabOptimize)
 # Create footer panel
 $footerPanel = New-Object System.Windows.Forms.Panel
 $footerPanel.Dock = [System.Windows.Forms.DockStyle]::Bottom
-$footerPanel.Height = 170
+$footerPanel.Height = 140
 $form.Controls.Add($footerPanel)
 
 # Create action panel (Run button area)
@@ -872,10 +874,11 @@ $progressPanel.Controls.Add($script:prgProgress)
 # Log text box
 $script:txtLog = New-Object System.Windows.Forms.RichTextBox
 $script:txtLog.Location = New-Object System.Drawing.Point(0, 45)
-$script:txtLog.Size = New-Object System.Drawing.Size(($formWidth - 20), 65)
+$script:txtLog.Size = New-Object System.Drawing.Size(($formWidth - 20), 75)
 $script:txtLog.ReadOnly = $true
 $script:txtLog.BackColor = [System.Drawing.Color]::FromArgb(250, 250, 250)
 $script:txtLog.Font = New-Object System.Drawing.Font("Consolas", 8)
+$script:txtLog.ScrollBars = [System.Windows.Forms.RichTextBoxScrollBars]::Vertical
 $progressPanel.Controls.Add($script:txtLog)
 
 # Create selection UI for each tab
