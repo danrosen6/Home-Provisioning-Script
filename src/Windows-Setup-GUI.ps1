@@ -897,9 +897,17 @@ function Start-SelectedOperations {
             return
         }
         
-        # Calculate total steps
+        # Calculate total steps (including development environment setup)
         $script:TotalSteps = $script:SelectedApps.Count + $script:SelectedBloatware.Count + 
                              $script:SelectedServices.Count + $script:SelectedOptimizations.Count
+        
+        # Add extra steps for development environment setup
+        if ($script:SelectedApps -contains "vscode" -or $script:SelectedApps -contains "python" -or $script:SelectedApps -contains "git") {
+            $script:TotalSteps += 1  # Development folders
+        }
+        if ($script:SelectedApps -contains "vscode") {
+            $script:TotalSteps += 1  # VS Code extensions
+        }
         
         if ($script:TotalSteps -eq 0) {
             Write-Log "No operations selected" -Level "WARNING"
@@ -1112,6 +1120,66 @@ function Start-SelectedOperations {
                             Percentage = $percentage
                             Status = "[ERROR] Failed to apply optimization: $opt - $_"
                             Type = "Error"
+                        }
+                    }
+                }
+                
+                # Create development folders if development apps were selected
+                if ($selectedApps -contains "vscode" -or $selectedApps -contains "python" -or $selectedApps -contains "git") {
+                    $stepCount++
+                    $percentage = [Math]::Round(($stepCount / $totalSteps) * 100)
+                    $results += @{
+                        Step = $stepCount
+                        Percentage = $percentage
+                        Status = "Creating development folders..."
+                        Type = "Progress"
+                    }
+                    
+                    try {
+                        New-DevelopmentFolders
+                        $results += @{
+                            Step = $stepCount
+                            Percentage = $percentage
+                            Status = "[SUCCESS] Development folders created"
+                            Type = "Success"
+                        }
+                    }
+                    catch {
+                        $results += @{
+                            Step = $stepCount
+                            Percentage = $percentage
+                            Status = "[WARNING] Failed to create development folders: $_"
+                            Type = "Warning"
+                        }
+                    }
+                }
+                
+                # Install VS Code extensions if VS Code was selected
+                if ($selectedApps -contains "vscode") {
+                    $stepCount++
+                    $percentage = [Math]::Round(($stepCount / $totalSteps) * 100)
+                    $results += @{
+                        Step = $stepCount
+                        Percentage = $percentage
+                        Status = "Installing VS Code extensions..."
+                        Type = "Progress"
+                    }
+                    
+                    try {
+                        Install-VSCodeExtensions
+                        $results += @{
+                            Step = $stepCount
+                            Percentage = $percentage
+                            Status = "[SUCCESS] VS Code extensions installed"
+                            Type = "Success"
+                        }
+                    }
+                    catch {
+                        $results += @{
+                            Step = $stepCount
+                            Percentage = $percentage
+                            Status = "[WARNING] Failed to install VS Code extensions: $_"
+                            Type = "Warning"
                         }
                     }
                 }

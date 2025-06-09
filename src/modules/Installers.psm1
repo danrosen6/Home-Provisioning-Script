@@ -339,9 +339,9 @@ function Get-AppDirectDownloadInfo {
             )
         }
         "Google Chrome" = @{
-            Url = "https://dl.google.com/chrome/install/latest/chrome_installer.exe"
-            Extension = ".exe"
-            Arguments = "/silent /install"
+            Url = "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi"
+            Extension = ".msi"
+            Arguments = @("/quiet", "/norestart")
             VerificationPaths = @(
                 "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe",
                 "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
@@ -359,9 +359,11 @@ function Get-AppDirectDownloadInfo {
         "Postman" = @{
             Url = "https://dl.pstmn.io/download/latest/win64"
             Extension = ".exe"
-            Arguments = "/S"
+            Arguments = "-s"
             VerificationPaths = @(
-                "${env:LocalAppData}\Postman\Postman.exe"
+                "${env:LocalAppData}\Postman\Postman.exe",
+                "${env:ProgramFiles}\Postman\Postman.exe",
+                "${env:ProgramFiles(x86)}\Postman\Postman.exe"
             )
         }
         "GitHub Desktop" = @{
@@ -382,30 +384,37 @@ function Get-AppDirectDownloadInfo {
             )
         }
         "Visual Studio Code" = @{
-            Url = "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64"
+            Url = "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user"
             Extension = ".exe"
-            Arguments = "/VERYSILENT /MERGETASKS=!runcode"
+            Arguments = "/VERYSILENT /NORESTART /MERGETASKS=!runcode"
             VerificationPaths = @(
                 "${env:ProgramFiles}\Microsoft VS Code\Code.exe",
+                "${env:LocalAppData}\Programs\Microsoft VS Code\Code.exe",
                 "${env:ProgramFiles(x86)}\Microsoft VS Code\Code.exe"
             )
         }
         "PyCharm" = @{
             Url = if ($latestUrl) { $latestUrl } else { "https://download.jetbrains.com/python/pycharm-community-latest.exe" }
             Extension = ".exe"
-            Arguments = "/S"
+            Arguments = "/S /CONFIG=${env:TEMP}\silent.config"
             VerificationPaths = @(
-                "${env:ProgramFiles}\JetBrains\PyCharm Community Edition\bin\pycharm64.exe",
-                "${env:ProgramFiles(x86)}\JetBrains\PyCharm Community Edition\bin\pycharm64.exe"
+                "${env:ProgramFiles}\JetBrains\PyCharm Community Edition*\bin\pycharm64.exe",
+                "${env:ProgramFiles(x86)}\JetBrains\PyCharm Community Edition*\bin\pycharm64.exe",
+                "${env:ProgramFiles}\JetBrains\PyCharm Community Edition*\bin\pycharm.exe",
+                "${env:LocalAppData}\JetBrains\Toolbox\apps\PyCharm-C\*\bin\pycharm64.exe"
             )
         }
         "Python" = @{
             Url = if ($latestUrl) { $latestUrl } else { "https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe" }
             Extension = ".exe"
-            Arguments = "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0"
+            Arguments = "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0 Include_pip=1 Include_tcltk=1"
             VerificationPaths = @(
-                "${env:ProgramFiles}\Python*\python.exe",
-                "${env:ProgramFiles(x86)}\Python*\python.exe"
+                "${env:ProgramFiles}\Python312\python.exe",
+                "${env:ProgramFiles}\Python311\python.exe", 
+                "${env:ProgramFiles}\Python310\python.exe",
+                "${env:LocalAppData}\Programs\Python\Python312\python.exe",
+                "${env:LocalAppData}\Programs\Python\Python311\python.exe",
+                "${env:LocalAppData}\Microsoft\WindowsApps\python.exe"
             )
         }
         "Steam" = @{
@@ -430,7 +439,7 @@ function Get-AppDirectDownloadInfo {
             Extension = ".exe"
             Arguments = "/silent"
             VerificationPaths = @(
-                "${env:AppData}\Spotify\Spotify.exe",
+                "${env:APPDATA}\Spotify\Spotify.exe",
                 "${env:ProgramFiles}\Spotify\Spotify.exe",
                 "${env:ProgramFiles(x86)}\Spotify\Spotify.exe"
             )
@@ -438,9 +447,12 @@ function Get-AppDirectDownloadInfo {
         "Discord" = @{
             Url = "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x86"
             Extension = ".exe"
-            Arguments = "/S"
+            Arguments = "-s"
             VerificationPaths = @(
-                "${env:LocalAppData}\Discord\app-*\Discord.exe"
+                "${env:LocalAppData}\Discord\Update.exe",
+                "${env:LocalAppData}\Discord\app-*\Discord.exe",
+                "${env:ProgramFiles}\Discord\Discord.exe",
+                "${env:ProgramFiles(x86)}\Discord\Discord.exe"
             )
         }
         "Notepad++" = @{
@@ -459,6 +471,32 @@ function Get-AppDirectDownloadInfo {
             VerificationPaths = @(
                 "${env:ProgramFiles}\7-Zip\7z.exe",
                 "${env:ProgramFiles(x86)}\7-Zip\7z.exe"
+            )
+        }
+        "Windows Terminal" = @{
+            Url = "https://github.com/microsoft/terminal/releases/latest/download/Microsoft.WindowsTerminal_Win10.msixbundle"
+            Extension = ".msixbundle"
+            Arguments = ""
+            VerificationPaths = @(
+                "${env:LocalAppData}\Microsoft\WindowsApps\wt.exe"
+            )
+        }
+        "Microsoft PowerToys" = @{
+            Url = "https://github.com/microsoft/PowerToys/releases/latest/download/PowerToysSetup-x64.exe"
+            Extension = ".exe"
+            Arguments = "-silent"
+            VerificationPaths = @(
+                "${env:LocalAppData}\Programs\PowerToys\PowerToys.exe",
+                "${env:ProgramFiles}\PowerToys\PowerToys.exe"
+            )
+        }
+        "Node.js" = @{
+            Url = "https://nodejs.org/dist/latest/node-latest-x64.msi"
+            Extension = ".msi"
+            Arguments = @("/quiet", "/norestart")
+            VerificationPaths = @(
+                "${env:ProgramFiles}\nodejs\node.exe",
+                "${env:ProgramFiles(x86)}\nodejs\node.exe"
             )
         }
     }
@@ -784,9 +822,48 @@ function Install-Application {
             return $false
         }
         
-        # Run the installer
+        # Run the installer based on extension type
         Write-LogMessage "Running installer..." -Level "INFO"
-        $process = Start-Process -FilePath $installerPath -ArgumentList $DirectDownload.Arguments -Wait -PassThru
+        
+        if ($DirectDownload.Extension -eq ".exe") {
+            $arguments = if ($DirectDownload.Arguments) { $DirectDownload.Arguments } else { "/S" }
+            $process = Start-Process -FilePath $installerPath -ArgumentList $arguments -Wait -PassThru
+        }
+        elseif ($DirectDownload.Extension -eq ".msi") {
+            $arguments = if ($DirectDownload.Arguments) { $DirectDownload.Arguments } else { "/quiet", "/norestart" }
+            $process = Start-Process msiexec.exe -ArgumentList "/i", $installerPath, $arguments -Wait -NoNewWindow -PassThru
+        }
+        elseif ($DirectDownload.Extension -eq ".msixbundle") {
+            # Special handling for MSIX bundles (Windows Terminal, etc.)
+            Write-LogMessage "Installing MSIX bundle..." -Level "INFO"
+            
+            try {
+                # Try using Add-AppxPackage
+                Add-AppxPackage -Path $installerPath -ErrorAction Stop
+                $process = [PSCustomObject]@{ ExitCode = 0 }
+            }
+            catch {
+                Write-LogMessage "Add-AppxPackage failed, trying winget fallback: $_" -Level "WARNING"
+                
+                # Try using winget if available
+                if (Get-Command winget -ErrorAction SilentlyContinue) {
+                    Write-LogMessage "Using winget to install $AppName..." -Level "INFO"
+                    $wingetResult = winget install --id Microsoft.WindowsTerminal -e --accept-source-agreements --accept-package-agreements --silent 2>&1
+                    
+                    if ($LASTEXITCODE -eq 0) {
+                        $process = [PSCustomObject]@{ ExitCode = 0 }
+                    } else {
+                        throw "Winget installation failed: $wingetResult"
+                    }
+                } else {
+                    throw "Failed to install MSIX bundle and winget not available: $_"
+                }
+            }
+        }
+        else {
+            Write-LogMessage "Unsupported installer type: $($DirectDownload.Extension)" -Level "ERROR"
+            $process = [PSCustomObject]@{ ExitCode = 1 }
+        }
         
         if ($process.ExitCode -eq 0) {
             Write-LogMessage "Installation completed successfully" -Level "SUCCESS"
@@ -859,32 +936,24 @@ function Install-Python {
     if (-not $script:UseDirectDownloadOnly -and (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-LogMessage "Installing Python via winget..." -Level "INFO"
         try {
-            $wingetOutput = winget install --id "Python.Python.$Version" --accept-source-agreements --accept-package-agreements --silent 2>&1
+            $wingetOutput = winget install --id "Python.Python.3" --accept-source-agreements --accept-package-agreements --silent 2>&1
             
             if ($LASTEXITCODE -eq 0 -or $wingetOutput -match "Successfully installed") {
                 Write-LogMessage "Python installed successfully via winget!" -Level "SUCCESS"
                 
-                # Refresh environment variables
+                # Refresh environment variables and verify
                 Update-Environment
-                
-                # Create virtual environment if requested
-                if ($CreateVirtualEnv) {
-                    Write-LogMessage "Creating Python virtual environment: $VirtualEnvName" -Level "INFO"
-                    try {
-                        python -m venv $VirtualEnvName
-                        Write-LogMessage "Virtual environment created successfully" -Level "SUCCESS"
-                        
-                        # Activate and upgrade pip
-                        & "$VirtualEnvName\Scripts\activate.ps1"
-                        python -m pip install --upgrade pip setuptools wheel
-                        Write-LogMessage "Pip upgraded in virtual environment" -Level "SUCCESS"
-                    }
-                    catch {
-                        Write-LogMessage "Failed to create virtual environment: $_" -Level "WARNING"
-                    }
+                if (Get-Command python -ErrorAction SilentlyContinue) {
+                    $pythonVersion = python --version 2>&1
+                    Write-LogMessage "Python version: $pythonVersion" -Level "SUCCESS"
+                    
+                    # Upgrade pip
+                    Write-LogMessage "Upgrading pip to latest version..." -Level "INFO"
+                    python -m pip install --upgrade pip --quiet
+                    Write-LogMessage "Pip upgraded successfully" -Level "SUCCESS"
+                    
+                    return $true
                 }
-                
-                return $true
             }
         }
         catch {
@@ -892,7 +961,7 @@ function Install-Python {
         }
     }
     
-    # Fallback to direct download
+    # Fallback to direct download with enhanced setup
     Write-LogMessage "Using direct download method for Python..." -Level "INFO"
     
     # Try to get the latest version URL
@@ -908,49 +977,204 @@ function Install-Python {
     # Update URL if we have a latest version
     if ($latestUrl) {
         $pythonDownload.Url = $latestUrl
+        Write-LogMessage "Using latest Python version URL: $latestUrl" -Level "INFO"
     }
     
     try {
         # Download and install Python
         $installerPath = Join-Path $env:TEMP "python-installer.exe"
+        Write-LogMessage "Downloading Python from: $($pythonDownload.Url)" -Level "INFO"
+        
         $webClient = New-Object System.Net.WebClient
         $webClient.DownloadFile($pythonDownload.Url, $installerPath)
         
-        # Run installer with custom arguments
-        Start-Process -FilePath $installerPath -ArgumentList $pythonDownload.Arguments -Wait -NoNewWindow
+        # Run installer with enhanced arguments
+        Write-LogMessage "Installing Python with arguments: $($pythonDownload.Arguments)" -Level "INFO"
+        $process = Start-Process -FilePath $installerPath -ArgumentList $pythonDownload.Arguments -Wait -NoNewWindow -PassThru
         
-        # Refresh environment variables
-        Update-Environment
-        
-        # Verify installation
-        if (Get-Command python -ErrorAction SilentlyContinue) {
-            Write-LogMessage "Python installed successfully!" -Level "SUCCESS"
+        if ($process.ExitCode -eq 0) {
+            Write-LogMessage "Python installer completed successfully" -Level "SUCCESS"
             
-            # Create virtual environment if requested
-            if ($CreateVirtualEnv) {
-                Write-LogMessage "Creating Python virtual environment: $VirtualEnvName" -Level "INFO"
-                try {
-                    python -m venv $VirtualEnvName
-                    Write-LogMessage "Virtual environment created successfully" -Level "SUCCESS"
-                    
-                    # Activate and upgrade pip
-                    & "$VirtualEnvName\Scripts\activate.ps1"
-                    python -m pip install --upgrade pip setuptools wheel
-                    Write-LogMessage "Pip upgraded in virtual environment" -Level "SUCCESS"
-                }
-                catch {
-                    Write-LogMessage "Failed to create virtual environment: $_" -Level "WARNING"
+            # Refresh environment variables
+            Update-Environment
+            Start-Sleep -Seconds 3
+            
+            # Try multiple verification methods
+            $pythonFound = $false
+            $pythonPath = $null
+            
+            # Check command availability first
+            if (Get-Command python -ErrorAction SilentlyContinue) {
+                $pythonVersion = python --version 2>&1
+                Write-LogMessage "Python command available: $pythonVersion" -Level "SUCCESS"
+                $pythonFound = $true
+            }
+            
+            # If command not found, search installation paths
+            if (-not $pythonFound) {
+                Write-LogMessage "Python command not found, searching installation paths..." -Level "INFO"
+                
+                $searchPaths = @(
+                    "${env:ProgramFiles}\Python*",
+                    "${env:LocalAppData}\Programs\Python\Python*"
+                )
+                
+                foreach ($searchPath in $searchPaths) {
+                    $pythonDirs = Get-ChildItem -Path (Split-Path $searchPath) -Directory -Filter (Split-Path $searchPath -Leaf) -ErrorAction SilentlyContinue
+                    if ($pythonDirs) {
+                        $pythonPath = $pythonDirs[0].FullName
+                        $pythonExe = Join-Path $pythonPath "python.exe"
+                        if (Test-Path $pythonExe) {
+                            Write-LogMessage "Found Python at: $pythonPath" -Level "SUCCESS"
+                            
+                            # Add to PATH
+                            $scriptsPath = Join-Path $pythonPath "Scripts"
+                            Set-PathEnvironment -PathToAdd $pythonPath
+                            if (Test-Path $scriptsPath) {
+                                Set-PathEnvironment -PathToAdd $scriptsPath
+                            }
+                            
+                            $pythonFound = $true
+                            break
+                        }
+                    }
                 }
             }
             
-            return $true
+            if ($pythonFound) {
+                # Upgrade pip
+                Write-LogMessage "Upgrading pip to latest version..." -Level "INFO"
+                try {
+                    if ($pythonPath) {
+                        & "$pythonPath\python.exe" -m pip install --upgrade pip --quiet
+                    } else {
+                        python -m pip install --upgrade pip --quiet
+                    }
+                    Write-LogMessage "Pip upgraded successfully" -Level "SUCCESS"
+                }
+                catch {
+                    Write-LogMessage "Warning: Could not upgrade pip: $_" -Level "WARNING"
+                }
+                
+                Write-LogMessage "Python is ready for development!" -Level "SUCCESS"
+                Write-LogMessage "Create virtual environments with: python -m venv myenv" -Level "INFO"
+                Write-LogMessage "Activate with: myenv\\Scripts\\activate" -Level "INFO"
+                
+                return $true
+            } else {
+                Write-LogMessage "Python installation verification failed" -Level "ERROR"
+                return $false
+            }
+        } else {
+            Write-LogMessage "Python installer failed with exit code: $($process.ExitCode)" -Level "ERROR"
+            return $false
         }
     }
     catch {
-        Write-LogMessage ("Failed to install Python: {0}" -f $_.Exception.Message) -Level "ERROR"
+        Write-LogMessage "Failed to install Python: $_" -Level "ERROR"
+        return $false
+    }
+}
+
+function New-DevelopmentFolders {
+    [CmdletBinding()]
+    param()
+    
+    Write-LogMessage "Creating development folders..." -Level "INFO"
+    
+    $folders = @(
+        "$env:USERPROFILE\Desktop\Projects",
+        "$env:USERPROFILE\Desktop\Projects\Python", 
+        "$env:USERPROFILE\Desktop\Projects\GitHub",
+        "$env:USERPROFILE\Desktop\APIs",
+        "$env:USERPROFILE\.vscode"
+    )
+    
+    $createdCount = 0
+    foreach ($folder in $folders) {
+        if (-not (Test-Path $folder)) {
+            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+            Write-LogMessage "Created: $folder" -Level "SUCCESS"
+            $createdCount++
+        } else {
+            Write-LogMessage "Folder already exists: $folder" -Level "INFO"
+        }
     }
     
-    return $false
+    Write-LogMessage "Created $createdCount new development folders" -Level "INFO"
+    return $true
+}
+
+function Install-VSCodeExtensions {
+    [CmdletBinding()]
+    param()
+    
+    Write-LogMessage "Installing VS Code extensions..." -Level "INFO"
+    
+    # Update environment variables to ensure 'code' command is available
+    Update-Environment
+    
+    if (-not (Get-Command code -ErrorAction SilentlyContinue)) {
+        Write-LogMessage "VS Code not found in PATH. Extensions will need to be installed manually." -Level "WARNING"
+        return $false
+    }
+    
+    $extensions = @(
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy", 
+        "ms-vscode.powershell",
+        "GitHub.vscode-pull-request-github",
+        "eamodio.gitlens"
+    )
+    
+    $installedCount = 0
+    $failedCount = 0
+    
+    foreach ($ext in $extensions) {
+        Write-LogMessage "Installing VS Code extension: $ext" -Level "INFO"
+        try {
+            $result = & code --install-extension $ext --force 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-LogMessage "Successfully installed extension: $ext" -Level "SUCCESS"
+                $installedCount++
+            } else {
+                Write-LogMessage "Failed to install extension: $ext" -Level "ERROR"
+                $failedCount++
+            }
+        } catch {
+            Write-LogMessage "Error installing extension $ext : $_" -Level "ERROR"
+            $failedCount++
+        }
+    }
+    
+    Write-LogMessage "VS Code extensions installation complete: $installedCount installed, $failedCount failed" -Level "INFO"
+    return ($failedCount -eq 0)
+}
+
+function Set-PathEnvironment {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$PathToAdd
+    )
+    
+    if (-not (Test-Path $PathToAdd)) {
+        Write-LogMessage "Path does not exist, cannot add to PATH: $PathToAdd" -Level "WARNING"
+        return $false
+    }
+    
+    $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ($currentPath -notlike "*$PathToAdd*") {
+        Write-LogMessage "Adding $PathToAdd to PATH" -Level "INFO"
+        [Environment]::SetEnvironmentVariable("Path", "$currentPath;$PathToAdd", "User")
+        $env:Path += ";$PathToAdd"
+        Write-LogMessage "Added $PathToAdd to PATH" -Level "SUCCESS"
+        return $true
+    } else {
+        Write-LogMessage "$PathToAdd is already in PATH" -Level "INFO"
+        return $true
+    }
 }
 
 # Export functions
@@ -962,5 +1186,8 @@ Export-ModuleMember -Function @(
     'Test-ApplicationInstalled',
     'Get-LatestVersionUrl',
     'Update-Environment',
-    'Install-Python'
+    'Install-Python',
+    'New-DevelopmentFolders',
+    'Install-VSCodeExtensions',
+    'Set-PathEnvironment'
 )
