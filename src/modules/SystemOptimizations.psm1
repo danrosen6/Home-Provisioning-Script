@@ -654,49 +654,48 @@ function Remove-Bloatware {
     
     # Map keys to actual package names
     $packageMap = @{
-        "ms-officehub" = "*Microsoft.Office*"
-        "ms-teams" = "*MicrosoftTeams*"
-        "ms-todo" = "*Microsoft.Todos*"
-        "ms-3dviewer" = "*Microsoft.Microsoft3DViewer*"
-        "ms-mixedreality" = "*Microsoft.MixedReality*"
-        "ms-onenote" = "*Microsoft.Office.OneNote*"
-        "ms-people" = "*Microsoft.People*"
-        "ms-wallet" = "*Microsoft.Wallet*"
-        "ms-messaging" = "*Microsoft.Messaging*"
-        "ms-oneconnect" = "*Microsoft.OneConnect*"
-        "bing-weather" = "*Microsoft.BingWeather*"
-        "bing-news" = "*Microsoft.BingNews*"
-        "bing-finance" = "*Microsoft.BingFinance*"
-        "win-alarms" = "*Microsoft.WindowsAlarms*"
-        "win-camera" = "*Microsoft.WindowsCamera*"
-        "win-mail" = "*microsoft.windowscommunicationsapps*"
-        "win-maps" = "*Microsoft.WindowsMaps*"
-        "win-feedback" = "*Microsoft.WindowsFeedbackHub*"
-        "win-gethelp" = "*Microsoft.GetHelp*"
-        "win-getstarted" = "*Microsoft.Getstarted*"
-        "win-soundrec" = "*Microsoft.WindowsSoundRecorder*"
-        "win-yourphone" = "*Microsoft.YourPhone*"
-        "win-print3d" = "*Microsoft.Print3D*"
-        "zune-music" = "*Microsoft.ZuneMusic*"
-        "zune-video" = "*Microsoft.ZuneVideo*"
-        "solitaire" = "*Microsoft.MicrosoftSolitaireCollection*"
-        "xbox-apps" = "*Microsoft.Xbox*"
-        "candy-crush" = "*king.com.CandyCrush*"
-        "spotify-store" = "*SpotifyAB.SpotifyMusic*"
-        "facebook" = "*Facebook*"
-        "twitter" = "*Twitter*"
-        "netflix" = "*Netflix*"
-        "disney" = "*Disney*"
-        "tiktok" = "*TikTok*"
-        "ms-widgets" = "*MicrosoftWindows.Client.WebExperience*"
-        "ms-clipchamp" = "*Clipchamp.Clipchamp*"
-        "gaming-app" = "*Microsoft.GamingApp*"
-        "xbox-gameoverlay" = "*Microsoft.XboxGameOverlay*"
-        "xbox-gamingoverlay" = "*Microsoft.XboxGamingOverlay*"
-        "xbox-identity" = "*Microsoft.XboxIdentityProvider*"
-        "xbox-speech" = "*Microsoft.XboxSpeechToTextOverlay*"
-        "xbox-tcui" = "*Microsoft.Xbox.TCUI*"
-        "linkedin" = "*LinkedIn*"
+        "ms-officehub" = "Microsoft.MicrosoftOfficeHub"
+        "ms-teams" = "Microsoft.MicrosoftTeams"
+        "ms-todo" = "Microsoft.Todos"
+        "ms-3dviewer" = "Microsoft.Microsoft3DViewer"
+        "ms-mixedreality" = "Microsoft.MixedReality.Portal"
+        "ms-onenote" = "Microsoft.Office.OneNote"
+        "ms-people" = "Microsoft.People"
+        "ms-wallet" = "Microsoft.Wallet"
+        "ms-messaging" = "Microsoft.Messaging"
+        "ms-oneconnect" = "Microsoft.OneConnect"
+        "bing-weather" = "Microsoft.BingWeather"
+        "bing-news" = "Microsoft.BingNews"
+        "bing-finance" = "Microsoft.BingFinance"
+        "win-alarms" = "Microsoft.WindowsAlarms"
+        "win-camera" = "Microsoft.WindowsCamera"
+        "win-mail" = "Microsoft.WindowsCommunicationsApps"
+        "win-maps" = "Microsoft.WindowsMaps"
+        "win-feedback" = "Microsoft.WindowsFeedbackHub"
+        "win-gethelp" = "Microsoft.GetHelp"
+        "win-getstarted" = "Microsoft.Getstarted"
+        "win-soundrec" = "Microsoft.WindowsSoundRecorder"
+        "win-yourphone" = "Microsoft.YourPhone"
+        "win-print3d" = "Microsoft.Print3D"
+        "zune-music" = "Microsoft.ZuneMusic"
+        "zune-video" = "Microsoft.ZuneVideo"
+        "solitaire" = "Microsoft.MicrosoftSolitaireCollection"
+        "gaming-app" = "Microsoft.GamingApp"
+        "xbox-gameoverlay" = "Microsoft.XboxGameOverlay"
+        "xbox-gamingoverlay" = "Microsoft.XboxGamingOverlay"
+        "xbox-identity" = "Microsoft.XboxIdentityProvider"
+        "xbox-speech" = "Microsoft.XboxSpeechToTextOverlay"
+        "xbox-tcui" = "Microsoft.Xbox.TCUI"
+        "candy-crush" = "king.com.CandyCrushSaga"
+        "spotify-store" = "SpotifyAB.SpotifyMusic"
+        "facebook" = "Facebook.FacebookBeta"
+        "twitter" = "Twitter.Twitter"
+        "netflix" = "Netflix.Netflix_mcm4njqhnhss8"
+        "disney" = "Disney.DisneyPlus"
+        "tiktok" = "ByteDancePte.Ltd.TikTok"
+        "ms-widgets" = "MicrosoftWindows.Client.WebExperience"
+        "ms-clipchamp" = "Clipchamp.Clipchamp"
+        "linkedin" = "LinkedIn.LinkedIn"
     }
     
     Write-LogMessage "Starting bloatware removal..." -Level "INFO"
@@ -728,12 +727,41 @@ function Remove-Bloatware {
             
             Write-LogMessage "Removing bloatware: $BloatwareKey" -Level "INFO"
             
-            # Remove for all users
-            Get-AppxPackage $packageName -AllUsers | Remove-AppxPackage -ErrorAction SilentlyContinue
-            # Remove provisioned packages
-            Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $packageName | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+            # Check if packages exist first (using exact name matching like successful scripts)
+            $installedPackages = Get-AppxPackage -Name $packageName -AllUsers -ErrorAction SilentlyContinue
+            $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $packageName }
             
-            Write-LogMessage "Successfully removed: $BloatwareKey" -Level "SUCCESS"
+            $removedCount = 0
+            
+            # Remove installed packages for all users (using proven method from independent scripts)
+            if ($installedPackages) {
+                Write-LogMessage "Found $($installedPackages.Count) installed package(s): $packageName" -Level "INFO"
+                try {
+                    $installedPackages | Remove-AppxPackage -ErrorAction SilentlyContinue
+                    $removedCount += $installedPackages.Count
+                    Write-LogMessage "Removed AppxPackage: $packageName" -Level "INFO"
+                } catch {
+                    Write-LogMessage "Failed to remove AppxPackage $packageName - ${_}" -Level "WARNING"
+                }
+            }
+            
+            # Remove provisioned packages (using proven method from independent scripts)
+            if ($provisionedPackages) {
+                Write-LogMessage "Found $($provisionedPackages.Count) provisioned package(s): $packageName" -Level "INFO"
+                try {
+                    $provisionedPackages | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+                    $removedCount += $provisionedPackages.Count
+                    Write-LogMessage "Removed AppxProvisionedPackage: $packageName" -Level "INFO"
+                } catch {
+                    Write-LogMessage "Failed to remove AppxProvisionedPackage $packageName - ${_}" -Level "WARNING"
+                }
+            }
+            
+            if ($removedCount -gt 0) {
+                Write-LogMessage "Successfully removed $removedCount package(s) for: $BloatwareKey" -Level "SUCCESS"
+            } else {
+                Write-LogMessage "No packages found matching pattern $packageName for: $BloatwareKey" -Level "WARNING"
+            }
             Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Completed"
             return $true
         }

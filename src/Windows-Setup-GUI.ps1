@@ -14,6 +14,60 @@ Import-Module (Join-Path $scriptPath "modules\SystemOptimizations.psm1") -Force
 Import-Module (Join-Path $scriptPath "utils\Logging.psm1") -Force
 Import-Module (Join-Path $scriptPath "utils\RecoveryUtils.psm1") -Force
 
+# Helper functions
+function Test-WingetCompatibility {
+    try {
+        $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
+        $osName = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
+        
+        $isCompatible = ([int]$buildNumber -ge 16299)
+        $wingetAvailable = (Get-Command winget -ErrorAction SilentlyContinue) -ne $null
+        
+        # Get Windows version name for better user information
+        $versionName = "Unknown"
+        $buildInt = [int]$buildNumber
+        if ($buildInt -ge 22000) {
+            $versionName = "Windows 11"
+        } elseif ($buildInt -ge 19041) {
+            $versionName = "Windows 10 2004+"
+        } elseif ($buildInt -ge 18363) {
+            $versionName = "Windows 10 1909"
+        } elseif ($buildInt -ge 18362) {
+            $versionName = "Windows 10 1903"
+        } elseif ($buildInt -ge 17763) {
+            $versionName = "Windows 10 1809"
+        } elseif ($buildInt -ge 17134) {
+            $versionName = "Windows 10 1803"
+        } elseif ($buildInt -ge 16299) {
+            $versionName = "Windows 10 1709"
+        } else {
+            $versionName = "Windows 10 (Pre-1709)"
+        }
+        
+        return @{
+            Compatible = $isCompatible
+            Available = $wingetAvailable
+            BuildNumber = $buildNumber
+            OSName = $osName
+            VersionName = $versionName
+            MinimumBuild = 16299
+            MinimumVersion = "Windows 10 1709"
+        }
+    }
+    catch {
+        return @{
+            Compatible = $false
+            Available = $false
+            BuildNumber = "Unknown"
+            OSName = "Unknown"
+            VersionName = "Unknown"
+            MinimumBuild = 16299
+            MinimumVersion = "Windows 10 1709"
+            Error = $_.Exception.Message
+        }
+    }
+}
+
 # Global variables
 $script:SelectedApps = @()
 $script:SelectedBloatware = @()
@@ -639,58 +693,6 @@ function Get-WingetId {
     return $wingetIds[$AppKey]
 }
 
-function Test-WingetCompatibility {
-    try {
-        $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
-        $osName = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
-        
-        $isCompatible = ([int]$buildNumber -ge 16299)
-        $wingetAvailable = (Get-Command winget -ErrorAction SilentlyContinue) -ne $null
-        
-        # Get Windows version name for better user information
-        $versionName = "Unknown"
-        $buildInt = [int]$buildNumber
-        if ($buildInt -ge 22000) {
-            $versionName = "Windows 11"
-        } elseif ($buildInt -ge 19041) {
-            $versionName = "Windows 10 2004+"
-        } elseif ($buildInt -ge 18363) {
-            $versionName = "Windows 10 1909"
-        } elseif ($buildInt -ge 18362) {
-            $versionName = "Windows 10 1903"
-        } elseif ($buildInt -ge 17763) {
-            $versionName = "Windows 10 1809"
-        } elseif ($buildInt -ge 17134) {
-            $versionName = "Windows 10 1803"
-        } elseif ($buildInt -ge 16299) {
-            $versionName = "Windows 10 1709"
-        } else {
-            $versionName = "Windows 10 (Pre-1709)"
-        }
-        
-        return @{
-            Compatible = $isCompatible
-            Available = $wingetAvailable
-            BuildNumber = $buildNumber
-            OSName = $osName
-            VersionName = $versionName
-            MinimumBuild = 16299
-            MinimumVersion = "Windows 10 1709"
-        }
-    }
-    catch {
-        return @{
-            Compatible = $false
-            Available = $false
-            BuildNumber = "Unknown"
-            OSName = "Unknown"
-            VersionName = "Unknown"
-            MinimumBuild = 16299
-            MinimumVersion = "Windows 10 1709"
-            Error = $_.Exception.Message
-        }
-    }
-}
 
 function Show-WindowsUpdateDialog {
     param(
@@ -713,7 +715,7 @@ function Show-WindowsUpdateDialog {
     
     # Warning icon and main message
     $iconLabel = New-Object System.Windows.Forms.Label
-    $iconLabel.Text = "⚠️"
+    $iconLabel.Text = "[WARNING]"
     $iconLabel.Font = New-Object System.Drawing.Font("Segoe UI", 16)
     $iconLabel.Location = New-Object System.Drawing.Point(20, 20)
     $iconLabel.Size = New-Object System.Drawing.Size(40, 40)
@@ -819,7 +821,7 @@ You can update Windows to enable winget support, or continue with direct downloa
     
     # Help text
     $helpLabel = New-Object System.Windows.Forms.Label
-    $helpLabel.Text = "💡 Tip: After updating Windows, restart your computer and run this script again for the best experience."
+    $helpLabel.Text = "TIP: After updating Windows, restart your computer and run this script again for the best experience."
     $helpLabel.Location = New-Object System.Drawing.Point(0, 40)
     $helpLabel.Size = New-Object System.Drawing.Size(440, 30)
     $helpLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
@@ -946,7 +948,7 @@ $runBtn.Add_Click({
                 
                 # Check minimum Windows 10 build requirement (1709 = build 16299)
                 if ([int]$buildNumber -lt 16299) {
-                    Update-StatusMessage "❌ Windows version too old for winget (requires Windows 10 1709/build 16299+)"
+                    Update-StatusMessage "[ERROR] Windows version too old for winget (requires Windows 10 1709/build 16299+)"
                     Update-StatusMessage "Current build: $buildNumber - Showing Windows Update options..."
                     
                     # Show Windows Update dialog to help user upgrade
@@ -957,7 +959,7 @@ $runBtn.Add_Click({
                         # User updated and wants to recheck - test again
                         $newWingetInfo = Test-WingetCompatibility
                         if ($newWingetInfo.Compatible) {
-                            Update-StatusMessage "✓ Windows version now supports winget after update!"
+                            Update-StatusMessage "[SUCCESS] Windows version now supports winget after update!"
                             $buildNumber = $newWingetInfo.BuildNumber
                         } else {
                             Update-StatusMessage "Windows still incompatible after update - using direct downloads"
@@ -966,20 +968,20 @@ $runBtn.Add_Click({
                         Update-StatusMessage "User chose to continue with direct downloads"
                     }
                 } else {
-                    Update-StatusMessage "✓ Windows version supports winget (build $buildNumber >= 16299)"
+                    Update-StatusMessage "[SUCCESS] Windows version supports winget (build $buildNumber >= 16299)"
                     
                     try {
                         # First check if winget command is available
                         $wingetVersion = winget --version 2>$null
                         if ($wingetVersion) {
-                            Update-StatusMessage "✓ Winget already available: $wingetVersion"
+                            Update-StatusMessage "[SUCCESS] Winget already available: $wingetVersion"
                         } else {
                             Update-StatusMessage "Winget command not found - checking App Installer registration..."
                             
                             # Check if App Installer (which contains winget) is installed
                             $appInstaller = Get-AppxPackage -Name "Microsoft.DesktopAppInstaller" -ErrorAction SilentlyContinue
                             if ($appInstaller) {
-                                Update-StatusMessage "✓ App Installer found: $($appInstaller.Version)"
+                                Update-StatusMessage "[SUCCESS] App Installer found: $($appInstaller.Version)"
                                 Update-StatusMessage "Attempting winget registration..."
                                 
                                 try {
@@ -1006,7 +1008,7 @@ $runBtn.Add_Click({
                                         try {
                                             $testVersion = winget --version 2>$null
                                             if ($testVersion) {
-                                                Update-StatusMessage "✓ Winget successfully registered and working: $testVersion"
+                                                Update-StatusMessage "[SUCCESS] Winget successfully registered and working: $testVersion"
                                                 $wingetWorking = $true
                                             }
                                         } catch {
@@ -1015,22 +1017,22 @@ $runBtn.Add_Click({
                                     }
                                     
                                     if (-not $wingetWorking) {
-                                        Update-StatusMessage "⚠ Winget registration completed but command not immediately available"
+                                        Update-StatusMessage "[WARNING] Winget registration completed but command not immediately available"
                                         Update-StatusMessage "This is normal - winget may require a new PowerShell session or user logout/login"
                                         Update-StatusMessage "Continuing with direct downloads as fallback"
                                     }
                                     
                                 } catch {
-                                    Update-StatusMessage "⚠ Winget registration failed: $_"
+                                    Update-StatusMessage "[WARNING] Winget registration failed: $_"
                                     Update-StatusMessage "Continuing with direct downloads"
                                 }
                             } else {
-                                Update-StatusMessage "❌ App Installer not found - winget not available on this system"
+                                Update-StatusMessage "[ERROR] App Installer not found - winget not available on this system"
                                 Update-StatusMessage "Tip: Install from Microsoft Store or use direct downloads"
                             }
                         }
                     } catch {
-                        Update-StatusMessage "⚠ Error during winget check: $_"
+                        Update-StatusMessage "[WARNING] Error during winget check: $_"
                         Update-StatusMessage "Continuing with direct downloads"
                     }
                 }
@@ -1055,10 +1057,10 @@ $runBtn.Add_Click({
                             Update-StatusMessage "Using direct download for $appKey (winget not available)"
                             Install-Application -AppName $appKey
                         }
-                        Update-StatusMessage "✓ Successfully installed $appKey"
+                        Update-StatusMessage "[SUCCESS] Successfully installed $appKey"
                     } catch {
-                        Update-StatusMessage "✗ Failed to install $appKey`: $_"
-                        Write-LogMessage -Message "Failed to install $appKey`: $_" -Level "ERROR"
+                        Update-StatusMessage "[ERROR] Failed to install $appKey - ${_}"
+                        Write-LogMessage -Message "Failed to install $appKey - ${_}" -Level "ERROR"
                     }
                 }
             }
@@ -1067,10 +1069,10 @@ $runBtn.Add_Click({
                     Update-StatusMessage "Removing bloatware $bloatKey..."
                     try {
                         Remove-Bloatware -BloatwareKey $bloatKey
-                        Update-StatusMessage "✓ Successfully removed $bloatKey"
+                        Update-StatusMessage "[SUCCESS] Successfully removed $bloatKey"
                     } catch {
-                        Update-StatusMessage "✗ Failed to remove $bloatKey`: $_"
-                        Write-LogMessage -Message "Failed to remove bloatware $bloatKey`: $_" -Level "ERROR"
+                        Update-StatusMessage "[ERROR] Failed to remove $bloatKey - ${_}"
+                        Write-LogMessage -Message "Failed to remove bloatware $bloatKey - ${_}" -Level "ERROR"
                     }
                 }
             }
@@ -1079,10 +1081,10 @@ $runBtn.Add_Click({
                     Update-StatusMessage "Disabling service $serviceKey..."
                     try {
                         Set-SystemOptimization -OptimizationKey $serviceKey
-                        Update-StatusMessage "✓ Successfully disabled $serviceKey"
+                        Update-StatusMessage "[SUCCESS] Successfully disabled $serviceKey"
                     } catch {
-                        Update-StatusMessage "✗ Failed to disable $serviceKey`: $_"
-                        Write-LogMessage -Message "Failed to disable service $serviceKey`: $_" -Level "ERROR"
+                        Update-StatusMessage "[ERROR] Failed to disable $serviceKey - ${_}"
+                        Write-LogMessage -Message "Failed to disable service $serviceKey - ${_}" -Level "ERROR"
                     }
                 }
             }
@@ -1091,10 +1093,10 @@ $runBtn.Add_Click({
                     Update-StatusMessage "Applying tweak $tweakKey..."
                     try {
                         Set-SystemOptimization -OptimizationKey $tweakKey
-                        Update-StatusMessage "✓ Successfully applied $tweakKey"
+                        Update-StatusMessage "[SUCCESS] Successfully applied $tweakKey"
                     } catch {
-                        Update-StatusMessage "✗ Failed to apply $tweakKey`: $_"
-                        Write-LogMessage -Message "Failed to apply tweak $tweakKey`: $_" -Level "ERROR"
+                        Update-StatusMessage "[ERROR] Failed to apply $tweakKey - ${_}"
+                        Write-LogMessage -Message "Failed to apply tweak $tweakKey - ${_}" -Level "ERROR"
                     }
                 }
             }
