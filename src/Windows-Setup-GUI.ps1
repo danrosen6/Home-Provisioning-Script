@@ -63,6 +63,7 @@ $script:Apps = @{
         @{Name="7-Zip"; Key="7zip"; Default=$false; Win10=$true; Win11=$true}
         @{Name="Notepad++"; Key="notepad"; Default=$false; Win10=$true; Win11=$true}
         @{Name="Microsoft PowerToys"; Key="powertoys"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="Windows Terminal"; Key="terminal"; Default=$true; Win10=$false; Win11=$true}
     )
 }
 
@@ -96,9 +97,15 @@ $script:Bloatware = @{
         @{Name="Get Help"; Key="win-gethelp"; Default=$true; Win10=$true; Win11=$true}
         @{Name="Get Started"; Key="win-getstarted"; Default=$true; Win10=$true; Win11=$true}
         @{Name="Microsoft Widgets"; Key="ms-widgets"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="Skype App"; Key="skype-app"; Default=$true; Win10=$true; Win11=$true}
     )
-    "Entertainment & Media" = @(
-        @{Name="Xbox Apps"; Key="xbox-apps"; Default=$true; Win10=$true; Win11=$true}
+    "Entertainment & Gaming" = @(
+        @{Name="Xbox Gaming App"; Key="gaming-app"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Xbox Game Overlay"; Key="xbox-gameoverlay"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="Xbox Gaming Overlay"; Key="xbox-gamingoverlay"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="Xbox Identity Provider"; Key="xbox-identity"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="Xbox Speech to Text"; Key="xbox-speech"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="Xbox TCUI"; Key="xbox-tcui"; Default=$true; Win10=$false; Win11=$true}
         @{Name="Groove Music"; Key="zune-music"; Default=$true; Win10=$true; Win11=$true}
         @{Name="Movies & TV"; Key="zune-video"; Default=$true; Win10=$true; Win11=$true}
         @{Name="Solitaire Collection"; Key="solitaire"; Default=$true; Win10=$true; Win11=$true}
@@ -115,6 +122,8 @@ $script:Bloatware = @{
         @{Name="Instagram"; Key="instagram"; Default=$true; Win10=$true; Win11=$true}
         @{Name="WhatsApp"; Key="whatsapp"; Default=$true; Win10=$true; Win11=$true}
         @{Name="Amazon Prime Video"; Key="amazon-prime"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Hulu"; Key="hulu"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="PicsArt"; Key="picsart"; Default=$true; Win10=$true; Win11=$true}
     )
 }
 
@@ -144,7 +153,7 @@ $script:Services = @{
         @{Name="Retail Demo Service"; Key="retaildemo"; Default=$true; Win10=$true; Win11=$true}
         @{Name="Geolocation Service"; Key="lfsvc"; Default=$true; Win10=$false; Win11=$true}
         @{Name="Touch Keyboard and Handwriting Panel"; Key="tabletinputservice"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="HomeGroup Provider"; Key="homegrpservice"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="HomeGroup Provider"; Key="homegrpservice"; Default=$true; Win10=$true; Win11=$false}
         @{Name="Microsoft Wallet Service"; Key="walletservice"; Default=$true; Win10=$false; Win11=$true}
     )
 }
@@ -152,32 +161,39 @@ $script:Services = @{
 # System tweaks definitions
 $script:Tweaks = @{
     "File Explorer" = @(
-        @{Name="Show file extensions"; Key="show-extensions"; Default=$true}
-        @{Name="Show hidden files"; Key="show-hidden"; Default=$true}
-        @{Name="Disable quick access"; Key="disable-quickaccess"; Default=$false}
+        @{Name="Show file extensions"; Key="show-extensions"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Show hidden files"; Key="show-hidden"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Disable quick access"; Key="disable-quickaccess"; Default=$false; Win10=$true; Win11=$true}
     )
     "Privacy & Telemetry" = @(
-        @{Name="Disable Cortana"; Key="disable-cortana"; Default=$true}
-        @{Name="Disable OneDrive auto-start"; Key="disable-onedrive"; Default=$true}
-        @{Name="Reduce telemetry"; Key="reduce-telemetry"; Default=$true}
-        @{Name="Disable activity history"; Key="disable-activity"; Default=$true}
-        @{Name="Disable web search in Start Menu"; Key="search-bing"; Default=$true}
-        @{Name="Disable background apps"; Key="disable-background"; Default=$true}
+        @{Name="Disable Cortana"; Key="disable-cortana"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Disable OneDrive auto-start"; Key="disable-onedrive"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Reduce telemetry"; Key="reduce-telemetry"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Disable activity history"; Key="disable-activity"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Disable web search in Start Menu"; Key="search-bing"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Disable background apps"; Key="disable-background"; Default=$true; Win10=$true; Win11=$true}
     )
-    "Interface" = @(
-        @{Name="Dark theme"; Key="dark-theme"; Default=$false}
-        @{Name="Classic right-click menu"; Key="classic-context"; Default=$true}
-        @{Name="Taskbar left alignment"; Key="taskbar-left"; Default=$true}
-        @{Name="Disable widgets"; Key="disable-widgets"; Default=$true}
-        @{Name="Disable Chat icon on taskbar"; Key="disable-chat"; Default=$true}
-        @{Name="Disable Snap layouts"; Key="disable-snap"; Default=$false}
-        @{Name="Disable tips and suggestions"; Key="disable-tips"; Default=$true}
-        @{Name="Disable startup sound"; Key="disable-startup-sound"; Default=$true}
+    "Windows 11 Interface" = @(
+        @{Name="Taskbar left alignment"; Key="taskbar-left"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="Classic right-click menu"; Key="classic-context"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="Disable widgets"; Key="disable-widgets"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="Disable Chat icon on taskbar"; Key="disable-chat"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="Disable Snap layouts hover"; Key="disable-snap"; Default=$false; Win10=$false; Win11=$true}
+        @{Name="Configure Start menu layout"; Key="start-menu-pins"; Default=$false; Win10=$false; Win11=$true}
+    )
+    "Windows 10 Interface" = @(
+        @{Name="Hide Task View button"; Key="hide-taskview"; Default=$true; Win10=$true; Win11=$false}
+        @{Name="Hide Cortana button"; Key="hide-cortana-button"; Default=$true; Win10=$true; Win11=$false}
+        @{Name="Configure search box"; Key="configure-searchbox"; Default=$true; Win10=$true; Win11=$false}
+    )
+    "General Interface" = @(
+        @{Name="Dark theme"; Key="dark-theme"; Default=$false; Win10=$true; Win11=$true}
+        @{Name="Disable tips and suggestions"; Key="disable-tips"; Default=$true; Win10=$true; Win11=$true}
+        @{Name="Disable startup sound"; Key="disable-startup-sound"; Default=$true; Win10=$true; Win11=$true}
     )
     "System Performance" = @(
-        @{Name="Enable developer mode"; Key="dev-mode"; Default=$false}
-        @{Name="Disable Teams auto-start"; Key="disable-teams-autostart"; Default=$true}
-        @{Name="Configure Start menu layout"; Key="start-menu-pins"; Default=$false}
+        @{Name="Enable developer mode"; Key="dev-mode"; Default=$false; Win10=$true; Win11=$true}
+        @{Name="Disable Teams auto-start"; Key="disable-teams-autostart"; Default=$true; Win10=$true; Win11=$true}
     )
 }
 
@@ -265,7 +281,16 @@ $title.AutoSize = $true
 $header.Controls.Add($title)
 
 $osLabel = New-Object System.Windows.Forms.Label
-$osLabel.Text = if ($script:IsWindows11) { "Windows 11" } else { "Windows 10" }
+$wingetCompat = Test-WingetCompatibility
+if ($script:IsWindows11) {
+    $osText = "Windows 11"
+} else {
+    $osText = "Windows 10"
+}
+if (-not $wingetCompat.Compatible) {
+    $osText += " (Build $($wingetCompat.BuildNumber))"
+}
+$osLabel.Text = $osText
 $osLabel.ForeColor = [System.Drawing.Color]::White
 $osLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 $osLabel.Location = New-Object System.Drawing.Point(750, 25)
@@ -614,6 +639,197 @@ function Get-WingetId {
     return $wingetIds[$AppKey]
 }
 
+function Test-WingetCompatibility {
+    try {
+        $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
+        $osName = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
+        
+        $isCompatible = ([int]$buildNumber -ge 16299)
+        $wingetAvailable = (Get-Command winget -ErrorAction SilentlyContinue) -ne $null
+        
+        # Get Windows version name for better user information
+        $versionName = "Unknown"
+        $buildInt = [int]$buildNumber
+        if ($buildInt -ge 22000) {
+            $versionName = "Windows 11"
+        } elseif ($buildInt -ge 19041) {
+            $versionName = "Windows 10 2004+"
+        } elseif ($buildInt -ge 18363) {
+            $versionName = "Windows 10 1909"
+        } elseif ($buildInt -ge 18362) {
+            $versionName = "Windows 10 1903"
+        } elseif ($buildInt -ge 17763) {
+            $versionName = "Windows 10 1809"
+        } elseif ($buildInt -ge 17134) {
+            $versionName = "Windows 10 1803"
+        } elseif ($buildInt -ge 16299) {
+            $versionName = "Windows 10 1709"
+        } else {
+            $versionName = "Windows 10 (Pre-1709)"
+        }
+        
+        return @{
+            Compatible = $isCompatible
+            Available = $wingetAvailable
+            BuildNumber = $buildNumber
+            OSName = $osName
+            VersionName = $versionName
+            MinimumBuild = 16299
+            MinimumVersion = "Windows 10 1709"
+        }
+    }
+    catch {
+        return @{
+            Compatible = $false
+            Available = $false
+            BuildNumber = "Unknown"
+            OSName = "Unknown"
+            VersionName = "Unknown"
+            MinimumBuild = 16299
+            MinimumVersion = "Windows 10 1709"
+            Error = $_.Exception.Message
+        }
+    }
+}
+
+function Show-WindowsUpdateDialog {
+    param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$WingetInfo
+    )
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    # Create the dialog form
+    $updateForm = New-Object System.Windows.Forms.Form
+    $updateForm.Text = "Windows Update Required for Winget"
+    $updateForm.Size = New-Object System.Drawing.Size(500, 400)
+    $updateForm.StartPosition = "CenterParent"
+    $updateForm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+    $updateForm.MaximizeBox = $false
+    $updateForm.MinimizeBox = $false
+    $updateForm.ShowInTaskbar = $false
+    
+    # Warning icon and main message
+    $iconLabel = New-Object System.Windows.Forms.Label
+    $iconLabel.Text = "⚠️"
+    $iconLabel.Font = New-Object System.Drawing.Font("Segoe UI", 16)
+    $iconLabel.Location = New-Object System.Drawing.Point(20, 20)
+    $iconLabel.Size = New-Object System.Drawing.Size(40, 40)
+    $updateForm.Controls.Add($iconLabel)
+    
+    $titleLabel = New-Object System.Windows.Forms.Label
+    $titleLabel.Text = "Windows Update Required"
+    $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+    $titleLabel.Location = New-Object System.Drawing.Point(70, 25)
+    $titleLabel.Size = New-Object System.Drawing.Size(400, 30)
+    $updateForm.Controls.Add($titleLabel)
+    
+    # Information text
+    $infoText = @"
+Your current Windows version does not support winget (Windows Package Manager):
+
+Current Version: $($WingetInfo.VersionName) (Build $($WingetInfo.BuildNumber))
+Required Version: Windows 10 1709 or later (Build 16299+)
+
+Winget provides faster and more reliable application installations. Without it, applications will be downloaded directly from their official sources, which may be slower.
+
+You can update Windows to enable winget support, or continue with direct downloads.
+"@
+    
+    $infoLabel = New-Object System.Windows.Forms.Label
+    $infoLabel.Text = $infoText
+    $infoLabel.Location = New-Object System.Drawing.Point(20, 70)
+    $infoLabel.Size = New-Object System.Drawing.Size(440, 180)
+    $infoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $updateForm.Controls.Add($infoLabel)
+    
+    # Button panel
+    $buttonPanel = New-Object System.Windows.Forms.Panel
+    $buttonPanel.Location = New-Object System.Drawing.Point(20, 270)
+    $buttonPanel.Size = New-Object System.Drawing.Size(440, 80)
+    $updateForm.Controls.Add($buttonPanel)
+    
+    # Open Windows Update button
+    $updateButton = New-Object System.Windows.Forms.Button
+    $updateButton.Text = "Open Windows Update"
+    $updateButton.Size = New-Object System.Drawing.Size(140, 30)
+    $updateButton.Location = New-Object System.Drawing.Point(0, 0)
+    $updateButton.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+    $updateButton.ForeColor = [System.Drawing.Color]::White
+    $updateButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $updateButton.Add_Click({
+        try {
+            Start-Process "ms-settings:windowsupdate"
+            [System.Windows.Forms.MessageBox]::Show(
+                "Windows Update has been opened. Please install all available updates and restart your computer. After restarting, you can run this setup script again to use winget.",
+                "Windows Update Opened",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Information
+            )
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show(
+                "Could not open Windows Update automatically. Please manually go to Settings > Update & Security > Windows Update and install all available updates.",
+                "Manual Update Required",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            )
+        }
+    })
+    $buttonPanel.Controls.Add($updateButton)
+    
+    # Recheck button
+    $recheckButton = New-Object System.Windows.Forms.Button
+    $recheckButton.Text = "Recheck Compatibility"
+    $recheckButton.Size = New-Object System.Drawing.Size(140, 30)
+    $recheckButton.Location = New-Object System.Drawing.Point(150, 0)
+    $recheckButton.Add_Click({
+        $newWingetInfo = Test-WingetCompatibility
+        if ($newWingetInfo.Compatible) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "Great! Your Windows version now supports winget. The script will continue with winget-based installations.",
+                "Winget Compatible",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Information
+            )
+            $updateForm.DialogResult = [System.Windows.Forms.DialogResult]::Retry
+            $updateForm.Close()
+        } else {
+            [System.Windows.Forms.MessageBox]::Show(
+                "Your Windows version still does not support winget. Please install more updates or continue with direct downloads.",
+                "Still Incompatible",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            )
+        }
+    })
+    $buttonPanel.Controls.Add($recheckButton)
+    
+    # Continue anyway button
+    $continueButton = New-Object System.Windows.Forms.Button
+    $continueButton.Text = "Continue with Direct Downloads"
+    $continueButton.Size = New-Object System.Drawing.Size(140, 30)
+    $continueButton.Location = New-Object System.Drawing.Point(300, 0)
+    $continueButton.Add_Click({
+        $updateForm.DialogResult = [System.Windows.Forms.DialogResult]::Ignore
+        $updateForm.Close()
+    })
+    $buttonPanel.Controls.Add($continueButton)
+    
+    # Help text
+    $helpLabel = New-Object System.Windows.Forms.Label
+    $helpLabel.Text = "💡 Tip: After updating Windows, restart your computer and run this script again for the best experience."
+    $helpLabel.Location = New-Object System.Drawing.Point(0, 40)
+    $helpLabel.Size = New-Object System.Drawing.Size(440, 30)
+    $helpLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
+    $helpLabel.ForeColor = [System.Drawing.Color]::Gray
+    $buttonPanel.Controls.Add($helpLabel)
+    
+    # Show the dialog and return the result
+    return $updateForm.ShowDialog()
+}
+
 # Track current tab for state saving
 $script:CurrentTab = "Apps"
 
@@ -660,8 +876,17 @@ $tabControl.Add_SelectedIndexChanged({
     }
 })
 
-# Show initial content (Apps tab)
-Show-TabContent -Categories $script:Apps -Title "Select Applications to Install"
+# Show initial content (Apps tab) with winget compatibility info
+$wingetInfo = Test-WingetCompatibility
+if ($wingetInfo.Compatible) {
+    if ($wingetInfo.Available) {
+        Show-TabContent -Categories $script:Apps -Title "Select Applications to Install (Winget Available)"
+    } else {
+        Show-TabContent -Categories $script:Apps -Title "Select Applications to Install (Winget Compatible - May Need Registration)"
+    }
+} else {
+    Show-TabContent -Categories $script:Apps -Title "Select Applications to Install (Direct Downloads - Build $($wingetInfo.BuildNumber) < 16299)"
+}
 
 # Event handlers
 $runBtn.Add_Click({
@@ -709,58 +934,125 @@ $runBtn.Add_Click({
         # Process based on operation type
         switch ($selectedTab.Text) {
             "Apps" {
-                # Ensure winget is available (important for all Windows versions)
-                Update-StatusMessage "Checking winget availability..."
-                try {
-                    $wingetVersion = winget --version 2>$null
-                    if (-not $wingetVersion) {
-                        Update-StatusMessage "Winget not found - attempting to register..."
-                        try {
-                            # Check Windows version compatibility (Windows 10 1709+ required)
-                            $osVersion = [System.Environment]::OSVersion.Version
-                            $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
-                            
-                            if ([int]$buildNumber -lt 16299) {
-                                Update-StatusMessage "⚠ Windows version too old for winget (requires build 16299+) - using direct downloads"
-                            } else {
-                                Update-StatusMessage "Registering winget via App Installer..."
-                                
-                                # Use the proper registration method for winget
-                                Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
-                                
-                                # Wait a moment for registration to complete
-                                Start-Sleep -Seconds 5
-                                
-                                # Verify installation
-                                $wingetVersion = winget --version 2>$null
-                                if ($wingetVersion) {
-                                    Update-StatusMessage "✓ Winget successfully registered: $wingetVersion"
-                                } else {
-                                    Update-StatusMessage "⚠ Winget registration completed but command not yet available - using direct downloads"
-                                    Update-StatusMessage "Note: You may need to restart PowerShell or log out/in for winget to be available"
-                                }
-                            }
-                            
-                        } catch {
-                            Update-StatusMessage "⚠ Failed to register winget automatically - using direct downloads"
-                            Write-LogMessage -Message "Winget registration failed: $_" -Level "WARNING"
-                            Update-StatusMessage "Tip: Try running manually: Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe"
+                # Comprehensive winget availability check and setup
+                Update-StatusMessage "Checking winget availability and Windows compatibility..."
+                
+                # Get detailed Windows version info
+                $osVersion = [System.Environment]::OSVersion.Version
+                $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
+                $osName = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
+                
+                Update-StatusMessage "System: $osName (Build $buildNumber)"
+                
+                # Check minimum Windows 10 build requirement (1709 = build 16299)
+                if ([int]$buildNumber -lt 16299) {
+                    Update-StatusMessage "❌ Windows version too old for winget (requires Windows 10 1709/build 16299+)"
+                    Update-StatusMessage "Current build: $buildNumber - Showing Windows Update options..."
+                    
+                    # Show Windows Update dialog to help user upgrade
+                    $wingetCompatInfo = Test-WingetCompatibility
+                    $updateDialogResult = Show-WindowsUpdateDialog -WingetInfo $wingetCompatInfo
+                    
+                    if ($updateDialogResult -eq [System.Windows.Forms.DialogResult]::Retry) {
+                        # User updated and wants to recheck - test again
+                        $newWingetInfo = Test-WingetCompatibility
+                        if ($newWingetInfo.Compatible) {
+                            Update-StatusMessage "✓ Windows version now supports winget after update!"
+                            $buildNumber = $newWingetInfo.BuildNumber
+                        } else {
+                            Update-StatusMessage "Windows still incompatible after update - using direct downloads"
                         }
                     } else {
-                        Update-StatusMessage "✓ Winget available: $wingetVersion"
+                        Update-StatusMessage "User chose to continue with direct downloads"
                     }
-                } catch {
-                    Update-StatusMessage "⚠ Winget check failed - using direct downloads"
+                } else {
+                    Update-StatusMessage "✓ Windows version supports winget (build $buildNumber >= 16299)"
+                    
+                    try {
+                        # First check if winget command is available
+                        $wingetVersion = winget --version 2>$null
+                        if ($wingetVersion) {
+                            Update-StatusMessage "✓ Winget already available: $wingetVersion"
+                        } else {
+                            Update-StatusMessage "Winget command not found - checking App Installer registration..."
+                            
+                            # Check if App Installer (which contains winget) is installed
+                            $appInstaller = Get-AppxPackage -Name "Microsoft.DesktopAppInstaller" -ErrorAction SilentlyContinue
+                            if ($appInstaller) {
+                                Update-StatusMessage "✓ App Installer found: $($appInstaller.Version)"
+                                Update-StatusMessage "Attempting winget registration..."
+                                
+                                try {
+                                    # Register the App Installer to make winget available
+                                    Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
+                                    Update-StatusMessage "Registration command executed successfully"
+                                    
+                                    # Wait for registration to complete
+                                    Update-StatusMessage "Waiting for registration to complete..."
+                                    Start-Sleep -Seconds 3
+                                    
+                                    # Try to refresh environment and check again
+                                    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+                                    
+                                    # Multiple verification attempts
+                                    $attempts = 0
+                                    $maxAttempts = 3
+                                    $wingetWorking = $false
+                                    
+                                    while ($attempts -lt $maxAttempts -and -not $wingetWorking) {
+                                        $attempts++
+                                        Start-Sleep -Seconds 2
+                                        
+                                        try {
+                                            $testVersion = winget --version 2>$null
+                                            if ($testVersion) {
+                                                Update-StatusMessage "✓ Winget successfully registered and working: $testVersion"
+                                                $wingetWorking = $true
+                                            }
+                                        } catch {
+                                            Update-StatusMessage "Winget verification attempt $attempts/$maxAttempts..."
+                                        }
+                                    }
+                                    
+                                    if (-not $wingetWorking) {
+                                        Update-StatusMessage "⚠ Winget registration completed but command not immediately available"
+                                        Update-StatusMessage "This is normal - winget may require a new PowerShell session or user logout/login"
+                                        Update-StatusMessage "Continuing with direct downloads as fallback"
+                                    }
+                                    
+                                } catch {
+                                    Update-StatusMessage "⚠ Winget registration failed: $_"
+                                    Update-StatusMessage "Continuing with direct downloads"
+                                }
+                            } else {
+                                Update-StatusMessage "❌ App Installer not found - winget not available on this system"
+                                Update-StatusMessage "Tip: Install from Microsoft Store or use direct downloads"
+                            }
+                        }
+                    } catch {
+                        Update-StatusMessage "⚠ Error during winget check: $_"
+                        Update-StatusMessage "Continuing with direct downloads"
+                    }
                 }
                 
                 foreach ($appKey in $selectedItems) {
                     Update-StatusMessage "Installing $appKey..."
                     try {
-                        # Provide winget IDs for prioritized installation
-                        $wingetId = Get-WingetId -AppKey $appKey
-                        if ($wingetId) {
-                            Install-Application -AppName $appKey -WingetId $wingetId
+                        # Check if we should attempt winget or go straight to direct download
+                        $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
+                        $useWinget = ([int]$buildNumber -ge 16299) -and (Get-Command winget -ErrorAction SilentlyContinue)
+                        
+                        if ($useWinget) {
+                            # Provide winget IDs for prioritized installation
+                            $wingetId = Get-WingetId -AppKey $appKey
+                            if ($wingetId) {
+                                Install-Application -AppName $appKey -WingetId $wingetId
+                            } else {
+                                Install-Application -AppName $appKey
+                            }
                         } else {
+                            # Skip winget and use direct download
+                            Update-StatusMessage "Using direct download for $appKey (winget not available)"
                             Install-Application -AppName $appKey
                         }
                         Update-StatusMessage "✓ Successfully installed $appKey"

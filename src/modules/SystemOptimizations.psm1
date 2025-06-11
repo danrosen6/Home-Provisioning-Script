@@ -342,6 +342,22 @@ function Set-SystemOptimization {
                     New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
                 }
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0
+                
+                # Also disable widgets via policies
+                try {
+                    if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh")) {
+                        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0
+                    
+                    if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds")) {
+                        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0
+                } catch {
+                    Write-LogMessage "Could not disable widgets via policies (may require admin rights): $_" -Level "WARNING"
+                }
+                
                 Add-RestartRegistryChange -ChangeDescription "Disable Widgets icon and service"
             }
             "disable-chat" {
@@ -437,13 +453,34 @@ function Set-SystemOptimization {
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "Start_Layout" -Value 1
             }
             "disable-teams-autostart" {
+                # Disable Teams consumer auto-start
                 Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "com.squirrel.Teams.Teams" -ErrorAction SilentlyContinue
+                
+                # Also try to disable via registry value approach
+                try {
+                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run")) {
+                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "com.squirrel.Teams.Teams" -Value 0 -ErrorAction SilentlyContinue
+                } catch {
+                    # Ignore errors if property doesn't exist
+                }
             }
             "disable-startup-sound" {
                 if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation")) {
                     New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Force | Out-Null
                 }
                 Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Name "DisableStartupSound" -Value 1
+                
+                # Also disable boot animation (Windows 11)
+                try {
+                    if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Control\BootControl")) {
+                        New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\BootControl" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\BootControl" -Name "BootProgressAnimation" -Value 0
+                } catch {
+                    Write-LogMessage "Could not disable boot animation (requires admin rights): $_" -Level "WARNING"
+                }
             }
             # Additional service configurations
             "printnotify" {
@@ -500,6 +537,52 @@ function Set-SystemOptimization {
                 Save-ServiceState -ServiceName "WalletService"
                 Stop-Service "WalletService" -Force -ErrorAction SilentlyContinue
                 Set-Service "WalletService" -StartupType Disabled
+            }
+            
+            # Windows 11 specific optimizations
+            "start-menu-pins" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "Start_Layout" -Value 1
+                Add-RestartRegistryChange -ChangeDescription "Configure Start menu layout"
+            }
+            
+            # Windows 10 specific optimizations
+            "hide-taskview" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowTaskViewButton" -Value 0
+            }
+            "hide-cortana-button" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" -Name "ShowCortanaButton" -Value 0
+            }
+            "configure-searchbox" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Force | Out-Null
+                }
+                # SearchboxTaskbarMode: 0 = Hidden, 1 = Show search icon, 2 = Show search box
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 2
+            }
+            
+            # General interface optimizations
+            "dark-theme" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme" -Value 0
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "SystemUsesLightTheme" -Value 0
+            }
+            "disable-quickaccess" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "ShowFrequent" -Value 0
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "ShowRecent" -Value 0
             }
             default {
                 Write-LogMessage "Unknown optimization key: ${OptimizationKey}" -Level "WARNING"
@@ -608,6 +691,11 @@ function Remove-Bloatware {
         "ms-widgets" = "*MicrosoftWindows.Client.WebExperience*"
         "ms-clipchamp" = "*Clipchamp.Clipchamp*"
         "gaming-app" = "*Microsoft.GamingApp*"
+        "xbox-gameoverlay" = "*Microsoft.XboxGameOverlay*"
+        "xbox-gamingoverlay" = "*Microsoft.XboxGamingOverlay*"
+        "xbox-identity" = "*Microsoft.XboxIdentityProvider*"
+        "xbox-speech" = "*Microsoft.XboxSpeechToTextOverlay*"
+        "xbox-tcui" = "*Microsoft.Xbox.TCUI*"
         "linkedin" = "*LinkedIn*"
     }
     

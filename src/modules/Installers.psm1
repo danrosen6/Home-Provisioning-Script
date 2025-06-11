@@ -574,9 +574,22 @@ function Install-Winget {
         return $false
     }
     
+    # Check Windows version compatibility first
+    $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
+    $osName = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
+    
+    Write-LogMessage "System: $osName (Build $buildNumber)" -Level "INFO"
+    
+    if ([int]$buildNumber -lt 16299) {
+        Write-LogMessage "Windows build $buildNumber is below minimum requirement for winget (16299 = Windows 10 1709)" -Level "ERROR"
+        Write-LogMessage "Winget is not supported on this Windows version" -Level "ERROR"
+        return $false
+    }
+    
     # Check if winget is already installed
     if (Get-Command winget -ErrorAction SilentlyContinue) {
-        Write-LogMessage "Winget is already installed" -Level "INFO"
+        $version = winget --version 2>$null
+        Write-LogMessage "Winget is already installed: $version" -Level "INFO"
         return $true
     }
     
@@ -588,7 +601,32 @@ function Install-Winget {
         Write-LogMessage "Created download directory at: $downloadDir" -Level "INFO"
     }
     
-    # Try Microsoft Store installation first
+    # Check if App Installer is already present but winget not registered
+    $appInstaller = Get-AppxPackage -Name "Microsoft.DesktopAppInstaller" -ErrorAction SilentlyContinue
+    if ($appInstaller) {
+        Write-LogMessage "App Installer found: $($appInstaller.Version)" -Level "INFO"
+        Write-LogMessage "Attempting to register winget..." -Level "INFO"
+        
+        try {
+            Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
+            Write-LogMessage "Winget registration command completed" -Level "INFO"
+            
+            # Wait and verify
+            Start-Sleep -Seconds 5
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                $version = winget --version 2>$null
+                Write-LogMessage "Winget successfully registered: $version" -Level "SUCCESS"
+                return $true
+            } else {
+                Write-LogMessage "Winget registration completed but command not yet available" -Level "WARNING"
+                Write-LogMessage "This may require a new PowerShell session or user logout/login" -Level "INFO"
+            }
+        } catch {
+            Write-LogMessage "Failed to register winget: $_" -Level "WARNING"
+        }
+    }
+    
+    # Try Microsoft Store installation
     Write-LogMessage "Attempting to install winget via Microsoft Store..." -Level "INFO"
     try {
         $wingetUrl = "ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1"
@@ -702,8 +740,16 @@ function Install-Application {
         }
     }
     
-    # Try winget first
-    if (-not $script:UseDirectDownloadOnly -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+    # Check Windows version compatibility for winget first
+    $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
+    $wingetCompatible = ([int]$buildNumber -ge 16299)  # Windows 10 1709 build 16299 minimum
+    
+    if (-not $wingetCompatible) {
+        Write-LogMessage "Windows build $buildNumber is below minimum for winget (16299). Using direct download." -Level "INFO"
+    }
+    
+    # Try winget first if compatible and available
+    if (-not $script:UseDirectDownloadOnly -and $wingetCompatible -and (Get-Command winget -ErrorAction SilentlyContinue)) {
         # Map app name to winget ID if not provided
         if (-not $WingetId) {
             $WingetId = switch ($AppName) {
@@ -739,6 +785,7 @@ function Install-Application {
                     Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Completed" -AdditionalData @{
                         Method = "Winget"
                         WingetId = $WingetId
+                        WindowsBuild = $buildNumber
                     }
                     
                     # Refresh environment variables
@@ -749,6 +796,7 @@ function Install-Application {
                 else {
                     Write-LogMessage "Winget installation failed with exit code: $LASTEXITCODE" -Level "WARNING"
                     Write-LogMessage "Winget output: $wingetOutput" -Level "DEBUG"
+                    Write-LogMessage "Windows build: $buildNumber (winget requires 16299+)" -Level "DEBUG"
                     # Continue to direct download method
                 }
             }
