@@ -652,11 +652,12 @@ function Remove-Bloatware {
         [System.Threading.CancellationToken]$CancellationToken
     )
     
-    # Map keys to actual package names
+    # Map keys to actual package names and wildcard patterns
     $packageMap = @{
         "ms-officehub" = "Microsoft.MicrosoftOfficeHub"
         "ms-teams" = "Microsoft.MicrosoftTeams"
-        "ms-todo" = "Microsoft.Todos"
+        "ms-teams-consumer" = "MicrosoftTeams"
+        "ms-todo" = "*.Todos*"
         "ms-3dviewer" = "Microsoft.Microsoft3DViewer"
         "ms-mixedreality" = "Microsoft.MixedReality.Portal"
         "ms-onenote" = "Microsoft.Office.OneNote"
@@ -664,6 +665,7 @@ function Remove-Bloatware {
         "ms-wallet" = "Microsoft.Wallet"
         "ms-messaging" = "Microsoft.Messaging"
         "ms-oneconnect" = "Microsoft.OneConnect"
+        "ms-skype" = "Microsoft.SkypeApp"
         "bing-weather" = "Microsoft.BingWeather"
         "bing-news" = "Microsoft.BingNews"
         "bing-finance" = "Microsoft.BingFinance"
@@ -686,16 +688,18 @@ function Remove-Bloatware {
         "xbox-identity" = "Microsoft.XboxIdentityProvider"
         "xbox-speech" = "Microsoft.XboxSpeechToTextOverlay"
         "xbox-tcui" = "Microsoft.Xbox.TCUI"
-        "candy-crush" = "king.com.CandyCrushSaga"
-        "spotify-store" = "SpotifyAB.SpotifyMusic"
-        "facebook" = "Facebook.FacebookBeta"
-        "twitter" = "Twitter.Twitter"
-        "netflix" = "Netflix.Netflix_mcm4njqhnhss8"
-        "disney" = "Disney.DisneyPlus"
-        "tiktok" = "ByteDancePte.Ltd.TikTok"
+        "candy-crush" = "*.CandyCrush*"
+        "spotify-store" = "*.Spotify*"
+        "facebook" = "*.Facebook*"
+        "twitter" = "*.Twitter*"
+        "netflix" = "*.Netflix*"
+        "hulu" = "*.Hulu*"
+        "picsart" = "*.PicsArt*"
+        "disney" = "*.Disney*"
+        "tiktok" = "*.TikTok*"
         "ms-widgets" = "MicrosoftWindows.Client.WebExperience"
-        "ms-clipchamp" = "Clipchamp.Clipchamp"
-        "linkedin" = "LinkedIn.LinkedIn"
+        "ms-clipchamp" = "*.ClipChamp*"
+        "linkedin" = "*.LinkedIn*"
     }
     
     Write-LogMessage "Starting bloatware removal..." -Level "INFO"
@@ -727,9 +731,16 @@ function Remove-Bloatware {
             
             Write-LogMessage "Removing bloatware: $BloatwareKey" -Level "INFO"
             
-            # Check if packages exist first (using exact name matching like successful scripts)
-            $installedPackages = Get-AppxPackage -Name $packageName -AllUsers -ErrorAction SilentlyContinue
-            $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $packageName }
+            # Check if packages exist first (handle both exact names and wildcard patterns)
+            if ($packageName -like "*`**") {
+                # Wildcard pattern - use -like matching
+                $installedPackages = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Where-Object { $_.Name -like $packageName }
+                $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -like $packageName }
+            } else {
+                # Exact name matching
+                $installedPackages = Get-AppxPackage -Name $packageName -AllUsers -ErrorAction SilentlyContinue
+                $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $packageName }
+            }
             
             $removedCount = 0
             
@@ -754,6 +765,35 @@ function Remove-Bloatware {
                     Write-LogMessage "Removed AppxProvisionedPackage: $packageName" -Level "INFO"
                 } catch {
                     Write-LogMessage "Failed to remove AppxProvisionedPackage $packageName - ${_}" -Level "WARNING"
+                }
+            }
+            
+            # Special handling for Windows 11 Widgets
+            if ($BloatwareKey -eq "ms-widgets") {
+                Write-LogMessage "Applying Windows 11 Widgets registry tweaks..." -Level "INFO"
+                try {
+                    # Disable Widgets in taskbar
+                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -Type DWord -Force
+                    
+                    # Disable News and Interests
+                    if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh")) {
+                        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0 -Type DWord -Force
+                    
+                    # Disable Windows Feeds
+                    if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds")) {
+                        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -Type DWord -Force
+                    
+                    Write-LogMessage "Windows 11 Widgets registry tweaks applied successfully" -Level "SUCCESS"
+                    $removedCount++
+                } catch {
+                    Write-LogMessage "Failed to apply Widgets registry tweaks: $_" -Level "WARNING"
                 }
             }
             
