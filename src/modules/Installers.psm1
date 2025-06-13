@@ -4,7 +4,7 @@
 $script:UseDirectDownloadOnly = $false
 $script:MaxRetries = 3
 $script:RetryDelay = 5 # seconds
-$script:InstallerTimeoutMinutes = 15 # Timeout for installer processes
+$script:InstallerTimeoutMinutes = 5 # Timeout for installer processes
 
 # Function to run processes with timeout to prevent hanging
 function Start-ProcessWithTimeout {
@@ -438,7 +438,7 @@ function Get-AppDirectDownloadInfo {
         "Brave" = @{
             Url = "https://referrals.brave.com/latest/BraveBrowserSetup.exe"
             Extension = ".exe"
-            Arguments = "/silent /install"
+            Arguments = "/S"
             VerificationPaths = @(
                 "${env:ProgramFiles}\BraveSoftware\Brave-Browser\Application\brave.exe",
                 "${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser\Application\brave.exe"
@@ -465,7 +465,7 @@ function Get-AppDirectDownloadInfo {
         "Postman" = @{
             Url = "https://dl.pstmn.io/download/latest/win64"
             Extension = ".exe"
-            Arguments = "-s"
+            Arguments = "/SILENT"
             VerificationPaths = @(
                 "${env:LocalAppData}\Postman\Postman.exe",
                 "${env:ProgramFiles}\Postman\Postman.exe",
@@ -553,7 +553,7 @@ function Get-AppDirectDownloadInfo {
         "Discord" = @{
             Url = "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x86"
             Extension = ".exe"
-            Arguments = "-s"
+            Arguments = "--silent"
             VerificationPaths = @(
                 "${env:LocalAppData}\Discord\Update.exe",
                 "${env:LocalAppData}\Discord\app-*\Discord.exe",
@@ -603,6 +603,35 @@ function Get-AppDirectDownloadInfo {
             VerificationPaths = @(
                 "${env:ProgramFiles}\nodejs\node.exe",
                 "${env:ProgramFiles(x86)}\nodejs\node.exe"
+            )
+        }
+        "IntelliJ IDEA" = @{
+            Url = "https://download.jetbrains.com/idea/ideaIC-latest.exe"
+            Extension = ".exe"
+            Arguments = "/S /CONFIG=${env:TEMP}\IntelliJ_silent_config.config"
+            VerificationPaths = @(
+                "${env:ProgramFiles}\JetBrains\IntelliJ IDEA Community Edition*\bin\idea64.exe",
+                "${env:ProgramFiles(x86)}\JetBrains\IntelliJ IDEA Community Edition*\bin\idea64.exe",
+                "${env:LocalAppData}\JetBrains\Toolbox\apps\IDEA-C\*\bin\idea64.exe"
+            )
+        }
+        "WebStorm" = @{
+            Url = "https://download.jetbrains.com/webstorm/WebStorm-latest.exe"
+            Extension = ".exe"
+            Arguments = "/S /CONFIG=${env:TEMP}\WebStorm_silent_config.config"
+            VerificationPaths = @(
+                "${env:ProgramFiles}\JetBrains\WebStorm*\bin\webstorm64.exe",
+                "${env:ProgramFiles(x86)}\JetBrains\WebStorm*\bin\webstorm64.exe",
+                "${env:LocalAppData}\JetBrains\Toolbox\apps\WebStorm\*\bin\webstorm64.exe"
+            )
+        }
+        "Android Studio" = @{
+            Url = "https://redirector.gvt1.com/edgedl/android/studio/install/2024.2.1.12/android-studio-2024.2.1.12-windows.exe"
+            Extension = ".exe"
+            Arguments = "/S /CONFIG=${env:TEMP}\AndroidStudio_silent_config.config"
+            VerificationPaths = @(
+                "${env:ProgramFiles}\Android\Android Studio\bin\studio64.exe",
+                "${env:LocalAppData}\Google\AndroidStudio*\bin\studio64.exe"
             )
         }
     }
@@ -809,6 +838,105 @@ function Update-Environment {
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 }
 
+function New-SilentInstallConfig {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AppName,
+        [string]$ConfigPath = "${env:TEMP}\${AppName}_silent_config"
+    )
+    
+    # Define configuration templates for different applications
+    $configTemplates = @{
+        "PyCharm" = @{
+            Extension = ".config"
+            Content = @"
+mode=silent
+launcher64=1
+launcher32=0
+updatePATH=1
+updateContextMenu=1
+associateFiles=
+createDesktopShortcut=1
+createQuickLaunchShortcut=0
+installationPath=
+"@
+        }
+        "IntelliJ" = @{
+            Extension = ".config"
+            Content = @"
+mode=silent
+launcher64=1
+launcher32=0
+updatePATH=1
+updateContextMenu=1
+associateFiles=java,groovy,kt
+createDesktopShortcut=1
+createQuickLaunchShortcut=0
+"@
+        }
+        "WebStorm" = @{
+            Extension = ".config"
+            Content = @"
+mode=silent
+launcher64=1
+launcher32=0
+updatePATH=1
+updateContextMenu=1
+associateFiles=js,ts,html,css
+createDesktopShortcut=1
+createQuickLaunchShortcut=0
+"@
+        }
+        "AndroidStudio" = @{
+            Extension = ".config"
+            Content = @"
+mode=silent
+launcher64=1
+launcher32=0
+updatePATH=1
+updateContextMenu=0
+associateFiles=
+createDesktopShortcut=1
+createQuickLaunchShortcut=0
+jre=${env:ProgramFiles}\Android\Android Studio\jre
+"@
+        }
+        "TeamViewer" = @{
+            Extension = ".ini"
+            Content = @"
+[Setup]
+CUSTOMCONFIGID=
+APITOKEN=
+ASSIGNMENTOPTIONS=
+"@
+        }
+    }
+    
+    try {
+        $template = $configTemplates[$AppName]
+        if (-not $template) {
+            Write-LogMessage "No silent config template found for $AppName" -Level "WARNING"
+            return $null
+        }
+        
+        $fullConfigPath = $ConfigPath + $template.Extension
+        Write-LogMessage "Creating silent installation config for $AppName at: $fullConfigPath" -Level "INFO"
+        
+        Set-Content -Path $fullConfigPath -Value $template.Content -Encoding UTF8
+        
+        if (Test-Path $fullConfigPath) {
+            Write-LogMessage "Silent config for $AppName created successfully" -Level "INFO"
+            return $fullConfigPath
+        } else {
+            Write-LogMessage "Failed to create silent config file for $AppName" -Level "ERROR"
+            return $null
+        }
+    } catch {
+        Write-LogMessage "Error creating silent config for $AppName`: $_" -Level "ERROR"
+        return $null
+    }
+}
+
 function Install-Application {
     param(
         [Parameter(Mandatory=$true)]
@@ -981,6 +1109,19 @@ function Install-Application {
         
         if ($DirectDownload.Extension -eq ".exe") {
             $arguments = if ($DirectDownload.Arguments) { $DirectDownload.Arguments } else { "/S" }
+            
+            # Handle applications that require silent config files
+            if ($arguments -like "*CONFIG=*" -or $arguments -like "*config*") {
+                $configPath = New-SilentInstallConfig -AppName $AppName
+                if ($null -eq $configPath) {
+                    Write-LogMessage "Failed to create silent config for $AppName, using basic silent installation" -Level "WARNING"
+                    $arguments = "/S"
+                } else {
+                    # Update arguments to use the created config file
+                    $arguments = $arguments -replace '\$\{env:TEMP\}\\[^"]*', $configPath
+                }
+            }
+            
             $process = Start-ProcessWithTimeout -FilePath $installerPath -ArgumentList $arguments -TimeoutMinutes $script:InstallerTimeoutMinutes -CancellationToken $CancellationToken
         }
         elseif ($DirectDownload.Extension -eq ".msi") {

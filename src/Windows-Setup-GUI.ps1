@@ -101,6 +101,9 @@ $script:Apps = @{
         @{Name="Git"; Key="git"; Default=$true; Win10=$true; Win11=$true}
         @{Name="Python"; Key="python"; Default=$true; Win10=$true; Win11=$true}
         @{Name="PyCharm Community"; Key="pycharm"; Default=$false; Win10=$true; Win11=$true}
+        @{Name="IntelliJ IDEA Community"; Key="intellij"; Default=$false; Win10=$true; Win11=$true}
+        @{Name="WebStorm"; Key="webstorm"; Default=$false; Win10=$true; Win11=$true}
+        @{Name="Android Studio"; Key="androidstudio"; Default=$false; Win10=$true; Win11=$true}
         @{Name="GitHub Desktop"; Key="github"; Default=$false; Win10=$true; Win11=$true}
         @{Name="Postman"; Key="postman"; Default=$false; Win10=$true; Win11=$true}
         @{Name="Node.js"; Key="nodejs"; Default=$false; Win10=$false; Win11=$true}
@@ -255,6 +258,73 @@ $script:Tweaks = @{
         @{Name="Enable developer mode"; Key="dev-mode"; Default=$false; Win10=$true; Win11=$true}
         @{Name="Disable Teams auto-start"; Key="disable-teams-autostart"; Default=$true; Win10=$true; Win11=$true}
     )
+}
+
+function Get-InstallerName {
+    param([string]$AppKey)
+    
+    $mapping = @{
+        "vscode" = "Visual Studio Code"
+        "git" = "Git"
+        "python" = "Python"
+        "pycharm" = "PyCharm"
+        "intellij" = "IntelliJ IDEA"
+        "webstorm" = "WebStorm"
+        "androidstudio" = "Android Studio"
+        "github" = "GitHub Desktop"
+        "postman" = "Postman"
+        "nodejs" = "Node.js"
+        "terminal" = "Windows Terminal"
+        "chrome" = "Chrome"
+        "firefox" = "Firefox"
+        "brave" = "Brave"
+        "spotify" = "Spotify"
+        "discord" = "Discord"
+        "steam" = "Steam"
+        "vlc" = "VLC"
+        "7zip" = "7-Zip"
+        "notepad" = "Notepad++"
+        "powertoys" = "Microsoft PowerToys"
+    }
+    
+    if ($mapping.ContainsKey($AppKey)) {
+        return $mapping[$AppKey]
+    } else {
+        return $AppKey
+    }
+}
+
+function Get-WingetId {
+    param([string]$AppKey)
+    
+    $wingetIds = @{
+        "vscode" = "Microsoft.VisualStudioCode"
+        "git" = "Git.Git"
+        "python" = "Python.Python.3.13"
+        "pycharm" = "JetBrains.PyCharm.Community"
+        "intellij" = "JetBrains.IntelliJIDEA.Community"
+        "webstorm" = "JetBrains.WebStorm"
+        "github" = "GitHub.GitHubDesktop"
+        "postman" = "Postman.Postman"
+        "nodejs" = "OpenJS.NodeJS"
+        "terminal" = "Microsoft.WindowsTerminal"
+        "chrome" = "Google.Chrome"
+        "firefox" = "Mozilla.Firefox"
+        "brave" = "Brave.Brave"
+        "spotify" = "Spotify.Spotify"
+        "discord" = "Discord.Discord"
+        "steam" = "Valve.Steam"
+        "vlc" = "VideoLAN.VLC"
+        "7zip" = "7zip.7zip"
+        "notepad" = "Notepad++.Notepad++"
+        "powertoys" = "Microsoft.PowerToys"
+    }
+    
+    if ($wingetIds.ContainsKey($AppKey)) {
+        return $wingetIds[$AppKey]
+    } else {
+        return $null
+    }
 }
 
 function Create-ScrollableTabContent {
@@ -1033,8 +1103,40 @@ $runBtn.Add_Click({
                                     Update-StatusMessage "Continuing with direct downloads"
                                 }
                             } else {
-                                Update-StatusMessage "[ERROR] App Installer not found - winget not available on this system"
-                                Update-StatusMessage "Tip: Install from Microsoft Store or use direct downloads"
+                                Update-StatusMessage "[INFO] App Installer not found - attempting to install winget..."
+                                
+                                # Try to install winget if Windows version is compatible
+                                $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
+                                if ([int]$buildNumber -ge 16299) {
+                                    try {
+                                        Update-StatusMessage "Installing winget via Install-Winget function..."
+                                        $wingetInstalled = Install-Winget
+                                        
+                                        if ($wingetInstalled) {
+                                            Update-StatusMessage "[SUCCESS] Winget installation completed successfully"
+                                            
+                                            # Verify winget is working
+                                            try {
+                                                $testVersion = winget --version 2>$null
+                                                if ($testVersion) {
+                                                    Update-StatusMessage "[SUCCESS] Winget is now available: $testVersion"
+                                                } else {
+                                                    Update-StatusMessage "[WARNING] Winget installed but may require PowerShell restart"
+                                                }
+                                            } catch {
+                                                Update-StatusMessage "[WARNING] Winget installed but verification failed"
+                                            }
+                                        } else {
+                                            Update-StatusMessage "[WARNING] Winget installation failed - falling back to direct downloads"
+                                        }
+                                    } catch {
+                                        Update-StatusMessage "[ERROR] Winget installation error: $_"
+                                        Update-StatusMessage "Continuing with direct downloads"
+                                    }
+                                } else {
+                                    Update-StatusMessage "[ERROR] Windows version not compatible with winget (requires build 16299+)"
+                                    Update-StatusMessage "Tip: Update Windows or use direct downloads"
+                                }
                             }
                         }
                     } catch {
@@ -1044,7 +1146,8 @@ $runBtn.Add_Click({
                 }
                 
                 foreach ($appKey in $selectedItems) {
-                    Update-StatusMessage "Installing $appKey..."
+                    $installerName = Get-InstallerName -AppKey $appKey
+                    Update-StatusMessage "Installing $installerName..."
                     try {
                         # Check if we should attempt winget or go straight to direct download
                         $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
@@ -1054,14 +1157,14 @@ $runBtn.Add_Click({
                             # Provide winget IDs for prioritized installation
                             $wingetId = Get-WingetId -AppKey $appKey
                             if ($wingetId) {
-                                Install-Application -AppName $appKey -WingetId $wingetId
+                                Install-Application -AppName $installerName -WingetId $wingetId
                             } else {
-                                Install-Application -AppName $appKey
+                                Install-Application -AppName $installerName
                             }
                         } else {
                             # Skip winget and use direct download
-                            Update-StatusMessage "Using direct download for $appKey (winget not available)"
-                            Install-Application -AppName $appKey
+                            Update-StatusMessage "Using direct download for $installerName (winget not available)"
+                            Install-Application -AppName $installerName
                         }
                         Update-StatusMessage "[SUCCESS] Successfully installed $appKey"
                     } catch {
