@@ -22,7 +22,7 @@ function Start-ProcessWithTimeout {
         [switch]$NoNewWindow = $false,
         
         [Parameter(Mandatory=$false)]
-        [System.Threading.CancellationToken]$CancellationToken
+        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
     )
     
     try {
@@ -45,7 +45,7 @@ function Start-ProcessWithTimeout {
         
         while ($elapsed -lt $timeoutMs -and -not $process.HasExited) {
             # Check for cancellation
-            if ($CancellationToken -and $CancellationToken.IsCancellationRequested) {
+            if ($CancellationToken -and $CancellationToken -ne [System.Threading.CancellationToken]::None -and $CancellationToken.IsCancellationRequested) {
                 Write-LogMessage "Process cancelled by user request" -Level "WARNING"
                 try {
                     $process.Kill()
@@ -115,7 +115,7 @@ if (Test-Path $LoggingModule) {
             [string]$Message,
             
             [Parameter(Mandatory=$false)]
-            [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS")]
+            [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS", "DEBUG")]
             [string]$Level = "INFO"
         )
         
@@ -127,6 +127,7 @@ if (Test-Path $LoggingModule) {
             "ERROR" { "Red" }
             "WARNING" { "Yellow" }
             "SUCCESS" { "Green" }
+            "DEBUG" { "Gray" }
             default { "White" }
         }
         Write-Host $logMessage -ForegroundColor $color
@@ -818,7 +819,7 @@ function Install-Application {
         [hashtable]$DirectDownload = $null,
         [Parameter(Mandatory=$false)]
         [switch]$Force,
-        [System.Threading.CancellationToken]$CancellationToken
+        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
     )
     
     Write-LogMessage "Installing application: $AppName" -Level "INFO"
@@ -827,7 +828,7 @@ function Install-Application {
     Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "InProgress"
     
     # Check for cancellation
-    if ($CancellationToken.IsCancellationRequested) {
+    if ($CancellationToken -and $CancellationToken -ne [System.Threading.CancellationToken]::None -and $CancellationToken.IsCancellationRequested) {
         Write-LogMessage "Installation cancelled" -Level "WARNING"
         Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Cancelled"
         return $false
@@ -969,7 +970,7 @@ function Install-Application {
         }
         
         # Check for cancellation
-        if ($CancellationToken.IsCancellationRequested) {
+        if ($CancellationToken -and $CancellationToken -ne [System.Threading.CancellationToken]::None -and $CancellationToken.IsCancellationRequested) {
             Write-LogMessage "Installation cancelled" -Level "WARNING"
             Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Cancelled"
             return $false
@@ -1092,13 +1093,13 @@ function Install-Python {
         [Parameter(Mandatory=$false)]
         [string]$VirtualEnvName = "venv",
         
-        [System.Threading.CancellationToken]$CancellationToken
+        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
     )
     
     Write-LogMessage "Starting Python $Version installation..." -Level "INFO"
     
     # Check for cancellation
-    if ($CancellationToken.IsCancellationRequested) {
+    if ($CancellationToken -and $CancellationToken -ne [System.Threading.CancellationToken]::None -and $CancellationToken.IsCancellationRequested) {
         Write-LogMessage "Python installation cancelled" -Level "WARNING"
         return $false
     }

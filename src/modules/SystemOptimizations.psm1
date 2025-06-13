@@ -97,7 +97,7 @@ if (Test-Path $LoggingModule) {
             [string]$Message,
             
             [Parameter(Mandatory=$false)]
-            [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS")]
+            [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS", "DEBUG")]
             [string]$Level = "INFO"
         )
         
@@ -109,6 +109,7 @@ if (Test-Path $LoggingModule) {
             "ERROR" { "Red" }
             "WARNING" { "Yellow" }
             "SUCCESS" { "Green" }
+            "DEBUG" { "Gray" }
             default { "White" }
         }
         Write-Host $logMessage -ForegroundColor $color
@@ -269,7 +270,7 @@ function Restore-ServiceState {
 function Set-SystemOptimization {
     param (
         [string]$OptimizationKey,
-        [System.Threading.CancellationToken]$CancellationToken
+        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
     )
 
     Write-LogMessage "Applying optimization: ${OptimizationKey}" -Level "INFO"
@@ -788,7 +789,7 @@ function Remove-Bloatware {
         [string[]]$Bloatware,
         
         [Parameter(Mandatory=$false)]
-        [System.Threading.CancellationToken]$CancellationToken
+        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
     )
     
     # Map keys to actual package names and wildcard patterns

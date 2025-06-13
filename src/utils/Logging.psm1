@@ -12,7 +12,7 @@ function Write-LogMessage {
         [string]$Message,
         
         [Parameter(Mandatory=$false)]
-        [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS")]
+        [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS", "DEBUG")]
         [string]$Level = "INFO"
     )
     
@@ -24,6 +24,7 @@ function Write-LogMessage {
         "ERROR" { "Red" }
         "WARNING" { "Yellow" }
         "SUCCESS" { "Green" }
+        "DEBUG" { "Gray" }
         default { "White" }
     }
     Write-Host $logMessage -ForegroundColor $color
