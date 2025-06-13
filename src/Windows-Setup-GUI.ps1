@@ -244,6 +244,7 @@ $script:Tweaks = @{
         @{Name="Hide Task View button"; Key="hide-taskview"; Default=$true; Win10=$true; Win11=$false}
         @{Name="Hide Cortana button"; Key="hide-cortana-button"; Default=$true; Win10=$true; Win11=$false}
         @{Name="Configure search box"; Key="configure-searchbox"; Default=$true; Win10=$true; Win11=$false}
+        @{Name="Disable News and Interests"; Key="disable-news-interests"; Default=$true; Win10=$true; Win11=$false}
     )
     "General Interface" = @(
         @{Name="Dark theme"; Key="dark-theme"; Default=$false; Win10=$true; Win11=$true}

@@ -187,7 +187,7 @@ function Get-LatestVersionUrl {
                 Write-LogMessage "Error getting latest Git version: $_" -Level "WARNING"
             }
             # Fallback to a known URL pattern without version
-            return "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe"
+            return "https://github.com/git-for-windows/git/releases/download/v2.49.0.windows.1/Git-2.49.0-64-bit.exe"
         }
         "Python" {
             try {
@@ -203,7 +203,7 @@ function Get-LatestVersionUrl {
                 Write-LogMessage "Error getting latest Python version: $_" -Level "WARNING"
             }
             # Fallback to a reasonably current version
-            return "https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe"
+            return "https://www.python.org/ftp/python/3.13.4/python-3.13.4-amd64.exe"
         }
         "PyCharm" {
             try {
@@ -254,7 +254,7 @@ function Get-LatestVersionUrl {
                 Write-LogMessage "Error getting latest 7-Zip version: $_" -Level "WARNING"
             }
             # Fallback to a recent version
-            return "https://www.7-zip.org/a/7z2301-x64.exe"
+            return "https://www.7-zip.org/a/7z2409-x64.exe"
         }
         "Notepad++" {
             try {
@@ -272,7 +272,7 @@ function Get-LatestVersionUrl {
                 Write-LogMessage "Error getting latest Notepad++ version: $_" -Level "WARNING"
             }
             # Fallback to a URL that should redirect to the latest version
-            return "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/latest/download/npp.Installer.x64.exe"
+            return "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.1/npp.8.8.1.Installer.x64.exe"
         }
         default {
             # For all other applications, use the existing hardcoded URLs
@@ -481,7 +481,7 @@ function Get-AppDirectDownloadInfo {
             )
         }
         "Git" = @{
-            Url = if ($latestUrl) { $latestUrl } else { "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe" }
+            Url = if ($latestUrl) { $latestUrl } else { "https://github.com/git-for-windows/git/releases/download/v2.49.0.windows.1/Git-2.49.0-64-bit.exe" }
             Extension = ".exe"
             Arguments = '/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS="icons,ext\reg\shellhere,assoc,assoc_sh"'
             VerificationPaths = @(
@@ -511,7 +511,7 @@ function Get-AppDirectDownloadInfo {
             )
         }
         "Python" = @{
-            Url = if ($latestUrl) { $latestUrl } else { "https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe" }
+            Url = if ($latestUrl) { $latestUrl } else { "https://www.python.org/ftp/python/3.13.4/python-3.13.4-amd64.exe" }
             Extension = ".exe"
             Arguments = "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0 Include_pip=1 Include_tcltk=1"
             VerificationPaths = @(
@@ -562,7 +562,7 @@ function Get-AppDirectDownloadInfo {
             )
         }
         "Notepad++" = @{
-            Url = if ($latestUrl) { $latestUrl } else { "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/latest/download/npp.Installer.x64.exe" }
+            Url = if ($latestUrl) { $latestUrl } else { "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.1/npp.8.8.1.Installer.x64.exe" }
             Extension = ".exe"
             Arguments = "/S"
             VerificationPaths = @(
@@ -571,7 +571,7 @@ function Get-AppDirectDownloadInfo {
             )
         }
         "7-Zip" = @{
-            Url = if ($latestUrl) { $latestUrl } else { "https://www.7-zip.org/a/7z2301-x64.exe" }
+            Url = if ($latestUrl) { $latestUrl } else { "https://www.7-zip.org/a/7z2409-x64.exe" }
             Extension = ".exe"
             Arguments = "/S"
             VerificationPaths = @(

@@ -708,6 +708,27 @@ function Set-SystemOptimization {
                 # SearchboxTaskbarMode: 0 = Hidden, 1 = Show search icon, 2 = Show search box
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 2
             }
+            "disable-news-interests" {
+                Write-LogMessage "Disabling News and Interests on Windows 10..." -Level "INFO"
+                
+                # Method 1: Disable News and Interests via user preferences  
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force
+                
+                # Method 2: System-wide News and Interests disable
+                try {
+                    if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests")) {
+                        New-Item -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Name "value" -Value 0 -Type DWord -Force
+                } catch {
+                    Write-LogMessage "Could not apply system-wide News and Interests disable: $_" -Level "WARNING"
+                }
+                
+                Write-LogMessage "News and Interests disabled successfully" -Level "INFO"
+            }
             
             # General interface optimizations
             "dark-theme" {
@@ -1133,7 +1154,7 @@ function Optimize-System {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$false)]
-        [hashtable]$Optimizations = $script:AppConfig.Optimizations,
+        [hashtable]$Optimizations = @{},
         
         [System.Threading.CancellationToken]$CancellationToken
     )
@@ -1206,7 +1227,7 @@ function Configure-Services {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$false)]
-        [hashtable]$Services = $script:AppConfig.Services,
+        [hashtable]$Services = @{},
         
         [System.Threading.CancellationToken]$CancellationToken
     )
