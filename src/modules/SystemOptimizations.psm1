@@ -6,6 +6,84 @@ $script:ServiceBackups = @{}
 $script:RegistryChangesRequiringRestart = @()
 $script:RestartRequired = $false
 
+# Timeout-based MessageBox function to prevent script hanging
+function Show-TimeoutMessageBox {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory=$false)]
+        [string]$Title = "Confirmation",
+        
+        [Parameter(Mandatory=$false)]
+        [int]$TimeoutSeconds = 30,
+        
+        [Parameter(Mandatory=$false)]
+        [string]$DefaultResponse = "Yes"
+    )
+    
+    try {
+        # Create a runspace for the timeout
+        $runspace = [runspacefactory]::CreateRunspace()
+        $runspace.Open()
+        
+        # Create PowerShell instance
+        $powershell = [powershell]::Create()
+        $powershell.Runspace = $runspace
+        
+        # Add script to show MessageBox
+        $script = {
+            param($msg, $title)
+            Add-Type -AssemblyName System.Windows.Forms
+            return [System.Windows.Forms.MessageBox]::Show(
+                $msg, 
+                $title, 
+                [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            )
+        }
+        
+        $powershell.AddScript($script)
+        $powershell.AddParameter("msg", $Message)
+        $powershell.AddParameter("title", $Title)
+        
+        # Start async execution
+        $asyncResult = $powershell.BeginInvoke()
+        
+        # Wait for completion or timeout
+        $completed = $asyncResult.AsyncWaitHandle.WaitOne(($TimeoutSeconds * 1000))
+        
+        if ($completed) {
+            # Get result
+            $result = $powershell.EndInvoke($asyncResult)
+            $powershell.Dispose()
+            $runspace.Dispose()
+            
+            return $result
+        } else {
+            # Timeout occurred
+            Write-LogMessage "MessageBox timed out after $TimeoutSeconds seconds, using default response: $DefaultResponse" -Level "WARNING"
+            
+            # Clean up
+            $powershell.Stop()
+            $powershell.Dispose()
+            $runspace.Dispose()
+            
+            # Return default response
+            if ($DefaultResponse -eq "Yes") {
+                return [System.Windows.Forms.DialogResult]::Yes
+            } else {
+                return [System.Windows.Forms.DialogResult]::No
+            }
+        }
+    }
+    catch {
+        Write-LogMessage "Error showing timeout MessageBox: $_" -Level "ERROR"
+        # Return safe default (No) on error
+        return [System.Windows.Forms.DialogResult]::No
+    }
+}
+
 # Define Write-LogMessage function for module compatibility
 function Write-LogMessage {
     param (
@@ -203,12 +281,7 @@ function Set-SystemOptimization {
                     $dependencyMessage += ($dependencyCheck.DependencyList -join "`n")
                     $dependencyMessage += "`n`nDisabling DiagTrack may affect these services. Continue anyway?"
                     
-                    $result = [System.Windows.Forms.MessageBox]::Show(
-                        $dependencyMessage,
-                        "Service Dependencies Found",
-                        [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                        [System.Windows.Forms.MessageBoxIcon]::Warning
-                    )
+                    $result = Show-TimeoutMessageBox -Message $dependencyMessage -Title "Service Dependencies Found" -TimeoutSeconds 30 -DefaultResponse "No"
                     
                     if ($result -eq [System.Windows.Forms.DialogResult]::No) {
                         Write-LogMessage "Skipping DiagTrack service due to dependencies" -Level "WARNING"
@@ -233,12 +306,7 @@ function Set-SystemOptimization {
                     $dependencyMessage += ($dependencyCheck.DependencyList -join "`n")
                     $dependencyMessage += "`n`nDisabling dmwappushservice may affect these services. Continue anyway?"
                     
-                    $result = [System.Windows.Forms.MessageBox]::Show(
-                        $dependencyMessage,
-                        "Service Dependencies Found",
-                        [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                        [System.Windows.Forms.MessageBoxIcon]::Warning
-                    )
+                    $result = Show-TimeoutMessageBox -Message $dependencyMessage -Title "Service Dependencies Found" -TimeoutSeconds 30 -DefaultResponse "No"
                     
                     if ($result -eq [System.Windows.Forms.DialogResult]::No) {
                         Write-LogMessage "Skipping dmwappushservice service due to dependencies" -Level "WARNING"
@@ -263,12 +331,7 @@ function Set-SystemOptimization {
                     $dependencyMessage += ($dependencyCheck.DependencyList -join "`n")
                     $dependencyMessage += "`n`nDisabling SysMain may affect these services. Continue anyway?"
                     
-                    $result = [System.Windows.Forms.MessageBox]::Show(
-                        $dependencyMessage,
-                        "Service Dependencies Found",
-                        [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                        [System.Windows.Forms.MessageBoxIcon]::Warning
-                    )
+                    $result = Show-TimeoutMessageBox -Message $dependencyMessage -Title "Service Dependencies Found" -TimeoutSeconds 30 -DefaultResponse "No"
                     
                     if ($result -eq [System.Windows.Forms.DialogResult]::No) {
                         Write-LogMessage "Skipping SysMain service due to dependencies" -Level "WARNING"
@@ -292,12 +355,7 @@ function Set-SystemOptimization {
                     $dependencyMessage += ($dependencyCheck.DependencyList -join "`n")
                     $dependencyMessage += "`n`nDisabling WMPNetworkSvc may affect these services. Continue anyway?"
                     
-                    $result = [System.Windows.Forms.MessageBox]::Show(
-                        $dependencyMessage,
-                        "Service Dependencies Found",
-                        [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                        [System.Windows.Forms.MessageBoxIcon]::Warning
-                    )
+                    $result = Show-TimeoutMessageBox -Message $dependencyMessage -Title "Service Dependencies Found" -TimeoutSeconds 30 -DefaultResponse "No"
                     
                     if ($result -eq [System.Windows.Forms.DialogResult]::No) {
                         Write-LogMessage "Skipping WMPNetworkSvc service due to dependencies" -Level "WARNING"
@@ -698,6 +756,7 @@ function Remove-Bloatware {
         "disney" = "*.Disney*"
         "tiktok" = "*.TikTok*"
         "ms-widgets" = "MicrosoftWindows.Client.WebExperience"
+        "ms-copilot" = "Microsoft.Windows.Ai.Copilot.Provider"
         "ms-clipchamp" = "*.ClipChamp*"
         "linkedin" = "*.LinkedIn*"
     }
@@ -794,6 +853,35 @@ function Remove-Bloatware {
                     $removedCount++
                 } catch {
                     Write-LogMessage "Failed to apply Widgets registry tweaks: $_" -Level "WARNING"
+                }
+            }
+            
+            # Special handling for Windows Copilot (both Win10 and Win11)
+            if ($BloatwareKey -eq "ms-copilot") {
+                Write-LogMessage "Applying Windows Copilot registry tweaks..." -Level "INFO"
+                try {
+                    # Method 1: Disable Copilot via Windows Policies (Both Win10 & Win11)
+                    if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot")) {
+                        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1 -Type DWord -Force
+                    
+                    # Method 2: Disable Copilot button on taskbar (Both Win10 & Win11)
+                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowCopilotButton" -Value 0 -Type DWord -Force
+                    
+                    # Method 3: User-level Copilot disable (Win10 specific approach)
+                    if (-not (Test-Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot")) {
+                        New-Item -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1 -Type DWord -Force
+                    
+                    Write-LogMessage "Windows Copilot registry tweaks applied successfully" -Level "SUCCESS"
+                    $removedCount++
+                } catch {
+                    Write-LogMessage "Failed to apply Copilot registry tweaks: $_" -Level "WARNING"
                 }
             }
             
@@ -937,12 +1025,7 @@ function Configure-Services {
                 $dependencyMessage += ($dependencyCheck.DependencyList -join "`n")
                 $dependencyMessage += "`n`nConfiguring $($service.Value.Name) may affect these services. Continue anyway?"
                 
-                $result = [System.Windows.Forms.MessageBox]::Show(
-                    $dependencyMessage,
-                    "Service Dependencies Found",
-                    [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                    [System.Windows.Forms.MessageBoxIcon]::Warning
-                )
+                $result = Show-TimeoutMessageBox -Message $dependencyMessage -Title "Service Dependencies Found" -TimeoutSeconds 30 -DefaultResponse "No"
                 
                 if ($result -eq [System.Windows.Forms.DialogResult]::No) {
                     Write-LogMessage "Skipping $($service.Value.Name) service configuration due to dependencies" -Level "WARNING"

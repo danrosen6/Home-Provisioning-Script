@@ -4,6 +4,103 @@
 $script:UseDirectDownloadOnly = $false
 $script:MaxRetries = 3
 $script:RetryDelay = 5 # seconds
+$script:InstallerTimeoutMinutes = 15 # Timeout for installer processes
+
+# Function to run processes with timeout to prevent hanging
+function Start-ProcessWithTimeout {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$FilePath,
+        
+        [Parameter(Mandatory=$false)]
+        [string[]]$ArgumentList = @(),
+        
+        [Parameter(Mandatory=$false)]
+        [int]$TimeoutMinutes = $script:InstallerTimeoutMinutes,
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$NoNewWindow = $false,
+        
+        [Parameter(Mandatory=$false)]
+        [System.Threading.CancellationToken]$CancellationToken
+    )
+    
+    try {
+        Write-LogMessage "Starting process: $FilePath with timeout: ${TimeoutMinutes}m" -Level "INFO"
+        
+        # Start the process
+        $processParams = @{
+            FilePath = $FilePath
+            ArgumentList = $ArgumentList
+            PassThru = $true
+            NoNewWindow = $NoNewWindow
+        }
+        
+        $process = Start-Process @processParams
+        
+        # Wait for completion or timeout, checking for cancellation
+        $timeoutMs = $TimeoutMinutes * 60 * 1000
+        $checkIntervalMs = 1000 # Check for cancellation every second
+        $elapsed = 0
+        
+        while ($elapsed -lt $timeoutMs -and -not $process.HasExited) {
+            # Check for cancellation
+            if ($CancellationToken -and $CancellationToken.IsCancellationRequested) {
+                Write-LogMessage "Process cancelled by user request" -Level "WARNING"
+                try {
+                    $process.Kill()
+                    $process.WaitForExit(5000)
+                } catch {
+                    Write-LogMessage "Error killing cancelled process: $_" -Level "ERROR"
+                }
+                
+                return [PSCustomObject]@{
+                    ExitCode = -3
+                    HasExited = $true
+                    Id = $process.Id
+                    Cancelled = $true
+                }
+            }
+            
+            Start-Sleep -Milliseconds $checkIntervalMs
+            $elapsed += $checkIntervalMs
+        }
+        
+        $completed = $process.HasExited
+        
+        if ($completed) {
+            Write-LogMessage "Process completed with exit code: $($process.ExitCode)" -Level "INFO"
+            return $process
+        } else {
+            # Timeout occurred
+            Write-LogMessage "Process timed out after $TimeoutMinutes minutes, killing process" -Level "WARNING"
+            
+            try {
+                $process.Kill()
+                $process.WaitForExit(5000) # Wait up to 5 seconds for cleanup
+            } catch {
+                Write-LogMessage "Error killing timed-out process: $_" -Level "ERROR"
+            }
+            
+            # Return a process-like object with timeout exit code
+            return [PSCustomObject]@{
+                ExitCode = -1
+                HasExited = $true
+                Id = $process.Id
+                TimedOut = $true
+            }
+        }
+    }
+    catch {
+        Write-LogMessage "Error starting process: $_" -Level "ERROR"
+        return [PSCustomObject]@{
+            ExitCode = -2
+            HasExited = $true
+            Id = -1
+            Error = $_.Exception.Message
+        }
+    }
+}
 
 # Define Write-LogMessage function for module compatibility
 function Write-LogMessage {
@@ -86,7 +183,7 @@ function Get-LatestVersionUrl {
         "Python" {
             try {
                 # Get Python versions from the website
-                $webRequest = Invoke-WebRequest -Uri "https://www.python.org/downloads/windows/" -UseBasicParsing -ErrorAction Stop
+                $webRequest = Invoke-WebRequest -Uri "https://www.python.org/downloads/windows/" -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
                 
                 # Extract the latest Python 3 version
                 if ($webRequest.Content -match "Latest Python 3 Release - Python (3\.\d+\.\d+)") {
@@ -102,7 +199,7 @@ function Get-LatestVersionUrl {
         "PyCharm" {
             try {
                 # Get latest PyCharm version from JetBrains website
-                $webRequest = Invoke-WebRequest -Uri "https://data.services.jetbrains.com/products/releases?code=PCC&latest=true&type=release" -UseBasicParsing -ErrorAction Stop
+                $webRequest = Invoke-WebRequest -Uri "https://data.services.jetbrains.com/products/releases?code=PCC&latest=true&type=release" -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
                 
                 $releaseInfo = $webRequest.Content | ConvertFrom-Json
                 $latestVersion = $releaseInfo.PCC[0].version
@@ -120,7 +217,7 @@ function Get-LatestVersionUrl {
         "VLC" {
             try {
                 # Get VLC version information
-                $webRequest = Invoke-WebRequest -Uri "https://www.videolan.org/vlc/download-windows.html" -UseBasicParsing -ErrorAction Stop
+                $webRequest = Invoke-WebRequest -Uri "https://www.videolan.org/vlc/download-windows.html" -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
                 
                 # Extract the latest version
                 if ($webRequest.Content -match "vlc-(\d+\.\d+\.\d+)-win64.exe") {
@@ -136,7 +233,7 @@ function Get-LatestVersionUrl {
         "7-Zip" {
             try {
                 # Get 7-Zip version from website
-                $webRequest = Invoke-WebRequest -Uri "https://www.7-zip.org/download.html" -UseBasicParsing -ErrorAction Stop
+                $webRequest = Invoke-WebRequest -Uri "https://www.7-zip.org/download.html" -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
                 
                 # Extract the latest version for 64-bit Windows
                 if ($webRequest.Content -match "Download 7-Zip ([\d\.]+) \((?:\d{4}-\d{2}-\d{2})\) for Windows") {
@@ -651,7 +748,7 @@ function Install-Winget {
         # Download the latest winget release
         $releaseUrl = "https://api.github.com/repos/microsoft/winget-cli/releases/latest"
         Write-LogMessage "Fetching latest winget release information..." -Level "INFO"
-        $release = Invoke-RestMethod -Uri $releaseUrl
+        $release = Invoke-RestMethod -Uri $releaseUrl -TimeoutSec 15
         $msixBundle = $release.assets | Where-Object { $_.name -like "*.msixbundle" } | Select-Object -First 1
         
         if ($null -eq $msixBundle) {
@@ -875,11 +972,12 @@ function Install-Application {
         
         if ($DirectDownload.Extension -eq ".exe") {
             $arguments = if ($DirectDownload.Arguments) { $DirectDownload.Arguments } else { "/S" }
-            $process = Start-Process -FilePath $installerPath -ArgumentList $arguments -Wait -PassThru
+            $process = Start-ProcessWithTimeout -FilePath $installerPath -ArgumentList $arguments -TimeoutMinutes $script:InstallerTimeoutMinutes -CancellationToken $CancellationToken
         }
         elseif ($DirectDownload.Extension -eq ".msi") {
             $arguments = if ($DirectDownload.Arguments) { $DirectDownload.Arguments } else { "/quiet", "/norestart" }
-            $process = Start-Process msiexec.exe -ArgumentList "/i", $installerPath, $arguments -Wait -NoNewWindow -PassThru
+            $allArgs = @("/i", $installerPath) + $arguments
+            $process = Start-ProcessWithTimeout -FilePath "msiexec.exe" -ArgumentList $allArgs -TimeoutMinutes $script:InstallerTimeoutMinutes -NoNewWindow -CancellationToken $CancellationToken
         }
         elseif ($DirectDownload.Extension -eq ".msixbundle") {
             # Special handling for MSIX bundles (Windows Terminal, etc.)
@@ -913,7 +1011,24 @@ function Install-Application {
             $process = [PSCustomObject]@{ ExitCode = 1 }
         }
         
-        if ($process.ExitCode -eq 0) {
+        # Check for timeout or cancellation
+        if ($process.PSObject.Properties.Name -contains "Cancelled" -and $process.Cancelled) {
+            Write-LogMessage "Installation was cancelled by user" -Level "WARNING"
+            Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Cancelled" -AdditionalData @{
+                Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            }
+            return $false
+        }
+        elseif ($process.PSObject.Properties.Name -contains "TimedOut" -and $process.TimedOut) {
+            Write-LogMessage "Installation timed out after $script:InstallerTimeoutMinutes minutes" -Level "ERROR"
+            Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Failed" -AdditionalData @{
+                Error = "Installation timed out"
+                TimeoutMinutes = $script:InstallerTimeoutMinutes
+                Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            }
+            return $false
+        }
+        elseif ($process.ExitCode -eq 0) {
             Write-LogMessage "Installation completed successfully" -Level "SUCCESS"
             
             # Verify installation
@@ -1038,9 +1153,18 @@ function Install-Python {
         
         # Run installer with enhanced arguments
         Write-LogMessage "Installing Python with arguments: $($pythonDownload.Arguments)" -Level "INFO"
-        $process = Start-Process -FilePath $installerPath -ArgumentList $pythonDownload.Arguments -Wait -NoNewWindow -PassThru
+        $process = Start-ProcessWithTimeout -FilePath $installerPath -ArgumentList $pythonDownload.Arguments -TimeoutMinutes $script:InstallerTimeoutMinutes -NoNewWindow -CancellationToken $CancellationToken
         
-        if ($process.ExitCode -eq 0) {
+        # Check for timeout or cancellation
+        if ($process.PSObject.Properties.Name -contains "Cancelled" -and $process.Cancelled) {
+            Write-LogMessage "Python installation was cancelled by user" -Level "WARNING"
+            return $false
+        }
+        elseif ($process.PSObject.Properties.Name -contains "TimedOut" -and $process.TimedOut) {
+            Write-LogMessage "Python installation timed out after $script:InstallerTimeoutMinutes minutes" -Level "ERROR"
+            return $false
+        }
+        elseif ($process.ExitCode -eq 0) {
             Write-LogMessage "Python installer completed successfully" -Level "SUCCESS"
             
             # Refresh environment variables

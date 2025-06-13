@@ -151,6 +151,7 @@ $script:Bloatware = @{
         @{Name="Get Help"; Key="win-gethelp"; Default=$true; Win10=$true; Win11=$true}
         @{Name="Get Started"; Key="win-getstarted"; Default=$true; Win10=$true; Win11=$true}
         @{Name="Microsoft Widgets"; Key="ms-widgets"; Default=$true; Win10=$false; Win11=$true}
+        @{Name="Microsoft Copilot"; Key="ms-copilot"; Default=$true; Win10=$true; Win11=$true}
         @{Name="Skype App"; Key="skype-app"; Default=$true; Win10=$true; Win11=$true}
     )
     "Entertainment & Gaming" = @(
