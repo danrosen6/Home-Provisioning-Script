@@ -7,12 +7,16 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-# Import required modules
+# Import required modules - Import logging first so other modules can use it
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+Import-Module (Join-Path $scriptPath "utils\Logging.psm1") -Force
+
+# Initialize logging immediately after import
+Initialize-Logging
+
+Import-Module (Join-Path $scriptPath "utils\RecoveryUtils.psm1") -Force
 Import-Module (Join-Path $scriptPath "modules\Installers.psm1") -Force
 Import-Module (Join-Path $scriptPath "modules\SystemOptimizations.psm1") -Force
-Import-Module (Join-Path $scriptPath "utils\Logging.psm1") -Force
-Import-Module (Join-Path $scriptPath "utils\RecoveryUtils.psm1") -Force
 
 # Helper functions
 function Test-WingetCompatibility {
@@ -1118,11 +1122,16 @@ $cancelBtn.Add_Click({
     $form.Close()
 })
 
-# Initialize logging
-Initialize-Logging
-
 Write-Host "Launching Windows Setup GUI..." -ForegroundColor Green
 Write-Host "4 tabs: Install Apps, Remove Bloatware, Disable Services, System Tweaks" -ForegroundColor Yellow
+
+# Display log file location
+$logPath = Get-LogFilePath
+if ($logPath) {
+    Write-Host "Log file: $logPath" -ForegroundColor Cyan
+} else {
+    Write-Host "Warning: Logging may not be working properly" -ForegroundColor Yellow
+}
 
 # Show form
 [void]$form.ShowDialog()

@@ -102,56 +102,64 @@ function Start-ProcessWithTimeout {
     }
 }
 
-# Define Write-LogMessage function for module compatibility
-function Write-LogMessage {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$Message,
+# Import the centralized logging system
+$LoggingModule = Join-Path (Split-Path $PSScriptRoot) "utils\Logging.psm1"
+if (Test-Path $LoggingModule) {
+    Import-Module $LoggingModule -Force -Global
+    Write-Verbose "Imported centralized logging module"
+} else {
+    # Fallback Write-LogMessage function if centralized logging is not available
+    function Write-LogMessage {
+        param (
+            [Parameter(Mandatory=$true)]
+            [string]$Message,
+            
+            [Parameter(Mandatory=$false)]
+            [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS")]
+            [string]$Level = "INFO"
+        )
         
-        [Parameter(Mandatory=$false)]
-        [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS")]
-        [string]$Level = "INFO"
-    )
-    
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logMessage = "[$timestamp] [$Level] $Message"
-    
-    # Write to console with color
-    $color = switch ($Level) {
-        "ERROR" { "Red" }
-        "WARNING" { "Yellow" }
-        "SUCCESS" { "Green" }
-        default { "White" }
-    }
-    Write-Host $logMessage -ForegroundColor $color
-    
-    # Try to write to GUI if available
-    if ($script:txtLog -ne $null) {
-        try {
-            $script:txtLog.SelectionColor = switch ($Level) {
-                "ERROR" { [System.Drawing.Color]::Red }
-                "WARNING" { [System.Drawing.Color]::Orange }
-                "SUCCESS" { [System.Drawing.Color]::Green }
-                default { [System.Drawing.Color]::Black }
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        # Write to console with color
+        $color = switch ($Level) {
+            "ERROR" { "Red" }
+            "WARNING" { "Yellow" }
+            "SUCCESS" { "Green" }
+            default { "White" }
+        }
+        Write-Host $logMessage -ForegroundColor $color
+        
+        # Try to write to GUI if available
+        if ($script:txtLog -ne $null) {
+            try {
+                $script:txtLog.SelectionColor = switch ($Level) {
+                    "ERROR" { [System.Drawing.Color]::Red }
+                    "WARNING" { [System.Drawing.Color]::Orange }
+                    "SUCCESS" { [System.Drawing.Color]::Green }
+                    default { [System.Drawing.Color]::Black }
+                }
+                $script:txtLog.AppendText("$logMessage`r`n")
+                $script:txtLog.SelectionStart = $script:txtLog.Text.Length
+                $script:txtLog.ScrollToCaret()
             }
-            $script:txtLog.AppendText("$logMessage`r`n")
-            $script:txtLog.SelectionStart = $script:txtLog.Text.Length
-            $script:txtLog.ScrollToCaret()
+            catch {
+                Write-Host "Error updating log textbox: $_" -ForegroundColor Red
+            }
         }
-        catch {
-            Write-Host "Error updating log textbox: $_" -ForegroundColor Red
-        }
-    }
-    
-    # Write to log file if enabled
-    if ($script:EnableFileLogging -and $script:LogPath) {
-        try {
-            Add-Content -Path $script:LogPath -Value $logMessage -ErrorAction Stop
-        }
-        catch {
-            Write-Host "Failed to write to log file: $_" -ForegroundColor Red
+        
+        # Write to log file if enabled
+        if ($script:EnableFileLogging -and $script:LogPath) {
+            try {
+                Add-Content -Path $script:LogPath -Value $logMessage -ErrorAction Stop
+            }
+            catch {
+                Write-Host "Failed to write to log file: $_" -ForegroundColor Red
+            }
         }
     }
+    Write-Warning "Centralized logging module not found, using fallback logging"
 }
 
 # Function to get the latest version URLs dynamically

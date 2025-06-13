@@ -84,28 +84,36 @@ function Show-TimeoutMessageBox {
     }
 }
 
-# Define Write-LogMessage function for module compatibility
-function Write-LogMessage {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$Message,
+# Import the centralized logging system
+$LoggingModule = Join-Path (Split-Path $PSScriptRoot) "utils\Logging.psm1"
+if (Test-Path $LoggingModule) {
+    Import-Module $LoggingModule -Force -Global
+    Write-Verbose "Imported centralized logging module"
+} else {
+    # Fallback Write-LogMessage function if centralized logging is not available
+    function Write-LogMessage {
+        param (
+            [Parameter(Mandatory=$true)]
+            [string]$Message,
+            
+            [Parameter(Mandatory=$false)]
+            [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS")]
+            [string]$Level = "INFO"
+        )
         
-        [Parameter(Mandatory=$false)]
-        [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS")]
-        [string]$Level = "INFO"
-    )
-    
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logMessage = "[$timestamp] [$Level] $Message"
-    
-    # Write to console with color
-    $color = switch ($Level) {
-        "ERROR" { "Red" }
-        "WARNING" { "Yellow" }
-        "SUCCESS" { "Green" }
-        default { "White" }
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $logMessage = "[$timestamp] [$Level] $Message"
+        
+        # Write to console with color
+        $color = switch ($Level) {
+            "ERROR" { "Red" }
+            "WARNING" { "Yellow" }
+            "SUCCESS" { "Green" }
+            default { "White" }
+        }
+        Write-Host $logMessage -ForegroundColor $color
     }
-    Write-Host $logMessage -ForegroundColor $color
+    Write-Warning "Centralized logging module not found, using fallback logging"
 }
 
 function Add-RestartRegistryChange {
@@ -571,15 +579,78 @@ function Set-SystemOptimization {
                 Stop-Service "WpcMonSvc" -Force -ErrorAction SilentlyContinue
                 Set-Service "WpcMonSvc" -StartupType Disabled
             }
+            "wsearch" {
+                Save-ServiceState -ServiceName "WSearch"
+                Stop-Service "WSearch" -Force -ErrorAction SilentlyContinue
+                Set-Service "WSearch" -StartupType Disabled
+            }
             "cscservice" {
-                Save-ServiceState -ServiceName "CscService"
-                Stop-Service "CscService" -Force -ErrorAction SilentlyContinue
-                Set-Service "CscService" -StartupType Disabled
+                $service = Get-Service -Name "CscService" -ErrorAction SilentlyContinue
+                if ($service) {
+                    Save-ServiceState -ServiceName "CscService"
+                    Stop-Service "CscService" -Force -ErrorAction SilentlyContinue
+                    Set-Service "CscService" -StartupType Disabled
+                } else {
+                    Write-LogMessage "Service CscService not found on this system (may not be available on this Windows version)" -Level "WARNING"
+                }
             }
             "lfsvc" {
-                Save-ServiceState -ServiceName "lfsvc"
-                Stop-Service "lfsvc" -Force -ErrorAction SilentlyContinue
-                Set-Service "lfsvc" -StartupType Disabled
+                # Enhanced location services disable with comprehensive privacy settings
+                Write-LogMessage "Disabling location services comprehensively..." -Level "INFO"
+                
+                $service = Get-Service -Name "lfsvc" -ErrorAction SilentlyContinue
+                if ($service) {
+                    Save-ServiceState -ServiceName "lfsvc"
+                    Stop-Service "lfsvc" -Force -ErrorAction SilentlyContinue
+                    Set-Service "lfsvc" -StartupType Disabled
+                    Write-LogMessage "Disabled lfsvc (Geolocation Service)" -Level "INFO"
+                } else {
+                    Write-LogMessage "Geolocation Service (lfsvc) not found on this system" -Level "WARNING"
+                }
+                
+                # System-wide location disable via Group Policy
+                try {
+                    if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors")) {
+                        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Name "DisableLocation" -Value 1 -Type DWord -Force
+                    Write-LogMessage "Applied Group Policy location disable" -Level "INFO"
+                } catch {
+                    Write-LogMessage "Could not apply Group Policy location disable: $_" -Level "WARNING"
+                }
+                
+                # Capability Access Manager - Location
+                try {
+                    if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location")) {
+                        New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location" -Name "Value" -Value "Deny" -Type String -Force
+                    Write-LogMessage "Set Capability Access Manager to deny location access" -Level "INFO"
+                } catch {
+                    Write-LogMessage "Could not set Capability Access Manager location setting: $_" -Level "WARNING"
+                }
+                
+                # User-level location privacy settings
+                try {
+                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DeviceAccess\Global\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}")) {
+                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DeviceAccess\Global\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DeviceAccess\Global\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}" -Name "Value" -Value "Deny" -Type String -Force
+                    Write-LogMessage "Set user-level location access to deny" -Level "INFO"
+                } catch {
+                    Write-LogMessage "Could not set user-level location access: $_" -Level "WARNING"
+                }
+                
+                # Disable location scripting
+                try {
+                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DeviceAccess\Global\LooselyCoupled")) {
+                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DeviceAccess\Global\LooselyCoupled" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DeviceAccess\Global\LooselyCoupled" -Name "Value" -Value "Deny" -Type String -Force
+                    Write-LogMessage "Disabled location scripting access" -Level "INFO"
+                } catch {
+                    Write-LogMessage "Could not disable location scripting: $_" -Level "WARNING"
+                }
             }
             "tabletinputservice" {
                 Save-ServiceState -ServiceName "TabletInputService"
@@ -587,14 +658,24 @@ function Set-SystemOptimization {
                 Set-Service "TabletInputService" -StartupType Disabled
             }
             "homegrpservice" {
-                Save-ServiceState -ServiceName "HomeGroupProvider"
-                Stop-Service "HomeGroupProvider" -Force -ErrorAction SilentlyContinue
-                Set-Service "HomeGroupProvider" -StartupType Disabled
+                $service = Get-Service -Name "HomeGroupProvider" -ErrorAction SilentlyContinue
+                if ($service) {
+                    Save-ServiceState -ServiceName "HomeGroupProvider"
+                    Stop-Service "HomeGroupProvider" -Force -ErrorAction SilentlyContinue
+                    Set-Service "HomeGroupProvider" -StartupType Disabled
+                } else {
+                    Write-LogMessage "Service HomeGroupProvider not found on this system (HomeGroup was removed in Windows 10 1803+)" -Level "WARNING"
+                }
             }
             "walletservice" {
-                Save-ServiceState -ServiceName "WalletService"
-                Stop-Service "WalletService" -Force -ErrorAction SilentlyContinue
-                Set-Service "WalletService" -StartupType Disabled
+                $service = Get-Service -Name "WalletService" -ErrorAction SilentlyContinue
+                if ($service) {
+                    Save-ServiceState -ServiceName "WalletService"
+                    Stop-Service "WalletService" -Force -ErrorAction SilentlyContinue
+                    Set-Service "WalletService" -StartupType Disabled
+                } else {
+                    Write-LogMessage "Service WalletService not found on this system (may not be available on this Windows version)" -Level "WARNING"
+                }
             }
             
             # Windows 11 specific optimizations
@@ -756,9 +837,13 @@ function Remove-Bloatware {
         "disney" = "*.Disney*"
         "tiktok" = "*.TikTok*"
         "ms-widgets" = "MicrosoftWindows.Client.WebExperience"
-        "ms-copilot" = "Microsoft.Windows.Ai.Copilot.Provider"
+        "ms-copilot" = @("Microsoft.Windows.Ai.Copilot.Provider", "Microsoft.Copilot")
         "ms-clipchamp" = "*.ClipChamp*"
         "linkedin" = "*.LinkedIn*"
+        "instagram" = "*.Instagram*"
+        "whatsapp" = "*.WhatsApp*"
+        "amazon-prime" = "*.AmazonPrimeVideo*"
+        "skype-app" = "Microsoft.SkypeApp"
     }
     
     Write-LogMessage "Starting bloatware removal..." -Level "INFO"
@@ -778,8 +863,8 @@ function Remove-Bloatware {
         # Handle different parameter sets
         if ($PSCmdlet.ParameterSetName -eq "Key") {
             # Single package removal using key
-            $packageName = $packageMap[$BloatwareKey]
-            if (-not $packageName) {
+            $packageNames = $packageMap[$BloatwareKey]
+            if (-not $packageNames) {
                 Write-LogMessage "Unknown bloatware key: $BloatwareKey" -Level "WARNING"
                 Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Failed" -AdditionalData @{
                     Error = "Unknown bloatware key"
@@ -788,107 +873,227 @@ function Remove-Bloatware {
                 return $false
             }
             
+            # Normalize to array for consistent processing
+            if ($packageNames -is [string]) {
+                $packageNames = @($packageNames)
+            }
+            
             Write-LogMessage "Removing bloatware: $BloatwareKey" -Level "INFO"
             
-            # Check if packages exist first (handle both exact names and wildcard patterns)
-            if ($packageName -like "*`**") {
-                # Wildcard pattern - use -like matching
-                $installedPackages = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Where-Object { $_.Name -like $packageName }
-                $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -like $packageName }
-            } else {
-                # Exact name matching
-                $installedPackages = Get-AppxPackage -Name $packageName -AllUsers -ErrorAction SilentlyContinue
-                $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $packageName }
+            $allInstalledPackages = @()
+            $allProvisionedPackages = @()
+            
+            # Process each package name/pattern
+            foreach ($packageName in $packageNames) {
+                Write-LogMessage "Searching for packages matching: $packageName" -Level "DEBUG"
+                
+                # Check if packages exist first (handle both exact names and wildcard patterns)
+                if ($packageName -like "*`**") {
+                    # Wildcard pattern - use -like matching
+                    $installedPackages = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Where-Object { $_.Name -like $packageName }
+                    $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -like $packageName }
+                } else {
+                    # Exact name matching
+                    $installedPackages = Get-AppxPackage -Name $packageName -AllUsers -ErrorAction SilentlyContinue
+                    $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $packageName }
+                }
+                
+                if ($installedPackages) {
+                    $allInstalledPackages += $installedPackages
+                    Write-LogMessage "Found $($installedPackages.Count) installed package(s) for pattern: $packageName" -Level "DEBUG"
+                }
+                if ($provisionedPackages) {
+                    $allProvisionedPackages += $provisionedPackages
+                    Write-LogMessage "Found $($provisionedPackages.Count) provisioned package(s) for pattern: $packageName" -Level "DEBUG"
+                }
             }
             
             $removedCount = 0
             
             # Remove installed packages for all users (using proven method from independent scripts)
-            if ($installedPackages) {
-                Write-LogMessage "Found $($installedPackages.Count) installed package(s): $packageName" -Level "INFO"
+            if ($allInstalledPackages -and $allInstalledPackages.Count -gt 0) {
+                Write-LogMessage "Found $($allInstalledPackages.Count) total installed package(s) for: $BloatwareKey" -Level "INFO"
                 try {
-                    $installedPackages | Remove-AppxPackage -ErrorAction SilentlyContinue
-                    $removedCount += $installedPackages.Count
-                    Write-LogMessage "Removed AppxPackage: $packageName" -Level "INFO"
+                    $allInstalledPackages | Remove-AppxPackage -ErrorAction SilentlyContinue
+                    $removedCount += $allInstalledPackages.Count
+                    Write-LogMessage "Removed $($allInstalledPackages.Count) AppxPackage(s) for: $BloatwareKey" -Level "INFO"
                 } catch {
-                    Write-LogMessage "Failed to remove AppxPackage $packageName - ${_}" -Level "WARNING"
+                    Write-LogMessage "Failed to remove some AppxPackages for $BloatwareKey - ${_}" -Level "WARNING"
                 }
             }
             
             # Remove provisioned packages (using proven method from independent scripts)
-            if ($provisionedPackages) {
-                Write-LogMessage "Found $($provisionedPackages.Count) provisioned package(s): $packageName" -Level "INFO"
+            if ($allProvisionedPackages -and $allProvisionedPackages.Count -gt 0) {
+                Write-LogMessage "Found $($allProvisionedPackages.Count) total provisioned package(s) for: $BloatwareKey" -Level "INFO"
                 try {
-                    $provisionedPackages | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
-                    $removedCount += $provisionedPackages.Count
-                    Write-LogMessage "Removed AppxProvisionedPackage: $packageName" -Level "INFO"
+                    $allProvisionedPackages | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+                    $removedCount += $allProvisionedPackages.Count
+                    Write-LogMessage "Removed $($allProvisionedPackages.Count) AppxProvisionedPackage(s) for: $BloatwareKey" -Level "INFO"
                 } catch {
-                    Write-LogMessage "Failed to remove AppxProvisionedPackage $packageName - ${_}" -Level "WARNING"
+                    Write-LogMessage "Failed to remove some AppxProvisionedPackages for $BloatwareKey - ${_}" -Level "WARNING"
                 }
             }
             
-            # Special handling for Windows 11 Widgets
+            # Special handling for Widgets/Weather/News (Windows 10 & 11)
             if ($BloatwareKey -eq "ms-widgets") {
-                Write-LogMessage "Applying Windows 11 Widgets registry tweaks..." -Level "INFO"
+                Write-LogMessage "Applying Widgets/Weather/News removal tweaks..." -Level "INFO"
                 try {
-                    # Disable Widgets in taskbar
-                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
-                    }
-                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -Type DWord -Force
+                    # Detect Windows version for proper handling
+                    $windowsVersion = [System.Environment]::OSVersion.Version
+                    $isWindows10 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -lt 22000
+                    $isWindows11 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -ge 22000
                     
-                    # Disable News and Interests
+                    Write-LogMessage "Detected Windows version: Build $($windowsVersion.Build) $(if($isWindows10){'(Windows 10)'}else{'(Windows 11)'})" -Level "INFO"
+                    
+                    if ($isWindows11) {
+                        # Windows 11 Widgets handling
+                        Write-LogMessage "Applying Windows 11 Widgets disable..." -Level "INFO"
+                        
+                        # Disable Widgets in taskbar (Windows 11 specific)
+                        if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                            New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                        }
+                        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -Type DWord -Force
+                        Write-LogMessage "Disabled Windows 11 Widgets taskbar button" -Level "INFO"
+                    }
+                    
+                    if ($isWindows10) {
+                        # Windows 10 News and Interests handling
+                        Write-LogMessage "Applying Windows 10 News and Interests disable..." -Level "INFO"
+                        
+                        # Method 1: Disable News and Interests via user preferences
+                        if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds")) {
+                            New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Force | Out-Null
+                        }
+                        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force
+                        Write-LogMessage "Disabled News and Interests user preference" -Level "INFO"
+                        
+                        # Method 2: System-wide News and Interests disable
+                        try {
+                            if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests")) {
+                                New-Item -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Force | Out-Null
+                            }
+                            Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Name "value" -Value 0 -Type DWord -Force
+                            Write-LogMessage "Applied system-wide News and Interests disable" -Level "INFO"
+                        } catch {
+                            Write-LogMessage "Could not apply system-wide News and Interests disable (may require higher privileges): $_" -Level "DEBUG"
+                        }
+                        
+                        # Method 3: Disable weather location services
+                        try {
+                            if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds\DSB")) {
+                                New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds\DSB" -Force | Out-Null
+                            }
+                            Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds\DSB" -Name "ShowDynamicContent" -Value 0 -Type DWord -Force
+                            Write-LogMessage "Disabled dynamic weather content" -Level "INFO"
+                        } catch {
+                            Write-LogMessage "Could not disable dynamic weather content: $_" -Level "DEBUG"
+                        }
+                    }
+                    
+                    # Common methods for both Windows 10 and 11
+                    
+                    # Disable News and Interests system-wide via Group Policy
                     if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh")) {
                         New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Force | Out-Null
                     }
                     Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0 -Type DWord -Force
+                    Write-LogMessage "Applied News and Interests Group Policy disable" -Level "INFO"
                     
                     # Disable Windows Feeds
                     if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds")) {
                         New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Force | Out-Null
                     }
                     Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -Type DWord -Force
+                    Write-LogMessage "Applied Windows Feeds disable" -Level "INFO"
                     
-                    Write-LogMessage "Windows 11 Widgets registry tweaks applied successfully" -Level "SUCCESS"
+                    # Disable web search in feeds
+                    try {
+                        if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings")) {
+                            New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings" -Force | Out-Null
+                        }
+                        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings" -Name "IsAADCloudSearchEnabled" -Value 0 -Type DWord -Force
+                        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings" -Name "IsDeviceSearchHistoryEnabled" -Value 0 -Type DWord -Force
+                        Write-LogMessage "Disabled web search in feeds" -Level "INFO"
+                    } catch {
+                        Write-LogMessage "Could not disable web search in feeds: $_" -Level "DEBUG"
+                    }
+                    
+                    Write-LogMessage "Widgets/Weather/News removal tweaks applied successfully" -Level "SUCCESS"
                     $removedCount++
                 } catch {
-                    Write-LogMessage "Failed to apply Widgets registry tweaks: $_" -Level "WARNING"
+                    Write-LogMessage "Failed to apply Widgets/Weather/News removal tweaks: $_" -Level "WARNING"
                 }
             }
             
             # Special handling for Windows Copilot (both Win10 and Win11)
             if ($BloatwareKey -eq "ms-copilot") {
-                Write-LogMessage "Applying Windows Copilot registry tweaks..." -Level "INFO"
+                Write-LogMessage "Applying Windows Copilot removal and registry tweaks..." -Level "INFO"
                 try {
-                    # Method 1: Disable Copilot via Windows Policies (Both Win10 & Win11)
+                    # Detect Windows version for proper handling
+                    $windowsVersion = [System.Environment]::OSVersion.Version
+                    $isWindows10 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -lt 22000
+                    $isWindows11 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -ge 22000
+                    
+                    Write-LogMessage "Detected Windows version: Build $($windowsVersion.Build) $(if($isWindows10){'(Windows 10)'}else{'(Windows 11)'})" -Level "INFO"
+                    
+                    # Method 1: System-wide Copilot disable via Group Policy (Both Win10 & Win11)
                     if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot")) {
                         New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Force | Out-Null
                     }
                     Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1 -Type DWord -Force
+                    Write-LogMessage "Applied system-wide Copilot disable policy" -Level "INFO"
                     
-                    # Method 2: Disable Copilot button on taskbar (Both Win10 & Win11)
-                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
-                    }
-                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowCopilotButton" -Value 0 -Type DWord -Force
-                    
-                    # Method 3: User-level Copilot disable (Win10 specific approach)
+                    # Method 2: User-level Copilot disable (Critical for Windows 10)
                     if (-not (Test-Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot")) {
                         New-Item -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" -Force | Out-Null
                     }
                     Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1 -Type DWord -Force
+                    Write-LogMessage "Applied user-level Copilot disable policy" -Level "INFO"
                     
-                    Write-LogMessage "Windows Copilot registry tweaks applied successfully" -Level "SUCCESS"
+                    # Method 3: Remove Copilot button from taskbar
+                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowCopilotButton" -Value 0 -Type DWord -Force
+                    Write-LogMessage "Disabled Copilot button on taskbar" -Level "INFO"
+                    
+                    # Method 4: Windows 10 specific - Disable AI features
+                    if ($isWindows10) {
+                        # Disable Windows AI Platform (Windows 10 2024 H2)
+                        try {
+                            if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AI")) {
+                                New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AI" -Force | Out-Null
+                            }
+                            Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AI" -Name "DisableAIDataAnalysis" -Value 1 -Type DWord -Force
+                            Write-LogMessage "Disabled Windows 10 AI features" -Level "INFO"
+                        } catch {
+                            Write-LogMessage "Could not disable AI features (may not be available): $_" -Level "DEBUG"
+                        }
+                        
+                        # Windows 10 Copilot context menu disable
+                        try {
+                            if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\Shell\Copilot")) {
+                                New-Item -Path "HKCU:\Software\Microsoft\Windows\Shell\Copilot" -Force | Out-Null
+                            }
+                            Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\Copilot" -Name "IsCopilotAvailable" -Value 0 -Type DWord -Force
+                            Write-LogMessage "Disabled Windows 10 Copilot context integration" -Level "INFO"
+                        } catch {
+                            Write-LogMessage "Could not disable Copilot context integration: $_" -Level "DEBUG"
+                        }
+                    }
+                    
+                    Write-LogMessage "Windows Copilot removal and registry tweaks applied successfully" -Level "SUCCESS"
                     $removedCount++
                 } catch {
-                    Write-LogMessage "Failed to apply Copilot registry tweaks: $_" -Level "WARNING"
+                    Write-LogMessage "Failed to apply Copilot removal tweaks: $_" -Level "WARNING"
                 }
             }
             
             if ($removedCount -gt 0) {
                 Write-LogMessage "Successfully removed $removedCount package(s) for: $BloatwareKey" -Level "SUCCESS"
             } else {
-                Write-LogMessage "No packages found matching pattern $packageName for: $BloatwareKey" -Level "WARNING"
+                Write-LogMessage "No packages found matching patterns for: $BloatwareKey (patterns: $($packageNames -join ', '))" -Level "WARNING"
             }
             Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Completed"
             return $true
