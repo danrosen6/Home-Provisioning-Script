@@ -21,7 +21,10 @@ This script provides a graphical interface for automating common Windows setup t
 ## How to Run
 
 1. **Prerequisites**: Windows 10 1709+ or Windows 11, PowerShell 5.1+, Administrator privileges
-2. **Run**: Right-click PowerShell → "Run as Administrator" → Navigate to src folder → Run `PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1`
+2. **Run**: Right-click PowerShell → "Run as Administrator" → Navigate to src folder → Run:
+```commandline
+PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
+```
 3. **Interface**: Use the tabs at bottom to switch between: Apps, Bloatware, Services, Tweaks
 4. **Select items** in the main area using checkboxes
 5. **Click "Run Selected Tasks"** to execute
@@ -62,6 +65,8 @@ This script provides a graphical interface for automating common Windows setup t
 1. **Winget (Preferred)**: Fast, reliable package manager for Windows 10 1709+
 2. **Direct Downloads**: Fallback method downloading from official sources
 3. **Dynamic Version Detection**: Automatically retrieves latest versions for Git, Python, PyCharm, VLC, 7-Zip, Notepad++
+
+---
 
 ## Bloatware Removed
 
@@ -213,6 +218,8 @@ This script provides a graphical interface for automating common Windows setup t
 - ✅ Pros: Removes ads, saves storage, forces better photo editing alternatives
 - ⚠️ Cons: No quick photo editing capability, need GIMP/Photoshop alternatives
 
+---
+
 ## Services Disabled
 
 ### Telemetry & Privacy
@@ -298,6 +305,8 @@ This script provides a graphical interface for automating common Windows setup t
 **Microsoft Wallet Service** *(Windows 11)*
 - ✅ Pros: Improves privacy, removes payment tracking, reduces background activity
 - ⚠️ Cons: No Windows payment integration, NFC payments disabled
+
+---
 
 ## System Tweaks Applied
 
@@ -408,6 +417,8 @@ This script provides a graphical interface for automating common Windows setup t
 **Disable Teams auto-start**
 - ✅ Pros: Faster boot time, saves resources, prevents unwanted Teams launches
 - ⚠️ Cons: Need to manually start Teams for meetings, may miss notifications initially
+
+---
 
 ## Pros of Using This Script
 
