@@ -31,7 +31,9 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 
 ## Applications Installed
 
-### Development Tools
+<details>
+<summary><strong>Development Tools</strong> (10 applications)</summary>
+
 - **Visual Studio Code** - Code editor with extensions support
 - **Git** - Version control system with Windows integration
 - **Python 3.13** - Programming language with pip and PATH setup
@@ -43,34 +45,52 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - **Postman** - API development and testing
 - **Node.js** - JavaScript runtime (Windows 11 only)
 
-### Browsers
+</details>
+
+<details>
+<summary><strong>Browsers</strong> (3 applications)</summary>
+
 - **Google Chrome** - Web browser
 - **Mozilla Firefox** - Alternative web browser
 - **Brave Browser** - Privacy-focused browser
 
-### Media & Communication
+</details>
+
+<details>
+<summary><strong>Media & Communication</strong> (4 applications)</summary>
+
 - **Spotify** - Music streaming service
 - **Discord** - Gaming and community chat
 - **Steam** - Gaming platform
 - **VLC Media Player** - Video/audio player
 
-### Utilities
+</details>
+
+<details>
+<summary><strong>Utilities</strong> (4 applications)</summary>
+
 - **7-Zip** - File compression/extraction
 - **Notepad++** - Advanced text editor
 - **Microsoft PowerToys** - Windows utilities (Windows 11 only)
 - **Windows Terminal** - Modern command-line interface
 
-## Installation Methods
+</details>
+
+<details>
+<summary><strong>Installation Methods</strong></summary>
 
 1. **Winget (Preferred)**: Fast, reliable package manager for Windows 10 1709+
 2. **Direct Downloads**: Fallback method downloading from official sources
 3. **Dynamic Version Detection**: Automatically retrieves latest versions for Git, Python, PyCharm, VLC, 7-Zip, Notepad++
 
+</details>
+
 ---
 
 ## Bloatware Removed
 
-### Microsoft Office & Productivity
+<details>
+<summary><strong>Microsoft Office & Productivity</strong></summary>
 
 **Microsoft Office Hub**
 - ✅ Pros: Frees up storage space, reduces clutter, removes promotional content
@@ -92,7 +112,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Eliminates task sync, reduces Microsoft account dependencies
 - ⚠️ Cons: Need alternative task management solution, lose Outlook integration
 
-### Windows Built-ins
+</details>
+
+<details>
+<summary><strong>Windows Built-ins</strong></summary>
 
 **Microsoft 3D Viewer**
 - ✅ Pros: Frees storage, removes unused app for most users, faster system
@@ -178,7 +201,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Removes redundant app (desktop version preferred), saves storage
 - ⚠️ Cons: Need to manually install Skype if used for communication
 
-### Entertainment & Gaming
+</details>
+
+<details>
+<summary><strong>Entertainment & Gaming</strong></summary>
 
 **Xbox Gaming App**
 - ✅ Pros: Disables Xbox integration, improves gaming performance, reduces background processes
@@ -200,7 +226,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Removes ads, stops game telemetry, saves storage
 - ⚠️ Cons: No built-in casual games, need third-party alternatives
 
-### Third-Party Apps
+</details>
+
+<details>
+<summary><strong>Third-Party Apps</strong></summary>
 
 **Candy Crush Games**
 - ✅ Pros: Removes ads, stops game telemetry, saves storage, improves productivity
@@ -218,11 +247,14 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Removes ads, saves storage, forces better photo editing alternatives
 - ⚠️ Cons: No quick photo editing capability, need GIMP/Photoshop alternatives
 
+</details>
+
 ---
 
 ## Services Disabled
 
-### Telemetry & Privacy
+<details>
+<summary><strong>Telemetry & Privacy</strong></summary>
 
 **Connected User Experiences and Telemetry (DiagTrack)**
 - ✅ Pros: Major privacy improvement, stops data collection, reduces network usage, improves performance
@@ -236,7 +268,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Prevents automatic enrollment in beta programs, improves system stability
 - ⚠️ Cons: Can't participate in Windows Insider Program, no access to preview builds
 
-### Performance & Storage
+</details>
+
+<details>
+<summary><strong>Performance & Storage</strong></summary>
 
 **Superfetch/SysMain**
 - ✅ Pros: Significant performance improvement on SSDs, reduces disk usage, faster boot times, less RAM consumption
@@ -250,7 +285,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Eliminates sync conflicts, reduces background activity, saves storage space
 - ⚠️ Cons: No automatic file synchronization, lose offline access to network files
 
-### Network & Media
+</details>
+
+<details>
+<summary><strong>Network & Media</strong></summary>
 
 **Windows Media Player Network Sharing (WMPNetworkSvc)**
 - ✅ Pros: Improves security, reduces attack surface, stops media broadcasting
@@ -268,7 +306,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Removes obsolete functionality, saves resources, improves security
 - ⚠️ Cons: Can't send/receive faxes through Windows (most users don't need this anyway)
 
-### System & Interface
+</details>
+
+<details>
+<summary><strong>System & Interface</strong></summary>
 
 **Program Compatibility Assistant (PcaSvc)**
 - ✅ Pros: Stops annoying compatibility warnings, reduces background scanning
@@ -306,11 +347,14 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Improves privacy, removes payment tracking, reduces background activity
 - ⚠️ Cons: No Windows payment integration, NFC payments disabled
 
+</details>
+
 ---
 
 ## System Tweaks Applied
 
-### File Explorer
+<details>
+<summary><strong>File Explorer</strong></summary>
 
 **Show file extensions**
 - ✅ Pros: Major security improvement, prevents malicious files disguised as documents, easier file identification
@@ -324,7 +368,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Improved privacy, prevents recent file tracking, cleaner File Explorer
 - ⚠️ Cons: Less convenient access to frequently used folders, need to navigate manually
 
-### Privacy & Telemetry
+</details>
+
+<details>
+<summary><strong>Privacy & Telemetry</strong></summary>
 
 **Disable Cortana**
 - ✅ Pros: Major privacy improvement, stops voice data collection, reduces background processes, saves resources
@@ -350,7 +397,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Significant performance improvement, better battery life, reduced resource usage
 - ⚠️ Cons: Apps won't update in background, no live tiles, delayed notifications
 
-### Windows 11 Interface
+</details>
+
+<details>
+<summary><strong>Windows 11 Interface</strong></summary>
 
 **Taskbar left alignment**
 - ✅ Pros: Familiar Windows 10 layout, consistent with older versions, easier muscle memory
@@ -376,7 +426,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Simplified Start menu, removes recommendations, cleaner appearance
 - ⚠️ Cons: Less personalized experience, fewer quick access options
 
-### Windows 10 Interface
+</details>
+
+<details>
+<summary><strong>Windows 10 Interface</strong></summary>
 
 **Hide Task View button**
 - ✅ Pros: Saves taskbar space, removes unused feature for many users
@@ -394,7 +447,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Major privacy improvement, removes ads, better performance, cleaner taskbar
 - ⚠️ Cons: No quick news/weather access, need browser or separate apps
 
-### General Interface
+</details>
+
+<details>
+<summary><strong>General Interface</strong></summary>
 
 **Dark theme** *(Optional)*
 - ✅ Pros: Easier on eyes in low light, modern appearance, may save battery on OLED screens
@@ -408,7 +464,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Quieter boot process, professional environment friendly, faster perceived boot
 - ⚠️ Cons: No audio confirmation of successful boot, may miss audio hardware issues
 
-### System Performance
+</details>
+
+<details>
+<summary><strong>System Performance</strong></summary>
 
 **Enable developer mode** *(Optional)*
 - ✅ Pros: Can install unsigned apps, access developer features, more flexibility
@@ -418,11 +477,15 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Faster boot time, saves resources, prevents unwanted Teams launches
 - ⚠️ Cons: Need to manually start Teams for meetings, may miss notifications initially
 
+</details>
+
 ---
 
 ## Pros of Using This Script
 
-### ✅ Advantages
+<details>
+<summary><strong>✅ Advantages</strong></summary>
+
 - **Time Saving**: Automates hours of manual configuration
 - **Consistency**: Ensures identical setup across multiple machines
 - **Safety**: Creates recovery points and tracks operations
@@ -434,7 +497,11 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - **Windows Version Aware**: Adapts tweaks based on Windows 10 vs 11
 - **User-Friendly**: GUI interface with clear categorization
 
-### ✅ Technical Benefits
+</details>
+
+<details>
+<summary><strong>✅ Technical Benefits</strong></summary>
+
 - **Winget Integration**: Uses Microsoft's official package manager when available
 - **Fallback Methods**: Direct downloads when winget unavailable
 - **Service Dependencies**: Checks dependencies before disabling services
@@ -442,9 +509,13 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - **Operation Recovery**: Can resume failed operations
 - **Timeout Protection**: Prevents hanging on problematic installers
 
+</details>
+
 ## Cons and Considerations
 
-### ⚠️ Potential Drawbacks
+<details>
+<summary><strong>⚠️ Potential Drawbacks</strong></summary>
+
 - **Requires Admin Rights**: Must run as administrator
 - **System Changes**: Makes significant modifications to Windows
 - **Compatibility Risk**: Some tweaks might affect specific hardware/software
@@ -453,14 +524,23 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - **Microsoft Updates**: Future Windows updates might re-enable some features
 - **Support Impact**: Modifications might complicate technical support
 
-### ⚠️ Specific Risks
+</details>
+
+<details>
+<summary><strong>⚠️ Specific Risks</strong></summary>
+
 - **Service Dependencies**: Disabling services might affect other applications
 - **Registry Modifications**: Incorrect changes could cause system instability
 - **Bloatware Removal**: Some users might want certain "bloatware" apps
 - **Privacy vs Functionality**: Some privacy tweaks might break expected features
 - **Corporate Environments**: May violate company IT policies
 
+</details>
+
 ## Safety Features
+
+<details>
+<summary><strong>🛡️ Built-in Protection</strong></summary>
 
 - **System Restore Points**: Creates recovery points before major changes
 - **Operation Tracking**: Maintains state of all operations for recovery
@@ -470,7 +550,12 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - **Timeout Protection**: Prevents hanging during installations
 - **Version Compatibility**: Adapts behavior based on Windows version
 
+</details>
+
 ## Best Practices
+
+<details>
+<summary><strong>📋 Recommended Steps</strong></summary>
 
 1. **Create a backup** or system image before running
 2. **Test on non-critical systems** first
@@ -480,7 +565,12 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 6. **Monitor logs** for any errors or warnings
 7. **Restart when prompted** to complete registry changes
 
+</details>
+
 ## Troubleshooting
+
+<details>
+<summary><strong>🔧 Common Solutions</strong></summary>
 
 - **Check logs** in `logs/` directory for detailed error information
 - **Run as Administrator** - required for most operations
@@ -488,6 +578,8 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - **Windows version** compatibility - some features require specific builds
 - **Antivirus software** might interfere with installations
 - **Recovery options** available through operation state tracking
+
+</details>
 
 ---
 
