@@ -21,7 +21,7 @@ This script provides a graphical interface for automating common Windows setup t
 ## How to Run
 
 1. **Prerequisites**: Windows 10 1709+ or Windows 11, PowerShell 5.1+, Administrator privileges
-2. **Run**: Right-click PowerShell → "Run as Administrator" → Navigate to src folder → Run `.\Windows-Setup-GUI.ps1`
+2. **Run**: Right-click PowerShell → "Run as Administrator" → Navigate to src folder → Run `PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1`
 3. **Interface**: Use the tabs at bottom to switch between: Apps, Bloatware, Services, Tweaks
 4. **Select items** in the main area using checkboxes
 5. **Click "Run Selected Tasks"** to execute
