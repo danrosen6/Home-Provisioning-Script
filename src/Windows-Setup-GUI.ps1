@@ -809,7 +809,7 @@ $runBtn.Add_Click({
                 # Setup winget environment before installing apps
                 Update-StatusMessage "Setting up winget environment..." "INFO"
                 
-                # Initialize winget environment (check → install → verify)
+                # Initialize winget environment (check -> install -> verify)
                 $wingetResult = Initialize-WingetEnvironment
                 
                 if ($wingetResult.Success) {
@@ -825,16 +825,21 @@ $runBtn.Add_Click({
                     switch ($wingetResult.Reason) {
                         "IncompatibleWindows" {
                             $buildNumber = $wingetResult.Details.BuildNumber
-                            Update-StatusMessage "Windows build $buildNumber incompatible with winget (requires 16299+)" "WARNING"
+                            Update-StatusMessage "ERROR: Windows build $buildNumber incompatible with winget (requires 16299+)" "ERROR"
+                            Write-LogMessage "Cannot proceed: Windows version incompatible with winget" -Level "ERROR"
+                            throw "Windows version incompatible with winget. Please update Windows or use a different installation method."
                         }
                         "InstallationFailed" {
-                            Update-StatusMessage "Failed to install winget, using direct downloads" "WARNING"
+                            Update-StatusMessage "ERROR: Failed to install winget - this is required for app installations" "ERROR"
+                            Write-LogMessage "Winget installation failed and is required as primary install method" -Level "ERROR"
+                            throw "Winget installation failed. Cannot proceed with app installations."
                         }
                         default {
-                            Update-StatusMessage "Winget setup failed, using direct downloads" "WARNING"
+                            Update-StatusMessage "ERROR: Winget setup failed - cannot proceed" "ERROR"
+                            Write-LogMessage "Winget setup failed and is required as primary install method" -Level "ERROR" 
+                            throw "Winget setup failed. Cannot proceed with app installations."
                         }
                     }
-                    $script:UseWingetForApps = $false
                 }
                 
                 # Winget setup complete - proceed with app installations
@@ -845,16 +850,13 @@ $runBtn.Add_Click({
                     $installerName = Get-InstallerName -AppKey $appKey
                     Update-StatusMessage "Installing $installerName... ($currentStep/$($selectedItems.Count))" "INFO"
                     try {
-                        if ($script:UseWingetForApps) {
-                            # Use winget with ID mapping for optimal installation
-                            $wingetId = Get-WingetId -AppKey $appKey
-                            if ($wingetId) {
-                                Install-Application -AppName $installerName -WingetId $wingetId -AppKey $appKey
-                            } else {
-                                Install-Application -AppName $installerName -AppKey $appKey
-                            }
+                        # Use winget as primary installation method (now guaranteed to be available)
+                        $wingetId = Get-WingetId -AppKey $appKey
+                        if ($wingetId) {
+                            Write-LogMessage "Installing $installerName via winget (ID: $wingetId)" -Level "INFO"
+                            Install-Application -AppName $installerName -WingetId $wingetId -AppKey $appKey
                         } else {
-                            # Use direct downloads (winget not available/compatible)
+                            Write-LogMessage "No winget ID found for $installerName, using direct download as fallback" -Level "INFO"
                             Install-Application -AppName $installerName -AppKey $appKey
                         }
                         Update-StatusMessage "Successfully installed $installerName" "SUCCESS"

@@ -149,12 +149,39 @@ function Initialize-WingetEnvironment {
         
         if ($installation.NeedsRegistration) {
             Write-Verbose "Winget needs registration..."
+            
+            # Try PowerShell module approach first (Microsoft's recommended method)
+            try {
+                Write-Verbose "Attempting PowerShell module approach for winget registration..."
+                Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null
+                Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null
+                Import-Module Microsoft.WinGet.Client -Force
+                Repair-WinGetPackageManager -Force
+                
+                Start-Sleep -Seconds 5
+                $moduleInstallation = Test-WingetInstallation
+                if ($moduleInstallation.Available) {
+                    Write-Verbose "Winget successfully registered via PowerShell module"
+                    return @{
+                        Success = $true
+                        Registered = $true
+                        Method = "PowerShellModule"
+                        Version = $moduleInstallation.Version
+                        Details = $moduleInstallation
+                    }
+                }
+            } catch {
+                Write-Verbose "PowerShell module approach failed: $_"
+            }
+            
+            # Fallback to standard registration
             $registered = Register-WingetPackage
             if ($registered) {
                 $newInstallation = Test-WingetInstallation
                 return @{
                     Success = $newInstallation.Available
                     Registered = $true
+                    Method = "StandardRegistration"
                     Version = $newInstallation.Version
                     Details = $newInstallation
                 }
@@ -327,17 +354,8 @@ function Install-WingetDirect {
             }
         }
         
-        # Try Microsoft Store installation
-        Write-LogMessage "Attempting to install winget via Microsoft Store..." -Level "INFO"
-        try {
-            $wingetUrl = "ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1"
-            Start-Process $wingetUrl
-            Write-LogMessage "Please complete the winget installation from the Microsoft Store" -Level "INFO"
-            return $true
-        }
-        catch {
-            Write-LogMessage "Failed to open Microsoft Store: $_" -Level "WARNING"
-        }
+        # Skip Microsoft Store installation - proceed directly to automated download
+        Write-LogMessage "Proceeding with automated winget installation..." -Level "INFO"
         
         # Fallback to direct download using GitHub API (proven working approach)
         Write-LogMessage "Attempting direct download of winget..." -Level "INFO"

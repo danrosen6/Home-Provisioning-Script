@@ -297,10 +297,54 @@ function Test-ApplicationInstalled {
         [string]$RegistryValue = "",
         
         [Parameter(Mandatory=$false)]
-        [switch]$CheckCommand = $false
+        [switch]$CheckCommand = $false,
+        
+        [Parameter(Mandatory=$false)]
+        [string]$WingetId = ""
     )
     
     Write-LogMessage "Verifying installation for $AppName..." -Level "INFO"
+    
+    # First try winget-based detection if WingetId is provided and winget is available
+    if ($WingetId -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+        try {
+            $wingetList = winget list --id $WingetId --exact 2>$null
+            if ($LASTEXITCODE -eq 0 -and $wingetList -and $wingetList -notmatch "No installed package found") {
+                Write-LogMessage "Installation verified: Found $AppName via winget (ID: $WingetId)" -Level "SUCCESS"
+                return $true
+            }
+        } catch {
+            Write-LogMessage "Winget verification failed for $AppName, trying other methods..." -Level "DEBUG"
+        }
+    }
+    
+    # Try registry-based detection for common Windows programs
+    try {
+        $registryPaths = @(
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+        )
+        
+        foreach ($regPath in $registryPaths) {
+            $installedPrograms = Get-ItemProperty $regPath -ErrorAction SilentlyContinue | Where-Object {
+                $_.DisplayName -like "*$AppName*" -or 
+                $_.DisplayName -like "*$(($AppName -split ' ')[0])*" -or
+                ($AppName -eq "Google Chrome" -and $_.DisplayName -like "*Chrome*") -or
+                ($AppName -eq "Mozilla Firefox" -and $_.DisplayName -like "*Firefox*") -or
+                ($AppName -eq "Visual Studio Code" -and $_.DisplayName -like "*Visual Studio Code*") -or
+                ($AppName -eq "7-Zip" -and $_.DisplayName -like "*7-Zip*") -or
+                ($AppName -eq "Notepad++" -and $_.DisplayName -like "*Notepad++*")
+            }
+            
+            if ($installedPrograms) {
+                Write-LogMessage "Installation verified: Found $AppName in registry: $($installedPrograms[0].DisplayName)" -Level "SUCCESS"
+                return $true
+            }
+        }
+    } catch {
+        Write-LogMessage "Registry check failed for $AppName, trying other methods..." -Level "DEBUG"
+    }
     
     # First try checking verification paths if provided
     if ($VerificationPaths -and $VerificationPaths.Count -gt 0) {
@@ -537,22 +581,56 @@ function Install-Winget {
     $appInstaller = Get-AppxPackage -Name "Microsoft.DesktopAppInstaller" -ErrorAction SilentlyContinue
     if ($appInstaller) {
         Write-LogMessage "App Installer found: $($appInstaller.Version)" -Level "INFO"
-        Write-LogMessage "Attempting to register winget..." -Level "INFO"
+        Write-LogMessage "Attempting to register winget using Microsoft's recommended method..." -Level "INFO"
         
         try {
+            # First try the standard registration
             Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
             Write-LogMessage "Winget registration command completed" -Level "INFO"
             
-            # Wait and verify
-            Start-Sleep -Seconds 5
-            if (Get-Command winget -ErrorAction SilentlyContinue) {
-                $version = winget --version 2>$null
-                Write-LogMessage "Winget successfully registered: $version" -Level "SUCCESS"
-                return $true
-            } else {
-                Write-LogMessage "Winget registration completed but command not yet available" -Level "WARNING"
-                Write-LogMessage "This may require a new PowerShell session or user logout/login" -Level "INFO"
+            # Wait longer and verify multiple times
+            for ($i = 0; $i -lt 6; $i++) {
+                Start-Sleep -Seconds 3
+                # Refresh environment variables
+                $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+                
+                if (Get-Command winget -ErrorAction SilentlyContinue) {
+                    $version = winget --version 2>$null
+                    if ($version) {
+                        Write-LogMessage "Winget successfully registered: $version" -Level "SUCCESS"
+                        return $true
+                    }
+                }
+                Write-LogMessage "Waiting for winget registration to complete... (attempt $($i + 1)/6)" -Level "INFO"
             }
+            
+            # Try PowerShell module approach as fallback
+            Write-LogMessage "Standard registration not working, trying PowerShell module approach..." -Level "INFO"
+            try {
+                # Install WinGet PowerShell module if available
+                Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null
+                Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null
+                Import-Module Microsoft.WinGet.Client -Force
+                
+                # Use Repair-WinGetPackageManager cmdlet
+                Repair-WinGetPackageManager -Force
+                
+                # Wait and verify
+                Start-Sleep -Seconds 5
+                if (Get-Command winget -ErrorAction SilentlyContinue) {
+                    $version = winget --version 2>$null
+                    if ($version) {
+                        Write-LogMessage "Winget successfully installed via PowerShell module: $version" -Level "SUCCESS"
+                        return $true
+                    }
+                }
+            } catch {
+                Write-LogMessage "PowerShell module approach failed: $_" -Level "WARNING"
+            }
+            
+            Write-LogMessage "Winget registration completed but command not yet available" -Level "WARNING"
+            Write-LogMessage "This may require a new PowerShell session or user logout/login" -Level "INFO"
+            
         } catch {
             Write-LogMessage "Failed to register winget: $_" -Level "WARNING"
         }
@@ -597,9 +675,97 @@ function Install-Winget {
         
         Write-LogMessage "Download completed successfully" -Level "SUCCESS"
         
-        # Install the bundle
+        # Install the bundle (with comprehensive dependency handling)
         Write-LogMessage "Installing winget package..." -Level "INFO"
-        Add-AppxPackage -Path $downloadPath -ErrorAction Stop
+        $wingetInstalled = $false
+        
+        try {
+            Add-AppxPackage -Path $downloadPath -ErrorAction Stop
+            $wingetInstalled = $true
+            Write-LogMessage "Winget installed successfully via direct package installation" -Level "SUCCESS"
+        } catch {
+            $errorMessage = $_.Exception.Message
+            Write-LogMessage "Direct installation failed: $errorMessage" -Level "WARNING"
+            
+            # Try PowerShell module method first (most reliable for dependency handling)
+            Write-LogMessage "Attempting PowerShell module installation to handle dependencies..." -Level "INFO"
+            try {
+                # Install NuGet provider and WinGet module
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null
+                Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser -AllowClobber | Out-Null
+                Import-Module Microsoft.WinGet.Client -Force
+                
+                # Use Repair-WinGetPackageManager to handle dependencies automatically
+                Write-LogMessage "Running Repair-WinGetPackageManager to install winget with dependencies..." -Level "INFO"
+                Repair-WinGetPackageManager -Force
+                
+                # Verify installation
+                Start-Sleep -Seconds 5
+                if (Get-Command winget -ErrorAction SilentlyContinue) {
+                    $version = winget --version 2>$null
+                    if ($version) {
+                        Write-LogMessage "Winget successfully installed via PowerShell module: $version" -Level "SUCCESS"
+                        $wingetInstalled = $true
+                    }
+                }
+            } catch {
+                Write-LogMessage "PowerShell module method failed: $_" -Level "WARNING"
+            }
+            
+            # If PowerShell module method failed, try manual dependency installation
+            if (-not $wingetInstalled) {
+                Write-LogMessage "Attempting manual dependency installation..." -Level "INFO"
+                try {
+                    # Download and install Microsoft.UI.Xaml.2.8 framework
+                    $uiXamlUrl = "https://www.nuget.org/api/v2/package/Microsoft.UI.Xaml/2.8.6"
+                    $uiXamlNupkg = Join-Path $wingetDir "Microsoft.UI.Xaml.2.8.6.nupkg"
+                    
+                    Write-LogMessage "Downloading Microsoft.UI.Xaml framework from NuGet..." -Level "INFO"
+                    $webClient = New-Object System.Net.WebClient
+                    $webClient.DownloadFile($uiXamlUrl, $uiXamlNupkg)
+                    
+                    # Extract nupkg (it's a zip file)
+                    $extractPath = Join-Path $wingetDir "xaml_extract"
+                    if (Test-Path $extractPath) { Remove-Item $extractPath -Recurse -Force }
+                    
+                    Add-Type -AssemblyName System.IO.Compression.FileSystem
+                    [System.IO.Compression.ZipFile]::ExtractToDirectory($uiXamlNupkg, $extractPath)
+                    
+                    # Find and install the x64 appx file
+                    $appxFiles = Get-ChildItem -Path $extractPath -Recurse -Filter "*.appx" | Where-Object { 
+                        $_.Name -like "*x64*" -or $_.Name -like "*neutral*" 
+                    }
+                    
+                    foreach ($appxFile in $appxFiles) {
+                        try {
+                            Write-LogMessage "Installing framework: $($appxFile.Name)" -Level "INFO"
+                            Add-AppxPackage -Path $appxFile.FullName -ForceApplicationShutdown -ErrorAction SilentlyContinue
+                        } catch {
+                            Write-LogMessage "Framework install attempt: $_" -Level "DEBUG"
+                        }
+                    }
+                    
+                    # Clean up
+                    Remove-Item $extractPath -Recurse -Force -ErrorAction SilentlyContinue
+                    Remove-Item $uiXamlNupkg -Force -ErrorAction SilentlyContinue
+                    
+                    # Retry winget installation
+                    Write-LogMessage "Retrying winget installation after framework install..." -Level "INFO"
+                    Add-AppxPackage -Path $downloadPath -ErrorAction Stop
+                    $wingetInstalled = $true
+                    Write-LogMessage "Winget installed successfully after dependency installation" -Level "SUCCESS"
+                    
+                } catch {
+                    Write-LogMessage "Manual dependency installation failed: $_" -Level "ERROR"
+                }
+            }
+            
+            # Final fallback - throw error if all methods failed
+            if (-not $wingetInstalled) {
+                throw "All winget installation methods failed. Cannot proceed with winget as primary install method."
+            }
+        }
         
         # Clean up download
         Remove-Item $downloadPath -Force -ErrorAction SilentlyContinue
@@ -780,9 +946,46 @@ function Install-Application {
         return $false
     }
     
+    # Get WingetId early for installation verification
+    if (-not $WingetId) {
+        if ($AppKey) {
+            # Try to get from JSON configuration first
+            $appConfig = Get-AppDownloadInfo -AppKey $AppKey
+            if ($appConfig -and $appConfig.WingetId) {
+                $WingetId = $appConfig.WingetId
+                Write-LogMessage "Using WingetId from JSON config: $WingetId for $AppName" -Level "DEBUG"
+            }
+        }
+        
+        # Fallback to hardcoded mapping if still no WingetId
+        if (-not $WingetId) {
+            $WingetId = switch ($AppName) {
+                "Visual Studio Code" { "Microsoft.VisualStudioCode" }
+                "Git" { "Git.Git" }
+                "Python" { "Python.Python.3" }
+                "PyCharm" { "JetBrains.PyCharm.Community" }
+                "GitHub Desktop" { "GitHub.GitHubDesktop" }
+                "Postman" { "Postman.Postman" }
+                "Node.js" { "OpenJS.NodeJS.LTS" }
+                "Windows Terminal" { "Microsoft.WindowsTerminal" }
+                "Google Chrome" { "Google.Chrome" }
+                "Mozilla Firefox" { "Mozilla.Firefox" }
+                "Brave Browser" { "Brave.Browser" }
+                "Spotify" { "Spotify.Spotify" }
+                "Discord" { "Discord.Discord" }
+                "Steam" { "Valve.Steam" }
+                "VLC" { "VideoLAN.VLC" }
+                "7-Zip" { "7zip.7zip" }
+                "Notepad++" { "Notepad++.Notepad++" }
+                "Microsoft PowerToys" { "Microsoft.PowerToys" }
+                default { $null }
+            }
+        }
+    }
+    
     # Skip if already installed and not forced
     if (-not $Force) {
-        $isInstalled = Test-ApplicationInstalled -AppName $AppName -CheckCommand
+        $isInstalled = Test-ApplicationInstalled -AppName $AppName -CheckCommand -WingetId $WingetId
         if ($isInstalled) {
             Write-LogMessage "$AppName is already installed, skipping installation" -Level "INFO"
             Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Skipped" -AdditionalData @{
@@ -830,42 +1033,7 @@ function Install-Application {
     }
     
     if ($wingetAvailable) {
-        # Get winget ID from JSON config if AppKey provided, otherwise use fallback mapping
-        if (-not $WingetId) {
-            if ($AppKey) {
-                # Try to get from JSON configuration first
-                $appConfig = Get-AppDownloadInfo -AppKey $AppKey
-                if ($appConfig -and $appConfig.WingetId) {
-                    $WingetId = $appConfig.WingetId
-                    Write-LogMessage "Using WingetId from JSON config: $WingetId for $AppName" -Level "DEBUG"
-                }
-            }
-            
-            # Fallback to hardcoded mapping if still no WingetId
-            if (-not $WingetId) {
-                $WingetId = switch ($AppName) {
-                    "Visual Studio Code" { "Microsoft.VisualStudioCode" }
-                    "Git" { "Git.Git" }
-                    "Python" { "Python.Python.3" }
-                    "PyCharm" { "JetBrains.PyCharm.Community" }
-                    "GitHub Desktop" { "GitHub.GitHubDesktop" }
-                    "Postman" { "Postman.Postman" }
-                    "Node.js" { "OpenJS.NodeJS.LTS" }
-                    "Windows Terminal" { "Microsoft.WindowsTerminal" }
-                    "Google Chrome" { "Google.Chrome" }
-                    "Mozilla Firefox" { "Mozilla.Firefox" }
-                    "Brave Browser" { "Brave.Browser" }
-                    "Spotify" { "Spotify.Spotify" }
-                    "Discord" { "Discord.Discord" }
-                    "Steam" { "Valve.Steam" }
-                    "VLC" { "VideoLAN.VLC" }
-                    "7-Zip" { "7zip.7zip" }
-                    "Notepad++" { "Notepad++.Notepad++" }
-                    "Microsoft PowerToys" { "Microsoft.PowerToys" }
-                    default { $null }
-                }
-            }
-        }
+        # WingetId was already determined earlier for installation verification
         
         if ($WingetId) {
             Write-LogMessage "Installing $AppName via winget (ID: $WingetId)..." -Level "INFO"
@@ -1062,11 +1230,11 @@ function Install-Application {
             }
             return $false
         }
-        elseif ($process.ExitCode -eq 0) {
+        elseif ($process.ExitCode -eq 0 -or $process.ExitCode -eq $null -or $process.ExitCode -eq "") {
             Write-LogMessage "Installation completed successfully" -Level "SUCCESS"
             
             # Verify installation
-            $verificationResult = Test-ApplicationInstalled -AppName $AppName -VerificationPaths $DirectDownload.VerificationPaths -CheckCommand
+            $verificationResult = Test-ApplicationInstalled -AppName $AppName -VerificationPaths $DirectDownload.VerificationPaths -CheckCommand -WingetId $WingetId
             
             if ($verificationResult) {
                 Write-LogMessage "Installation verified for $AppName" -Level "SUCCESS"
