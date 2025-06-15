@@ -72,7 +72,9 @@ function Initialize-ProgressSystem {
             
             # Create expandable details panel (initially hidden)
             $script:ProgressState.DetailsPanel = New-Object System.Windows.Forms.Panel
-            $script:ProgressState.DetailsPanel.Location = New-Object System.Drawing.Point($Location.X, $Location.Y + $Size.Height + 5)
+            $detailsX = $Location.X
+            $detailsY = $Location.Y + $Size.Height + 5
+            $script:ProgressState.DetailsPanel.Location = New-Object System.Drawing.Point($detailsX, $detailsY)
             $script:ProgressState.DetailsPanel.Size = New-Object System.Drawing.Size($Size.Width, 150)
             $script:ProgressState.DetailsPanel.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
             $script:ProgressState.DetailsPanel.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
@@ -81,7 +83,8 @@ function Initialize-ProgressSystem {
             # Create details text box
             $script:ProgressState.DetailsTextBox = New-Object System.Windows.Forms.TextBox
             $script:ProgressState.DetailsTextBox.Location = New-Object System.Drawing.Point(5, 5)
-            $script:ProgressState.DetailsTextBox.Size = New-Object System.Drawing.Size($Size.Width - 10, 140)
+            $textBoxWidth = $Size.Width - 10
+            $script:ProgressState.DetailsTextBox.Size = New-Object System.Drawing.Size($textBoxWidth, 140)
             $script:ProgressState.DetailsTextBox.Multiline = $true
             $script:ProgressState.DetailsTextBox.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
             $script:ProgressState.DetailsTextBox.ReadOnly = $true
@@ -188,10 +191,10 @@ function Update-ProgressStatus {
         # Update details text box if visible
         if ($script:ProgressState.DetailsTextBox -and $script:ProgressState.ShowDetails) {
             $colorPrefix = switch ($Level) {
-                "SUCCESS" { "[✓] " }
+                "SUCCESS" { "[OK] " }
                 "WARNING" { "[!] " }
-                "ERROR" { "[✗] " }
-                default { "[·] " }
+                "ERROR" { "[X] " }
+                default { "[*] " }
             }
             
             $detailLine = "$colorPrefix$formattedMessage"
@@ -292,10 +295,10 @@ function Toggle-ProgressDetails {
         $script:ProgressState.DetailsTextBox.Text = ""
         foreach ($entry in $script:ProgressState.DetailedLog) {
             $colorPrefix = switch ($entry.Level) {
-                "SUCCESS" { "[✓] " }
+                "SUCCESS" { "[OK] " }
                 "WARNING" { "[!] " }
-                "ERROR" { "[✗] " }
-                default { "[·] " }
+                "ERROR" { "[X] " }
+                default { "[*] " }
             }
             $detailLine = "$colorPrefix[$($entry.Timestamp)] $($entry.Message)"
             $script:ProgressState.DetailsTextBox.Text += "$detailLine`r`n"

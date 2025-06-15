@@ -839,9 +839,11 @@ $runBtn.Add_Click({
                 
                 # Winget setup complete - proceed with app installations
                 
+                $currentStep = 0
                 foreach ($appKey in $selectedItems) {
+                    $currentStep++
                     $installerName = Get-InstallerName -AppKey $appKey
-                    Update-StatusMessage "Installing $installerName..." "INFO"
+                    Update-StatusMessage "Installing $installerName... ($currentStep/$($selectedItems.Count))" "INFO"
                     try {
                         if ($script:UseWingetForApps) {
                             # Use winget with ID mapping for optimal installation
@@ -860,11 +862,16 @@ $runBtn.Add_Click({
                         Update-StatusMessage "Failed to install $installerName - $_" "ERROR"
                         Write-LogMessage -Message "Failed to install $appKey - ${_}" -Level "ERROR"
                     }
+                    
+                    # Update progress step
+                    Update-ProgressStatus -Message "Completed $installerName" -Step $currentStep
                 }
             }
             "Bloatware" {
+                $currentStep = 0
                 foreach ($bloatKey in $selectedItems) {
-                    Update-StatusMessage "Removing bloatware $bloatKey..." "INFO"
+                    $currentStep++
+                    Update-StatusMessage "Removing bloatware $bloatKey... ($currentStep/$($selectedItems.Count))" "INFO"
                     try {
                         Remove-Bloatware -BloatwareKey $bloatKey
                         Update-StatusMessage "Successfully removed $bloatKey" "SUCCESS"
@@ -872,11 +879,16 @@ $runBtn.Add_Click({
                         Update-StatusMessage "Failed to remove $bloatKey - $_" "ERROR"
                         Write-LogMessage -Message "Failed to remove bloatware $bloatKey - ${_}" -Level "ERROR"
                     }
+                    
+                    # Update progress step
+                    Update-ProgressStatus -Message "Completed removal of $bloatKey" -Step $currentStep
                 }
             }
             "Services" {
+                $currentStep = 0
                 foreach ($serviceKey in $selectedItems) {
-                    Update-StatusMessage "Disabling service $serviceKey..." "INFO"
+                    $currentStep++
+                    Update-StatusMessage "Disabling service $serviceKey... ($currentStep/$($selectedItems.Count))" "INFO"
                     try {
                         Set-SystemOptimization -OptimizationKey $serviceKey
                         Update-StatusMessage "Successfully disabled $serviceKey" "SUCCESS"
@@ -884,11 +896,16 @@ $runBtn.Add_Click({
                         Update-StatusMessage "Failed to disable $serviceKey - $_" "ERROR"
                         Write-LogMessage -Message "Failed to disable service $serviceKey - ${_}" -Level "ERROR"
                     }
+                    
+                    # Update progress step
+                    Update-ProgressStatus -Message "Completed service: $serviceKey" -Step $currentStep
                 }
             }
             "Tweaks" {
+                $currentStep = 0
                 foreach ($tweakKey in $selectedItems) {
-                    Update-StatusMessage "Applying tweak $tweakKey..." "INFO"
+                    $currentStep++
+                    Update-StatusMessage "Applying tweak $tweakKey... ($currentStep/$($selectedItems.Count))" "INFO"
                     try {
                         Set-SystemOptimization -OptimizationKey $tweakKey
                         Update-StatusMessage "Successfully applied $tweakKey" "SUCCESS"
@@ -896,6 +913,9 @@ $runBtn.Add_Click({
                         Update-StatusMessage "Failed to apply $tweakKey - $_" "ERROR"
                         Write-LogMessage -Message "Failed to apply tweak $tweakKey - ${_}" -Level "ERROR"
                     }
+                    
+                    # Update progress step
+                    Update-ProgressStatus -Message "Completed tweak: $tweakKey" -Step $currentStep
                 }
             }
         }

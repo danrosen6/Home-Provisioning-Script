@@ -262,20 +262,10 @@ function Install-WingetDirect {
             New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
         }
         
-        # Get latest release info
-        Write-Verbose "Fetching latest winget release information..."
-        $releaseUrl = "https://api.github.com/repos/microsoft/winget-cli/releases/latest"
-        $release = Invoke-RestMethod -Uri $releaseUrl -TimeoutSec 15 -ErrorAction Stop
-        
-        $msixBundle = $release.assets | Where-Object { $_.name -like "*.msixbundle" } | Select-Object -First 1
-        
-        if (-not $msixBundle) {
-            Write-Warning "Could not find winget MSIX bundle"
-            return $false
-        }
-        
-        $downloadPath = Join-Path $downloadDir $msixBundle.name
-        Write-Verbose "Downloading winget bundle to: $downloadPath"
+        # Use known working winget download URL instead of API
+        Write-Verbose "Downloading winget from known working URL..."
+        $wingetUrl = "https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+        $downloadPath = Join-Path $downloadDir "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
         
         # Download with retry logic
         $retryCount = 0
@@ -284,8 +274,8 @@ function Install-WingetDirect {
         
         while ($retryCount -lt $maxRetries -and -not $downloaded) {
             try {
-                $webClient = New-Object System.Net.WebClient
-                $webClient.DownloadFile($msixBundle.browser_download_url, $downloadPath)
+                Write-Verbose "Download attempt $($retryCount + 1) of $maxRetries..."
+                Invoke-WebRequest -Uri $wingetUrl -OutFile $downloadPath -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
                 $downloaded = $true
                 Write-Verbose "Download completed successfully"
             }
@@ -293,7 +283,7 @@ function Install-WingetDirect {
                 $retryCount++
                 Write-Verbose "Download attempt $retryCount failed: $_"
                 if ($retryCount -lt $maxRetries) {
-                    Start-Sleep -Seconds 2
+                    Start-Sleep -Seconds 3
                 }
             }
         }
@@ -309,6 +299,14 @@ function Install-WingetDirect {
             return $false
         }
         
+        $fileSize = (Get-Item $downloadPath).Length
+        if ($fileSize -lt 1MB) {
+            Write-Warning "Downloaded file appears too small ($fileSize bytes) - possibly corrupted"
+            return $false
+        }
+        
+        Write-Verbose "Downloaded file size: $fileSize bytes"
+        
         # Install the bundle
         Write-Verbose "Installing winget package..."
         Add-AppxPackage -Path $downloadPath -ErrorAction Stop
@@ -317,11 +315,28 @@ function Install-WingetDirect {
         Remove-Item $downloadPath -Force -ErrorAction SilentlyContinue
         Remove-Item $downloadDir -Force -Recurse -ErrorAction SilentlyContinue
         
-        # Verify installation
-        Start-Sleep -Seconds 3
-        $verification = Test-WingetInstallation
+        # Verify installation with longer wait
+        Write-Verbose "Waiting for installation to complete..."
+        Start-Sleep -Seconds 5
         
-        return $verification.Available
+        # Try multiple verification attempts
+        $verificationAttempts = 0
+        $maxVerificationAttempts = 5
+        $installationVerified = $false
+        
+        while ($verificationAttempts -lt $maxVerificationAttempts -and -not $installationVerified) {
+            $verification = Test-WingetInstallation
+            if ($verification.Available) {
+                $installationVerified = $true
+                Write-Verbose "Winget installation verified successfully"
+            } else {
+                $verificationAttempts++
+                Write-Verbose "Verification attempt $verificationAttempts failed, retrying..."
+                Start-Sleep -Seconds 2
+            }
+        }
+        
+        return $installationVerified
     }
     catch {
         Write-Warning "Failed to install winget directly: $_"
