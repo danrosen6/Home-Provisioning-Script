@@ -166,11 +166,32 @@ function Initialize-WingetEnvironment {
         $installed = Install-WingetDirect
         
         if ($installed) {
-            $finalInstallation = Test-WingetInstallation
+            # Wait a bit longer and verify multiple times for better reliability
+            Start-Sleep -Seconds 5
+            for ($i = 0; $i -lt 6; $i++) {  # Try up to 6 times with 3 second intervals
+                $finalInstallation = Test-WingetInstallation
+                if ($finalInstallation.Available) {
+                    Write-Verbose "Winget is now available after installation"
+                    return @{
+                        Success = $true
+                        Installed = $true
+                        Version = $finalInstallation.Version
+                        Details = $finalInstallation
+                        RetryCount = $i
+                    }
+                }
+                if ($i -lt 5) {  # Don't sleep on the last iteration
+                    Write-Verbose "Winget not yet available, waiting... (attempt $($i + 1)/6)"
+                    Start-Sleep -Seconds 3
+                }
+            }
+            
+            # Final attempt failed
+            Write-Verbose "Winget installation completed but command not available after verification attempts"
             return @{
-                Success = $finalInstallation.Available
+                Success = $false
                 Installed = $true
-                Version = $finalInstallation.Version
+                Reason = "InstallationSucceededButNotAvailable"
                 Details = $finalInstallation
             }
         }
@@ -227,22 +248,10 @@ function Install-WingetPackage {
     param()
     
     try {
-        Write-Verbose "Attempting to install winget..."
+        Write-Verbose "Attempting to install winget automatically..."
         
-        # Try Microsoft Store first
-        try {
-            Write-Verbose "Opening Microsoft Store for winget installation..."
-            $wingetUrl = "ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1"
-            Start-Process $wingetUrl -ErrorAction Stop
-            Write-Verbose "Microsoft Store opened. Manual installation required."
-            return $false  # Requires manual action
-        }
-        catch {
-            Write-Verbose "Failed to open Microsoft Store: $_"
-        }
-        
-        # Try direct download as fallback
-        Write-Verbose "Attempting direct download installation..."
+        # Skip Microsoft Store method - go directly to automated installation
+        Write-Verbose "Using direct download for seamless installation..."
         return Install-WingetDirect
     }
     catch {

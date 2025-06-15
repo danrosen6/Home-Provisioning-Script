@@ -92,6 +92,65 @@ function Get-InstallerNameMapping {
     }
 }
 
+function Get-AppDownloadInfo {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AppKey
+    )
+    
+    try {
+        $appsConfig = Get-ConfigurationData -ConfigType "Apps"
+        
+        # Find the app in the configuration
+        $appInfo = $null
+        foreach ($category in $appsConfig.Keys) {
+            $appsInCategory = $appsConfig[$category]
+            $appInfo = $appsInCategory | Where-Object { $_.Key -eq $AppKey }
+            if ($appInfo) { break }
+        }
+        
+        if (-not $appInfo) {
+            Write-Verbose "App '$AppKey' not found in configuration"
+            return $null
+        }
+        
+        # Return download information if available
+        if ($appInfo.DirectDownload) {
+            $downloadInfo = @{
+                WingetId = $appInfo.WingetId
+                Url = $appInfo.DirectDownload.Url
+                UrlType = $appInfo.DirectDownload.UrlType
+                AssetPattern = $appInfo.DirectDownload.AssetPattern
+                Extension = $appInfo.DirectDownload.Extension
+                Arguments = $appInfo.DirectDownload.Arguments
+                VerificationPaths = $appInfo.DirectDownload.VerificationPaths
+            }
+            
+            # Expand environment variables in verification paths
+            if ($downloadInfo.VerificationPaths) {
+                $expandedPaths = @()
+                foreach ($path in $downloadInfo.VerificationPaths) {
+                    $expandedPath = $path -replace '%ProgramFiles%', $env:ProgramFiles
+                    $expandedPath = $expandedPath -replace '%ProgramFiles\(x86\)%', ${env:ProgramFiles(x86)}
+                    $expandedPath = $expandedPath -replace '%LocalAppData%', $env:LocalAppData
+                    $expandedPath = $expandedPath -replace '%APPDATA%', $env:APPDATA
+                    $expandedPaths += $expandedPath
+                }
+                $downloadInfo.VerificationPaths = $expandedPaths
+            }
+            
+            return $downloadInfo
+        }
+        
+        return $null
+    }
+    catch {
+        Write-Error "Failed to get download info for '$AppKey': $_"
+        return $null
+    }
+}
+
 function Test-ConfigurationIntegrity {
     [CmdletBinding()]
     param()
@@ -137,5 +196,6 @@ Export-ModuleMember -Function @(
     "Get-ConfigurationData",
     "Get-WingetIdMapping", 
     "Get-InstallerNameMapping",
+    "Get-AppDownloadInfo",
     "Test-ConfigurationIntegrity"
 )

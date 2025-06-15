@@ -173,7 +173,7 @@
     {
       "Name": "Microsoft Widgets",
       "Key": "ms-widgets",
-      "Default": true,
+      "Default": false,
       "Win10": false,
       "Win11": true
     },

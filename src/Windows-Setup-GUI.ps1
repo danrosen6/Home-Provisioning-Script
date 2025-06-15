@@ -849,13 +849,13 @@ $runBtn.Add_Click({
                             # Use winget with ID mapping for optimal installation
                             $wingetId = Get-WingetId -AppKey $appKey
                             if ($wingetId) {
-                                Install-Application -AppName $installerName -WingetId $wingetId
+                                Install-Application -AppName $installerName -WingetId $wingetId -AppKey $appKey
                             } else {
-                                Install-Application -AppName $installerName
+                                Install-Application -AppName $installerName -AppKey $appKey
                             }
                         } else {
                             # Use direct downloads (winget not available/compatible)
-                            Install-Application -AppName $installerName
+                            Install-Application -AppName $installerName -AppKey $appKey
                         }
                         Update-StatusMessage "Successfully installed $installerName" "SUCCESS"
                     } catch {

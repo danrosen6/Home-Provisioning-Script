@@ -943,9 +943,23 @@ function Remove-Bloatware {
             if ($allInstalledPackages -and $allInstalledPackages.Count -gt 0) {
                 Write-LogMessage "Found $($allInstalledPackages.Count) total installed package(s) for: $BloatwareKey" -Level "INFO"
                 try {
-                    $allInstalledPackages | Remove-AppxPackage -ErrorAction SilentlyContinue
-                    $removedCount += $allInstalledPackages.Count
-                    Write-LogMessage "Removed $($allInstalledPackages.Count) AppxPackage(s) for: $BloatwareKey" -Level "INFO"
+                    # Use timeout protection for Remove-AppxPackage to prevent hanging (especially on Windows 11)
+                    $timeoutSeconds = if ($BloatwareKey -eq "ms-widgets") { 30 } else { 15 }  # Widgets may take longer
+                    $job = Start-Job -ScriptBlock {
+                        param($packages)
+                        $packages | Remove-AppxPackage -ErrorAction SilentlyContinue
+                    } -ArgumentList @(,$allInstalledPackages)
+                    
+                    $completed = Wait-Job -Job $job -Timeout $timeoutSeconds
+                    if ($completed) {
+                        Receive-Job -Job $job
+                        $removedCount += $allInstalledPackages.Count
+                        Write-LogMessage "Removed $($allInstalledPackages.Count) AppxPackage(s) for: $BloatwareKey" -Level "SUCCESS"
+                    } else {
+                        Write-LogMessage "AppxPackage removal timed out after $timeoutSeconds seconds for: $BloatwareKey" -Level "WARNING"
+                        Stop-Job -Job $job -PassThru | Remove-Job
+                    }
+                    Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
                 } catch {
                     Write-LogMessage "Failed to remove some AppxPackages for $BloatwareKey - ${_}" -Level "WARNING"
                 }
@@ -955,9 +969,23 @@ function Remove-Bloatware {
             if ($allProvisionedPackages -and $allProvisionedPackages.Count -gt 0) {
                 Write-LogMessage "Found $($allProvisionedPackages.Count) total provisioned package(s) for: $BloatwareKey" -Level "INFO"
                 try {
-                    $allProvisionedPackages | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
-                    $removedCount += $allProvisionedPackages.Count
-                    Write-LogMessage "Removed $($allProvisionedPackages.Count) AppxProvisionedPackage(s) for: $BloatwareKey" -Level "INFO"
+                    # Use timeout protection for Remove-AppxProvisionedPackage to prevent hanging
+                    $timeoutSeconds = if ($BloatwareKey -eq "ms-widgets") { 30 } else { 15 }  # Widgets may take longer
+                    $job = Start-Job -ScriptBlock {
+                        param($packages)
+                        $packages | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+                    } -ArgumentList @(,$allProvisionedPackages)
+                    
+                    $completed = Wait-Job -Job $job -Timeout $timeoutSeconds
+                    if ($completed) {
+                        Receive-Job -Job $job
+                        $removedCount += $allProvisionedPackages.Count
+                        Write-LogMessage "Removed $($allProvisionedPackages.Count) AppxProvisionedPackage(s) for: $BloatwareKey" -Level "SUCCESS"
+                    } else {
+                        Write-LogMessage "AppxProvisionedPackage removal timed out after $timeoutSeconds seconds for: $BloatwareKey" -Level "WARNING"
+                        Stop-Job -Job $job -PassThru | Remove-Job
+                    }
+                    Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
                 } catch {
                     Write-LogMessage "Failed to remove some AppxProvisionedPackages for $BloatwareKey - ${_}" -Level "WARNING"
                 }

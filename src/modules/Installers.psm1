@@ -425,222 +425,19 @@ function Test-ApplicationInstalled {
     return $false
 }
 
+# Legacy function - kept for backward compatibility during transition
+# All download info is now stored in apps.json and accessed via Get-AppDownloadInfo
 function Get-AppDirectDownloadInfo {
     param(
         [Parameter(Mandatory=$true)]
         [string]$AppName
     )
-
-    # Use dynamic version lookup first for applications with hardcoded versions
-    $latestUrl = Get-LatestVersionUrl -ApplicationName $AppName
     
-    $downloadInfo = @{
-        "Brave" = @{
-            Url = "https://referrals.brave.com/latest/BraveBrowserSetup.exe"
-            Extension = ".exe"
-            Arguments = "/S"
-            VerificationPaths = @(
-                "${env:ProgramFiles}\BraveSoftware\Brave-Browser\Application\brave.exe",
-                "${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser\Application\brave.exe"
-            )
-        }
-        "Google Chrome" = @{
-            Url = "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi"
-            Extension = ".msi"
-            Arguments = @("/quiet", "/norestart")
-            VerificationPaths = @(
-                "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe",
-                "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
-            )
-        }
-        "Mozilla Firefox" = @{
-            Url = "https://download.mozilla.org/?product=firefox-latest-ssl&os=win64&lang=en-US"
-            Extension = ".exe"
-            Arguments = "-ms"
-            VerificationPaths = @(
-                "${env:ProgramFiles}\Mozilla Firefox\firefox.exe",
-                "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe"
-            )
-        }
-        "Postman" = @{
-            Url = "https://dl.pstmn.io/download/latest/win64"
-            Extension = ".exe"
-            Arguments = "/SILENT"
-            VerificationPaths = @(
-                "${env:LocalAppData}\Postman\Postman.exe",
-                "${env:ProgramFiles}\Postman\Postman.exe",
-                "${env:ProgramFiles(x86)}\Postman\Postman.exe"
-            )
-        }
-        "GitHub Desktop" = @{
-            Url = "https://desktop.github.com/releases/latest/GitHubDesktopSetup.exe"
-            Extension = ".exe"
-            Arguments = "/silent"
-            VerificationPaths = @(
-                "${env:LocalAppData}\GitHubDesktop\GitHubDesktop.exe"
-            )
-        }
-        "Git" = @{
-            Url = if ($latestUrl) { $latestUrl } else { "https://github.com/git-for-windows/git/releases/download/v2.49.0.windows.1/Git-2.49.0-64-bit.exe" }
-            Extension = ".exe"
-            Arguments = '/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS="icons,ext\reg\shellhere,assoc,assoc_sh"'
-            VerificationPaths = @(
-                "${env:ProgramFiles}\Git\cmd\git.exe",
-                "${env:ProgramFiles(x86)}\Git\cmd\git.exe"
-            )
-        }
-        "Visual Studio Code" = @{
-            Url = "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user"
-            Extension = ".exe"
-            Arguments = "/VERYSILENT /NORESTART /MERGETASKS=!runcode"
-            VerificationPaths = @(
-                "${env:ProgramFiles}\Microsoft VS Code\Code.exe",
-                "${env:LocalAppData}\Programs\Microsoft VS Code\Code.exe",
-                "${env:ProgramFiles(x86)}\Microsoft VS Code\Code.exe"
-            )
-        }
-        "PyCharm" = @{
-            Url = if ($latestUrl) { $latestUrl } else { "https://download.jetbrains.com/python/pycharm-community-latest.exe" }
-            Extension = ".exe"
-            Arguments = "/S /CONFIG=${env:TEMP}\silent.config"
-            VerificationPaths = @(
-                "${env:ProgramFiles}\JetBrains\PyCharm Community Edition*\bin\pycharm64.exe",
-                "${env:ProgramFiles(x86)}\JetBrains\PyCharm Community Edition*\bin\pycharm64.exe",
-                "${env:ProgramFiles}\JetBrains\PyCharm Community Edition*\bin\pycharm.exe",
-                "${env:LocalAppData}\JetBrains\Toolbox\apps\PyCharm-C\*\bin\pycharm64.exe"
-            )
-        }
-        "Python" = @{
-            Url = if ($latestUrl) { $latestUrl } else { "https://www.python.org/ftp/python/3.13.4/python-3.13.4-amd64.exe" }
-            Extension = ".exe"
-            Arguments = "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0 Include_pip=1 Include_tcltk=1"
-            VerificationPaths = @(
-                "${env:ProgramFiles}\Python312\python.exe",
-                "${env:ProgramFiles}\Python311\python.exe", 
-                "${env:ProgramFiles}\Python310\python.exe",
-                "${env:LocalAppData}\Programs\Python\Python312\python.exe",
-                "${env:LocalAppData}\Programs\Python\Python311\python.exe",
-                "${env:LocalAppData}\Microsoft\WindowsApps\python.exe"
-            )
-        }
-        "Steam" = @{
-            Url = "https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe"
-            Extension = ".exe"
-            Arguments = "/S"
-            VerificationPaths = @(
-                "${env:ProgramFiles(x86)}\Steam\Steam.exe"
-            )
-        }
-        "VLC" = @{
-            Url = if ($latestUrl) { $latestUrl } else { "https://download.videolan.org/pub/videolan/vlc/last/win64/vlc-latest-win64.exe" }
-            Extension = ".exe"
-            Arguments = "/S"
-            VerificationPaths = @(
-                "${env:ProgramFiles}\VideoLAN\VLC\vlc.exe",
-                "${env:ProgramFiles(x86)}\VideoLAN\VLC\vlc.exe"
-            )
-        }
-        "Spotify" = @{
-            Url = "https://download.scdn.co/SpotifySetup.exe"
-            Extension = ".exe"
-            Arguments = "/silent"
-            VerificationPaths = @(
-                "${env:APPDATA}\Spotify\Spotify.exe",
-                "${env:ProgramFiles}\Spotify\Spotify.exe",
-                "${env:ProgramFiles(x86)}\Spotify\Spotify.exe"
-            )
-        }
-        "Discord" = @{
-            Url = "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x86"
-            Extension = ".exe"
-            Arguments = "--silent"
-            VerificationPaths = @(
-                "${env:LocalAppData}\Discord\Update.exe",
-                "${env:LocalAppData}\Discord\app-*\Discord.exe",
-                "${env:ProgramFiles}\Discord\Discord.exe",
-                "${env:ProgramFiles(x86)}\Discord\Discord.exe"
-            )
-        }
-        "Notepad++" = @{
-            Url = if ($latestUrl) { $latestUrl } else { "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.1/npp.8.8.1.Installer.x64.exe" }
-            Extension = ".exe"
-            Arguments = "/S"
-            VerificationPaths = @(
-                "${env:ProgramFiles}\Notepad++\notepad++.exe",
-                "${env:ProgramFiles(x86)}\Notepad++\notepad++.exe"
-            )
-        }
-        "7-Zip" = @{
-            Url = if ($latestUrl) { $latestUrl } else { "https://www.7-zip.org/a/7z2409-x64.exe" }
-            Extension = ".exe"
-            Arguments = "/S"
-            VerificationPaths = @(
-                "${env:ProgramFiles}\7-Zip\7z.exe",
-                "${env:ProgramFiles(x86)}\7-Zip\7z.exe"
-            )
-        }
-        "Windows Terminal" = @{
-            Url = "https://github.com/microsoft/terminal/releases/latest/download/Microsoft.WindowsTerminal_Win10.msixbundle"
-            Extension = ".msixbundle"
-            Arguments = ""
-            VerificationPaths = @(
-                "${env:LocalAppData}\Microsoft\WindowsApps\wt.exe"
-            )
-        }
-        "Microsoft PowerToys" = @{
-            Url = "https://github.com/microsoft/PowerToys/releases/latest/download/PowerToysSetup-x64.exe"
-            Extension = ".exe"
-            Arguments = "-silent"
-            VerificationPaths = @(
-                "${env:LocalAppData}\Programs\PowerToys\PowerToys.exe",
-                "${env:ProgramFiles}\PowerToys\PowerToys.exe"
-            )
-        }
-        "Node.js" = @{
-            Url = "https://nodejs.org/dist/latest/node-latest-x64.msi"
-            Extension = ".msi"
-            Arguments = @("/quiet", "/norestart")
-            VerificationPaths = @(
-                "${env:ProgramFiles}\nodejs\node.exe",
-                "${env:ProgramFiles(x86)}\nodejs\node.exe"
-            )
-        }
-        "IntelliJ IDEA" = @{
-            Url = "https://download.jetbrains.com/idea/ideaIC-latest.exe"
-            Extension = ".exe"
-            Arguments = "/S /CONFIG=${env:TEMP}\IntelliJ_silent_config.config"
-            VerificationPaths = @(
-                "${env:ProgramFiles}\JetBrains\IntelliJ IDEA Community Edition*\bin\idea64.exe",
-                "${env:ProgramFiles(x86)}\JetBrains\IntelliJ IDEA Community Edition*\bin\idea64.exe",
-                "${env:LocalAppData}\JetBrains\Toolbox\apps\IDEA-C\*\bin\idea64.exe"
-            )
-        }
-        "WebStorm" = @{
-            Url = "https://download.jetbrains.com/webstorm/WebStorm-latest.exe"
-            Extension = ".exe"
-            Arguments = "/S /CONFIG=${env:TEMP}\WebStorm_silent_config.config"
-            VerificationPaths = @(
-                "${env:ProgramFiles}\JetBrains\WebStorm*\bin\webstorm64.exe",
-                "${env:ProgramFiles(x86)}\JetBrains\WebStorm*\bin\webstorm64.exe",
-                "${env:LocalAppData}\JetBrains\Toolbox\apps\WebStorm\*\bin\webstorm64.exe"
-            )
-        }
-        "Android Studio" = @{
-            Url = "https://redirector.gvt1.com/edgedl/android/studio/install/2024.2.1.12/android-studio-2024.2.1.12-windows.exe"
-            Extension = ".exe"
-            Arguments = "/S /CONFIG=${env:TEMP}\AndroidStudio_silent_config.config"
-            VerificationPaths = @(
-                "${env:ProgramFiles}\Android\Android Studio\bin\studio64.exe",
-                "${env:LocalAppData}\Google\AndroidStudio*\bin\studio64.exe"
-            )
-        }
-    }
-
-    if ($downloadInfo.ContainsKey($AppName)) {
-        return $downloadInfo[$AppName]
-    } else {
-        return $null
-    }
+    Write-LogMessage "Using legacy Get-AppDirectDownloadInfo for $AppName - consider updating to use AppKey and JSON config" -Level "DEBUG"
+    
+    # Return null to force fallback to old hardcoded mapping if needed
+    # This function is kept for compatibility but should be replaced
+    return $null
 }
 
 function Test-InstalledVersion {
@@ -761,17 +558,8 @@ function Install-Winget {
         }
     }
     
-    # Try Microsoft Store installation
-    Write-LogMessage "Attempting to install winget via Microsoft Store..." -Level "INFO"
-    try {
-        $wingetUrl = "ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1"
-        Start-Process $wingetUrl
-        Write-LogMessage "Please complete the winget installation from the Microsoft Store" -Level "INFO"
-        return $true
-    }
-    catch {
-        Write-LogMessage "Failed to open Microsoft Store: $_" -Level "WARNING"
-    }
+    # Skip Microsoft Store installation - proceed directly to automated download
+    Write-LogMessage "Proceeding with automated winget installation..." -Level "INFO"
     
     # Fallback to direct download
     Write-LogMessage "Attempting direct download of winget..." -Level "INFO"
@@ -817,15 +605,35 @@ function Install-Winget {
         Remove-Item $downloadPath -Force -ErrorAction SilentlyContinue
         Write-LogMessage "Cleaned up downloaded package" -Level "INFO"
         
-        # Verify installation
-        Start-Sleep -Seconds 3  # Give time for installation to complete
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            Write-LogMessage "Winget installed successfully!" -Level "SUCCESS"
-            return $true
-        } else {
-            Write-LogMessage "Winget command not found after installation" -Level "ERROR"
-            return $false
+        # Verify installation with multiple attempts
+        Write-LogMessage "Verifying winget installation..." -Level "INFO"
+        Start-Sleep -Seconds 5  # Give more time for installation to complete
+        
+        for ($i = 0; $i -lt 10; $i++) {  # Try up to 10 times with 2 second intervals
+            # Refresh environment variables to ensure PATH updates are available
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+            
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                # Double-check that winget actually works
+                try {
+                    $version = winget --version 2>$null
+                    if ($version) {
+                        Write-LogMessage "Winget installed successfully: $version" -Level "SUCCESS"
+                        return $true
+                    }
+                } catch {
+                    # Command exists but doesn't work properly yet
+                }
+            }
+            
+            if ($i -lt 9) {  # Don't sleep on the last iteration
+                Write-LogMessage "Winget not yet available, waiting... (attempt $($i + 1)/10)" -Level "INFO"
+                Start-Sleep -Seconds 2
+            }
         }
+        
+        Write-LogMessage "Winget command not found or not working after installation" -Level "ERROR"
+        return $false
     }
     catch {
         Write-LogMessage "Failed to install winget: $_" -Level "ERROR"
@@ -945,6 +753,9 @@ function Install-Application {
         [string]$AppName,
         
         [Parameter(Mandatory=$false)]
+        [string]$AppKey = "",
+        
+        [Parameter(Mandatory=$false)]
         [string]$WingetId = "",
         
         [Parameter(Mandatory=$false)]
@@ -989,30 +800,70 @@ function Install-Application {
         Write-LogMessage "Windows build $buildNumber is below minimum for winget (16299). Using direct download." -Level "INFO"
     }
     
-    # Try winget first if compatible and available
-    if (-not $script:UseDirectDownloadOnly -and $wingetCompatible -and (Get-Command winget -ErrorAction SilentlyContinue)) {
-        # Map app name to winget ID if not provided
+    # Try winget first if compatible and available (with retry for recently installed winget)
+    $wingetAvailable = $false
+    if (-not $script:UseDirectDownloadOnly -and $wingetCompatible) {
+        # Check for winget availability with retry (in case it was just installed)
+        for ($i = 0; $i -lt 3; $i++) {
+            # Refresh environment variables to ensure PATH updates are available
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+            
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                # Verify winget actually works by testing version command
+                try {
+                    $testVersion = winget --version 2>$null
+                    if ($testVersion) {
+                        $wingetAvailable = $true
+                        Write-LogMessage "Winget is available and working for $AppName installation" -Level "INFO"
+                        break
+                    }
+                } catch {
+                    Write-LogMessage "Winget command found but not working yet, retrying..." -Level "DEBUG"
+                }
+            }
+            
+            if ($i -lt 2) {  # Don't sleep on the last iteration
+                Write-LogMessage "Winget not yet available for $AppName, waiting... (attempt $($i + 1)/3)" -Level "DEBUG"
+                Start-Sleep -Seconds 3
+            }
+        }
+    }
+    
+    if ($wingetAvailable) {
+        # Get winget ID from JSON config if AppKey provided, otherwise use fallback mapping
         if (-not $WingetId) {
-            $WingetId = switch ($AppName) {
-                "Visual Studio Code" { "Microsoft.VisualStudioCode" }
-                "Git" { "Git.Git" }
-                "Python" { "Python.Python.3" }
-                "PyCharm" { "JetBrains.PyCharm.Community" }
-                "GitHub Desktop" { "GitHub.GitHubDesktop" }
-                "Postman" { "Postman.Postman" }
-                "Node.js" { "OpenJS.NodeJS.LTS" }
-                "Windows Terminal" { "Microsoft.WindowsTerminal" }
-                "Google Chrome" { "Google.Chrome" }
-                "Mozilla Firefox" { "Mozilla.Firefox" }
-                "Brave Browser" { "Brave.Browser" }
-                "Spotify" { "Spotify.Spotify" }
-                "Discord" { "Discord.Discord" }
-                "Steam" { "Valve.Steam" }
-                "VLC" { "VideoLAN.VLC" }
-                "7-Zip" { "7zip.7zip" }
-                "Notepad++" { "Notepad++.Notepad++" }
-                "Microsoft PowerToys" { "Microsoft.PowerToys" }
-                default { $null }
+            if ($AppKey) {
+                # Try to get from JSON configuration first
+                $appConfig = Get-AppDownloadInfo -AppKey $AppKey
+                if ($appConfig -and $appConfig.WingetId) {
+                    $WingetId = $appConfig.WingetId
+                    Write-LogMessage "Using WingetId from JSON config: $WingetId for $AppName" -Level "DEBUG"
+                }
+            }
+            
+            # Fallback to hardcoded mapping if still no WingetId
+            if (-not $WingetId) {
+                $WingetId = switch ($AppName) {
+                    "Visual Studio Code" { "Microsoft.VisualStudioCode" }
+                    "Git" { "Git.Git" }
+                    "Python" { "Python.Python.3" }
+                    "PyCharm" { "JetBrains.PyCharm.Community" }
+                    "GitHub Desktop" { "GitHub.GitHubDesktop" }
+                    "Postman" { "Postman.Postman" }
+                    "Node.js" { "OpenJS.NodeJS.LTS" }
+                    "Windows Terminal" { "Microsoft.WindowsTerminal" }
+                    "Google Chrome" { "Google.Chrome" }
+                    "Mozilla Firefox" { "Mozilla.Firefox" }
+                    "Brave Browser" { "Brave.Browser" }
+                    "Spotify" { "Spotify.Spotify" }
+                    "Discord" { "Discord.Discord" }
+                    "Steam" { "Valve.Steam" }
+                    "VLC" { "VideoLAN.VLC" }
+                    "7-Zip" { "7zip.7zip" }
+                    "Notepad++" { "Notepad++.Notepad++" }
+                    "Microsoft PowerToys" { "Microsoft.PowerToys" }
+                    default { $null }
+                }
             }
         }
         
@@ -1050,16 +901,42 @@ function Install-Application {
     
     # If no direct download info was provided, try to get it
     if ($null -eq $DirectDownload) {
-        # First try to get dynamic latest version
-        $latestUrl = Get-LatestVersionUrl -ApplicationName $AppName
+        # Try to get from JSON configuration first if AppKey is provided
+        if ($AppKey) {
+            $appConfig = Get-AppDownloadInfo -AppKey $AppKey
+            if ($appConfig -and $appConfig.Url) {
+                $DirectDownload = @{
+                    Url = $appConfig.Url
+                    Extension = $appConfig.Extension
+                    Arguments = $appConfig.Arguments
+                    VerificationPaths = $appConfig.VerificationPaths
+                }
+                Write-LogMessage "Using download info from JSON config for $AppName" -Level "INFO"
+                
+                # Handle dynamic URL retrieval for GitHub releases
+                if ($appConfig.UrlType -eq "github-asset") {
+                    $latestUrl = Get-LatestVersionUrl -ApplicationName $AppName
+                    if ($latestUrl) {
+                        Write-LogMessage "Using dynamically retrieved latest version URL for $AppName" -Level "INFO"
+                        $DirectDownload.Url = $latestUrl
+                    }
+                }
+            }
+        }
         
-        # Then get the standard download info
-        $DirectDownload = Get-AppDirectDownloadInfo -AppName $AppName
-        
-        # Update with latest URL if available
-        if ($latestUrl -and $DirectDownload) {
-            Write-LogMessage "Using dynamically retrieved latest version URL for $AppName" -Level "INFO"
-            $DirectDownload.Url = $latestUrl
+        # Fallback to hardcoded function if no JSON config found
+        if ($null -eq $DirectDownload) {
+            # First try to get dynamic latest version
+            $latestUrl = Get-LatestVersionUrl -ApplicationName $AppName
+            
+            # Then get the standard download info
+            $DirectDownload = Get-AppDirectDownloadInfo -AppName $AppName
+            
+            # Update with latest URL if available
+            if ($latestUrl -and $DirectDownload) {
+                Write-LogMessage "Using dynamically retrieved latest version URL for $AppName" -Level "INFO"
+                $DirectDownload.Url = $latestUrl
+            }
         }
     }
     
