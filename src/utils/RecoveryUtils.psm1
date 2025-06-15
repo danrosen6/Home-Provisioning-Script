@@ -1,5 +1,11 @@
 # Recovery utilities for Windows Setup GUI
 
+# Import JSON utilities for PowerShell 5.1 compatibility
+$jsonUtilsPath = Join-Path $PSScriptRoot "JsonUtils.psm1"
+if (Test-Path $jsonUtilsPath) {
+    Import-Module $jsonUtilsPath -Force
+}
+
 function New-SystemRestorePoint {
     [CmdletBinding()]
     param(
@@ -75,7 +81,7 @@ function Save-OperationState {
             $stateContent = Get-Content -Path $stateFile -Raw -ErrorAction SilentlyContinue
             if ($stateContent) {
                 try {
-                    $state = $stateContent | ConvertFrom-Json -AsHashtable
+                    $state = $stateContent | ConvertFrom-JsonToHashtable
                 } catch {
                     $state = @{}
                 }
@@ -129,7 +135,7 @@ function Get-OperationState {
         }
         
         try {
-            $state = $stateContent | ConvertFrom-Json -AsHashtable
+            $state = $stateContent | ConvertFrom-JsonToHashtable
         } catch {
             Write-LogMessage "Error parsing state file: $_" -Level "ERROR"
             return $null

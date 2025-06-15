@@ -17,6 +17,7 @@ Initialize-Logging
 Import-Module (Join-Path $scriptPath "utils\RecoveryUtils.psm1") -Force
 Import-Module (Join-Path $scriptPath "utils\ConfigLoader.psm1") -Force
 Import-Module (Join-Path $scriptPath "utils\WingetUtils.psm1") -Force
+Import-Module (Join-Path $scriptPath "utils\ProgressSystem.psm1") -Force
 Import-Module (Join-Path $scriptPath "modules\Installers.psm1") -Force
 Import-Module (Join-Path $scriptPath "modules\SystemOptimizations.psm1") -Force
 
@@ -279,17 +280,8 @@ $controlPanel.Controls.Add($statusLabel)
 $bottomArea.Controls.Add($tabControl)
 $bottomArea.Controls.Add($controlPanel)
 
-# Log area at very bottom
-$logBox = New-Object System.Windows.Forms.TextBox
-$logBox.Multiline = $true
-$logBox.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
-$logBox.ReadOnly = $true
-$logBox.Location = New-Object System.Drawing.Point(20, 140)
-$logBox.Size = New-Object System.Drawing.Size(840, 30)
-$logBox.BackColor = [System.Drawing.Color]::Black
-$logBox.ForeColor = [System.Drawing.Color]::Lime
-$logBox.Font = New-Object System.Drawing.Font("Consolas", 8)
-$bottomArea.Controls.Add($logBox)
+# Progress area at very bottom
+$progressArea = Initialize-ProgressSystem -ParentContainer $bottomArea -Location (New-Object System.Drawing.Point(20, 140)) -Size (New-Object System.Drawing.Size(840, 60)) -EnableDetails
 
 $form.Controls.Add($bottomArea)
 
@@ -511,12 +503,30 @@ function Get-SelectedItems {
 }
 
 function Update-StatusMessage {
-    param($Message)
+    param(
+        [string]$Message,
+        [ValidateSet("INFO", "SUCCESS", "WARNING", "ERROR")]
+        [string]$Level = "INFO"
+    )
     
+    # Update traditional status label
     $statusLabel.Text = $Message
-    $logBox.Text += "$(Get-Date -Format 'HH:mm:ss'): $Message`r`n"
-    $logBox.SelectionStart = $logBox.Text.Length
-    $logBox.ScrollToCaret()
+    
+    # Update progress system if available
+    try {
+        Update-ProgressStatus -Message $Message -Level $Level
+    } catch {
+        # Fallback to console output if progress system fails
+        Write-Host "$(Get-Date -Format 'HH:mm:ss'): $Message" -ForegroundColor $(
+            switch ($Level) {
+                "SUCCESS" { "Green" }
+                "WARNING" { "Yellow" }
+                "ERROR" { "Red" }
+                default { "White" }
+            }
+        )
+    }
+    
     [System.Windows.Forms.Application]::DoEvents()
 }
 
@@ -751,9 +761,11 @@ $runBtn.Add_Click({
     try {
         $runBtn.Enabled = $false
         $cancelBtn.Text = "Cancel"
-        $logBox.Text = ""
         
-        Update-StatusMessage "Starting Windows Setup Operations..."
+        # Reset progress system
+        Reset-ProgressSystem
+        
+        Update-StatusMessage "Starting Windows Setup Operations..." "INFO"
         
         # Save current tab state before processing
         Save-CheckboxStates -TabType $script:CurrentTab
@@ -783,158 +795,56 @@ $runBtn.Add_Click({
         }
         
         if ($selectedItems.Count -eq 0) {
-            Update-StatusMessage "No items selected. Please select items to process."
+            Update-StatusMessage "No items selected. Please select items to process." "WARNING"
             return
         }
         
-        Update-StatusMessage "$operationType - Processing $($selectedItems.Count) items..."
+        # Start progress tracking
+        Start-ProgressOperation -TotalSteps $selectedItems.Count -OperationName $operationType
+        Update-StatusMessage "$operationType - Processing $($selectedItems.Count) items..." "INFO"
         
         # Process based on operation type
         switch ($selectedTab.Text) {
             "Apps" {
-                # Comprehensive winget availability check and setup
-                Update-StatusMessage "Checking winget availability and Windows compatibility..."
+                # Setup winget environment before installing apps
+                Update-StatusMessage "Setting up winget environment..." "INFO"
                 
-                # Get detailed Windows version info
-                $osVersion = [System.Environment]::OSVersion.Version
-                $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
-                $osName = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
+                # Initialize winget environment (check → install → verify)
+                $wingetResult = Initialize-WingetEnvironment
                 
-                Update-StatusMessage "System: $osName (Build $buildNumber)"
-                
-                # Check minimum Windows 10 build requirement (1709 = build 16299)
-                if ([int]$buildNumber -lt 16299) {
-                    Update-StatusMessage "[ERROR] Windows version too old for winget (requires Windows 10 1709/build 16299+)"
-                    Update-StatusMessage "Current build: $buildNumber - Showing Windows Update options..."
-                    
-                    # Show Windows Update dialog to help user upgrade
-                    $wingetCompatInfo = Test-WingetCompatibility
-                    $updateDialogResult = Show-WindowsUpdateDialog -WingetInfo $wingetCompatInfo
-                    
-                    if ($updateDialogResult -eq [System.Windows.Forms.DialogResult]::Retry) {
-                        # User updated and wants to recheck - test again
-                        $newWingetInfo = Test-WingetCompatibility
-                        if ($newWingetInfo.Compatible) {
-                            Update-StatusMessage "[SUCCESS] Windows version now supports winget after update!"
-                            $buildNumber = $newWingetInfo.BuildNumber
-                        } else {
-                            Update-StatusMessage "Windows still incompatible after update - using direct downloads"
-                        }
-                    } else {
-                        Update-StatusMessage "User chose to continue with direct downloads"
+                if ($wingetResult.Success) {
+                    if ($wingetResult.AlreadyAvailable) {
+                        Update-StatusMessage "Winget is ready (version: $($wingetResult.Version))" "SUCCESS"
+                    } elseif ($wingetResult.Installed) {
+                        Update-StatusMessage "Winget installed successfully (version: $($wingetResult.Version))" "SUCCESS"
+                    } elseif ($wingetResult.Registered) {
+                        Update-StatusMessage "Winget registered successfully (version: $($wingetResult.Version))" "SUCCESS"
                     }
+                    $script:UseWingetForApps = $true
                 } else {
-                    Update-StatusMessage "[SUCCESS] Windows version supports winget (build $buildNumber >= 16299)"
-                    
-                    try {
-                        # First check if winget command is available
-                        $wingetVersion = winget --version 2>$null
-                        if ($wingetVersion) {
-                            Update-StatusMessage "[SUCCESS] Winget already available: $wingetVersion"
-                        } else {
-                            Update-StatusMessage "Winget command not found - checking App Installer registration..."
-                            
-                            # Check if App Installer (which contains winget) is installed
-                            $appInstaller = Get-AppxPackage -Name "Microsoft.DesktopAppInstaller" -ErrorAction SilentlyContinue
-                            if ($appInstaller) {
-                                Update-StatusMessage "[SUCCESS] App Installer found: $($appInstaller.Version)"
-                                Update-StatusMessage "Attempting winget registration..."
-                                
-                                try {
-                                    # Register the App Installer to make winget available
-                                    Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
-                                    Update-StatusMessage "Registration command executed successfully"
-                                    
-                                    # Wait for registration to complete
-                                    Update-StatusMessage "Waiting for registration to complete..."
-                                    Start-Sleep -Seconds 3
-                                    
-                                    # Try to refresh environment and check again
-                                    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-                                    
-                                    # Multiple verification attempts
-                                    $attempts = 0
-                                    $maxAttempts = 3
-                                    $wingetWorking = $false
-                                    
-                                    while ($attempts -lt $maxAttempts -and -not $wingetWorking) {
-                                        $attempts++
-                                        Start-Sleep -Seconds 2
-                                        
-                                        try {
-                                            $testVersion = winget --version 2>$null
-                                            if ($testVersion) {
-                                                Update-StatusMessage "[SUCCESS] Winget successfully registered and working: $testVersion"
-                                                $wingetWorking = $true
-                                            }
-                                        } catch {
-                                            Update-StatusMessage "Winget verification attempt $attempts/$maxAttempts..."
-                                        }
-                                    }
-                                    
-                                    if (-not $wingetWorking) {
-                                        Update-StatusMessage "[WARNING] Winget registration completed but command not immediately available"
-                                        Update-StatusMessage "This is normal - winget may require a new PowerShell session or user logout/login"
-                                        Update-StatusMessage "Continuing with direct downloads as fallback"
-                                    }
-                                    
-                                } catch {
-                                    Update-StatusMessage "[WARNING] Winget registration failed: $_"
-                                    Update-StatusMessage "Continuing with direct downloads"
-                                }
-                            } else {
-                                Update-StatusMessage "[INFO] App Installer not found - attempting to install winget..."
-                                
-                                # Try to install winget if Windows version is compatible
-                                $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
-                                if ([int]$buildNumber -ge 16299) {
-                                    try {
-                                        Update-StatusMessage "Installing winget via Install-Winget function..."
-                                        $wingetInstalled = Install-Winget
-                                        
-                                        if ($wingetInstalled) {
-                                            Update-StatusMessage "[SUCCESS] Winget installation completed successfully"
-                                            
-                                            # Verify winget is working
-                                            try {
-                                                $testVersion = winget --version 2>$null
-                                                if ($testVersion) {
-                                                    Update-StatusMessage "[SUCCESS] Winget is now available: $testVersion"
-                                                } else {
-                                                    Update-StatusMessage "[WARNING] Winget installed but may require PowerShell restart"
-                                                }
-                                            } catch {
-                                                Update-StatusMessage "[WARNING] Winget installed but verification failed"
-                                            }
-                                        } else {
-                                            Update-StatusMessage "[WARNING] Winget installation failed - falling back to direct downloads"
-                                        }
-                                    } catch {
-                                        Update-StatusMessage "[ERROR] Winget installation error: $_"
-                                        Update-StatusMessage "Continuing with direct downloads"
-                                    }
-                                } else {
-                                    Update-StatusMessage "[ERROR] Windows version not compatible with winget (requires build 16299+)"
-                                    Update-StatusMessage "Tip: Update Windows or use direct downloads"
-                                }
-                            }
+                    switch ($wingetResult.Reason) {
+                        "IncompatibleWindows" {
+                            $buildNumber = $wingetResult.Details.BuildNumber
+                            Update-StatusMessage "Windows build $buildNumber incompatible with winget (requires 16299+)" "WARNING"
                         }
-                    } catch {
-                        Update-StatusMessage "[WARNING] Error during winget check: $_"
-                        Update-StatusMessage "Continuing with direct downloads"
+                        "InstallationFailed" {
+                            Update-StatusMessage "Failed to install winget, using direct downloads" "WARNING"
+                        }
+                        default {
+                            Update-StatusMessage "Winget setup failed, using direct downloads" "WARNING"
+                        }
                     }
+                    $script:UseWingetForApps = $false
                 }
+                
+                # Winget setup complete - proceed with app installations
                 
                 foreach ($appKey in $selectedItems) {
                     $installerName = Get-InstallerName -AppKey $appKey
-                    Update-StatusMessage "Installing $installerName..."
+                    Update-StatusMessage "Installing $installerName..." "INFO"
                     try {
-                        # Check if we should attempt winget or go straight to direct download
-                        $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
-                        $useWinget = ([int]$buildNumber -ge 16299) -and (Get-Command winget -ErrorAction SilentlyContinue)
-                        
-                        if ($useWinget) {
-                            # Provide winget IDs for prioritized installation
+                        if ($script:UseWingetForApps) {
+                            # Use winget with ID mapping for optimal installation
                             $wingetId = Get-WingetId -AppKey $appKey
                             if ($wingetId) {
                                 Install-Application -AppName $installerName -WingetId $wingetId
@@ -942,59 +852,59 @@ $runBtn.Add_Click({
                                 Install-Application -AppName $installerName
                             }
                         } else {
-                            # Skip winget and use direct download
-                            Update-StatusMessage "Using direct download for $installerName (winget not available)"
+                            # Use direct downloads (winget not available/compatible)
                             Install-Application -AppName $installerName
                         }
-                        Update-StatusMessage "[SUCCESS] Successfully installed $appKey"
+                        Update-StatusMessage "Successfully installed $installerName" "SUCCESS"
                     } catch {
-                        Update-StatusMessage "[ERROR] Failed to install $appKey - ${_}"
+                        Update-StatusMessage "Failed to install $installerName - $_" "ERROR"
                         Write-LogMessage -Message "Failed to install $appKey - ${_}" -Level "ERROR"
                     }
                 }
             }
             "Bloatware" {
                 foreach ($bloatKey in $selectedItems) {
-                    Update-StatusMessage "Removing bloatware $bloatKey..."
+                    Update-StatusMessage "Removing bloatware $bloatKey..." "INFO"
                     try {
                         Remove-Bloatware -BloatwareKey $bloatKey
-                        Update-StatusMessage "[SUCCESS] Successfully removed $bloatKey"
+                        Update-StatusMessage "Successfully removed $bloatKey" "SUCCESS"
                     } catch {
-                        Update-StatusMessage "[ERROR] Failed to remove $bloatKey - ${_}"
+                        Update-StatusMessage "Failed to remove $bloatKey - $_" "ERROR"
                         Write-LogMessage -Message "Failed to remove bloatware $bloatKey - ${_}" -Level "ERROR"
                     }
                 }
             }
             "Services" {
                 foreach ($serviceKey in $selectedItems) {
-                    Update-StatusMessage "Disabling service $serviceKey..."
+                    Update-StatusMessage "Disabling service $serviceKey..." "INFO"
                     try {
                         Set-SystemOptimization -OptimizationKey $serviceKey
-                        Update-StatusMessage "[SUCCESS] Successfully disabled $serviceKey"
+                        Update-StatusMessage "Successfully disabled $serviceKey" "SUCCESS"
                     } catch {
-                        Update-StatusMessage "[ERROR] Failed to disable $serviceKey - ${_}"
+                        Update-StatusMessage "Failed to disable $serviceKey - $_" "ERROR"
                         Write-LogMessage -Message "Failed to disable service $serviceKey - ${_}" -Level "ERROR"
                     }
                 }
             }
             "Tweaks" {
                 foreach ($tweakKey in $selectedItems) {
-                    Update-StatusMessage "Applying tweak $tweakKey..."
+                    Update-StatusMessage "Applying tweak $tweakKey..." "INFO"
                     try {
                         Set-SystemOptimization -OptimizationKey $tweakKey
-                        Update-StatusMessage "[SUCCESS] Successfully applied $tweakKey"
+                        Update-StatusMessage "Successfully applied $tweakKey" "SUCCESS"
                     } catch {
-                        Update-StatusMessage "[ERROR] Failed to apply $tweakKey - ${_}"
+                        Update-StatusMessage "Failed to apply $tweakKey - $_" "ERROR"
                         Write-LogMessage -Message "Failed to apply tweak $tweakKey - ${_}" -Level "ERROR"
                     }
                 }
             }
         }
         
-        Update-StatusMessage "All operations completed!"
+        # Complete progress operation
+        Complete-ProgressOperation -FinalMessage "All operations completed successfully!" -CompletionStatus "SUCCESS"
         
     } catch {
-        Update-StatusMessage "Error during operations: $_"
+        Complete-ProgressOperation -FinalMessage "Error during operations: $_" -CompletionStatus "ERROR"
         Write-LogMessage -Message "GUI operation error: $_" -Level "ERROR"
     } finally {
         $runBtn.Enabled = $true

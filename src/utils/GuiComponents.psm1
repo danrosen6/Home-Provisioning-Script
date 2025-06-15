@@ -195,6 +195,37 @@ function New-LogTextBox {
     return $logBox
 }
 
+function New-ProgressArea {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [System.Windows.Forms.Panel]$ParentPanel,
+        
+        [Parameter(Mandatory=$false)]
+        [System.Drawing.Point]$Location = [System.Drawing.Point]::new(20, 140),
+        
+        [Parameter(Mandatory=$false)]
+        [System.Drawing.Size]$Size = [System.Drawing.Size]::new(840, 60),
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$EnableDetails
+    )
+    
+    # Import progress system if available
+    $progressModulePath = Join-Path $PSScriptRoot "ProgressSystem.psm1"
+    if (Test-Path $progressModulePath) {
+        Import-Module $progressModulePath -Force
+        
+        # Initialize progress system
+        $progressPanel = Initialize-ProgressSystem -ParentContainer $ParentPanel -Location $Location -Size $Size -EnableDetails:$EnableDetails
+        
+        return $progressPanel
+    } else {
+        Write-Warning "Progress system module not found, falling back to log text box"
+        return New-LogTextBox -ParentPanel $ParentPanel -Location $Location -Size $Size
+    }
+}
+
 function New-ContentArea {
     [CmdletBinding()]
     param(
@@ -420,6 +451,7 @@ Export-ModuleMember -Function @(
     "New-ControlPanel",
     "New-ActionButtons",
     "New-LogTextBox",
+    "New-ProgressArea",
     "New-ContentArea",
     "New-ScrollableContentDisplay",
     "New-TabPages",

@@ -1,5 +1,11 @@
 # Configuration loader utility for Windows Setup GUI
 
+# Import JSON utilities for PowerShell 5.1 compatibility
+$jsonUtilsPath = Join-Path $PSScriptRoot "JsonUtils.psm1"
+if (Test-Path $jsonUtilsPath) {
+    Import-Module $jsonUtilsPath -Force
+}
+
 function Get-ConfigurationData {
     [CmdletBinding()]
     param(
@@ -17,7 +23,7 @@ function Get-ConfigurationData {
         }
         
         $jsonContent = Get-Content -Path $configPath -Raw -ErrorAction Stop
-        $configData = $jsonContent | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        $configData = $jsonContent | ConvertFrom-JsonToHashtable -ErrorAction Stop
         
         Write-Verbose "Successfully loaded $ConfigType configuration with $($configData.Keys.Count) categories"
         return $configData
