@@ -161,9 +161,9 @@ function Initialize-WingetEnvironment {
             }
         }
         
-        # Try to install winget
+        # Try to install winget using the proven direct method
         Write-Verbose "Attempting to install winget..."
-        $installed = Install-WingetPackage
+        $installed = Install-WingetDirect
         
         if ($installed) {
             $finalInstallation = Test-WingetInstallation
@@ -256,87 +256,138 @@ function Install-WingetDirect {
     param()
     
     try {
-        # Create download directory
-        $downloadDir = Join-Path $env:TEMP "WingetInstall"
+        # Import logging if available
+        if (-not (Get-Command Write-LogMessage -ErrorAction SilentlyContinue)) {
+            function Write-LogMessage {
+                param([string]$Message, [string]$Level = "INFO")
+                Write-Host "[$Level] $Message"
+            }
+        }
+        
+        Write-LogMessage "Starting winget installation..." -Level "INFO"
+        
+        # Check Windows version compatibility first
+        $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
+        $osName = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
+        
+        Write-LogMessage "System: $osName (Build $buildNumber)" -Level "INFO"
+        
+        if ([int]$buildNumber -lt 16299) {
+            Write-LogMessage "Windows build $buildNumber is below minimum requirement for winget (16299 = Windows 10 1709)" -Level "ERROR"
+            Write-LogMessage "Winget is not supported on this Windows version" -Level "ERROR"
+            return $false
+        }
+        
+        # Check if winget is already installed
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            $version = winget --version 2>$null
+            Write-LogMessage "Winget is already installed: $version" -Level "INFO"
+            return $true
+        }
+        
+        # Create download directory using proper path structure
+        $scriptPath = if ($PSScriptRoot) { Split-Path -Parent (Split-Path -Parent $PSScriptRoot) } else { $env:TEMP }
+        $downloadDir = Join-Path $scriptPath "downloads"
         if (-not (Test-Path $downloadDir)) {
             New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
+            Write-LogMessage "Created download directory at: $downloadDir" -Level "INFO"
         }
         
-        # Use known working winget download URL instead of API
-        Write-Verbose "Downloading winget from known working URL..."
-        $wingetUrl = "https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
-        $downloadPath = Join-Path $downloadDir "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
-        
-        # Download with retry logic
-        $retryCount = 0
-        $maxRetries = 3
-        $downloaded = $false
-        
-        while ($retryCount -lt $maxRetries -and -not $downloaded) {
+        # Check if App Installer is already present but winget not registered
+        $appInstaller = Get-AppxPackage -Name "Microsoft.DesktopAppInstaller" -ErrorAction SilentlyContinue
+        if ($appInstaller) {
+            Write-LogMessage "App Installer found: $($appInstaller.Version)" -Level "INFO"
+            Write-LogMessage "Attempting to register winget..." -Level "INFO"
+            
             try {
-                Write-Verbose "Download attempt $($retryCount + 1) of $maxRetries..."
-                Invoke-WebRequest -Uri $wingetUrl -OutFile $downloadPath -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
-                $downloaded = $true
-                Write-Verbose "Download completed successfully"
-            }
-            catch {
-                $retryCount++
-                Write-Verbose "Download attempt $retryCount failed: $_"
-                if ($retryCount -lt $maxRetries) {
-                    Start-Sleep -Seconds 3
+                Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
+                Write-LogMessage "Winget registration command completed" -Level "INFO"
+                
+                # Wait and verify
+                Start-Sleep -Seconds 5
+                if (Get-Command winget -ErrorAction SilentlyContinue) {
+                    $version = winget --version 2>$null
+                    Write-LogMessage "Winget successfully registered: $version" -Level "SUCCESS"
+                    return $true
+                } else {
+                    Write-LogMessage "Winget registration completed but command not yet available" -Level "WARNING"
+                    Write-LogMessage "This may require a new PowerShell session or user logout/login" -Level "INFO"
                 }
+            } catch {
+                Write-LogMessage "Failed to register winget: $_" -Level "WARNING"
             }
         }
         
-        if (-not $downloaded) {
-            Write-Warning "Failed to download winget after $maxRetries attempts"
-            return $false
+        # Try Microsoft Store installation
+        Write-LogMessage "Attempting to install winget via Microsoft Store..." -Level "INFO"
+        try {
+            $wingetUrl = "ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1"
+            Start-Process $wingetUrl
+            Write-LogMessage "Please complete the winget installation from the Microsoft Store" -Level "INFO"
+            return $true
+        }
+        catch {
+            Write-LogMessage "Failed to open Microsoft Store: $_" -Level "WARNING"
         }
         
-        # Verify download
-        if (-not (Test-Path $downloadPath)) {
-            Write-Warning "Download failed - file not found"
-            return $false
-        }
-        
-        $fileSize = (Get-Item $downloadPath).Length
-        if ($fileSize -lt 1MB) {
-            Write-Warning "Downloaded file appears too small ($fileSize bytes) - possibly corrupted"
-            return $false
-        }
-        
-        Write-Verbose "Downloaded file size: $fileSize bytes"
-        
-        # Install the bundle
-        Write-Verbose "Installing winget package..."
-        Add-AppxPackage -Path $downloadPath -ErrorAction Stop
-        
-        # Clean up
-        Remove-Item $downloadPath -Force -ErrorAction SilentlyContinue
-        Remove-Item $downloadDir -Force -Recurse -ErrorAction SilentlyContinue
-        
-        # Verify installation with longer wait
-        Write-Verbose "Waiting for installation to complete..."
-        Start-Sleep -Seconds 5
-        
-        # Try multiple verification attempts
-        $verificationAttempts = 0
-        $maxVerificationAttempts = 5
-        $installationVerified = $false
-        
-        while ($verificationAttempts -lt $maxVerificationAttempts -and -not $installationVerified) {
-            $verification = Test-WingetInstallation
-            if ($verification.Available) {
-                $installationVerified = $true
-                Write-Verbose "Winget installation verified successfully"
+        # Fallback to direct download using GitHub API (proven working approach)
+        Write-LogMessage "Attempting direct download of winget..." -Level "INFO"
+        try {
+            # Create winget-specific directory
+            $wingetDir = Join-Path $downloadDir "winget"
+            if (-not (Test-Path $wingetDir)) {
+                New-Item -ItemType Directory -Path $wingetDir -Force | Out-Null
+                Write-LogMessage "Created winget directory at: $wingetDir" -Level "INFO"
+            }
+            
+            # Download the latest winget release using GitHub API
+            $releaseUrl = "https://api.github.com/repos/microsoft/winget-cli/releases/latest"
+            Write-LogMessage "Fetching latest winget release information..." -Level "INFO"
+            $release = Invoke-RestMethod -Uri $releaseUrl -TimeoutSec 15
+            $msixBundle = $release.assets | Where-Object { $_.name -like "*.msixbundle" } | Select-Object -First 1
+            
+            if ($null -eq $msixBundle) {
+                Write-LogMessage "Could not find winget MSIX bundle" -Level "ERROR"
+                return $false
+            }
+            
+            $downloadPath = Join-Path $wingetDir $msixBundle.name
+            Write-LogMessage "Downloading winget bundle to: $downloadPath" -Level "INFO"
+            
+            # Download with progress reporting
+            $webClient = New-Object System.Net.WebClient
+            $webClient.DownloadFile($msixBundle.browser_download_url, $downloadPath)
+            
+            # Verify download
+            if (-not (Test-Path $downloadPath)) {
+                Write-LogMessage "Download failed - file not found at expected location" -Level "ERROR"
+                return $false
+            }
+            
+            Write-LogMessage "Download completed successfully" -Level "SUCCESS"
+            
+            # Install the bundle
+            Write-LogMessage "Installing winget package..." -Level "INFO"
+            Add-AppxPackage -Path $downloadPath -ErrorAction Stop
+            
+            # Clean up download
+            Remove-Item $downloadPath -Force -ErrorAction SilentlyContinue
+            Write-LogMessage "Cleaned up downloaded package" -Level "INFO"
+            
+            # Verify installation
+            Start-Sleep -Seconds 3  # Give time for installation to complete
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Write-LogMessage "Winget installed successfully!" -Level "SUCCESS"
+                return $true
             } else {
-                $verificationAttempts++
-                Write-Verbose "Verification attempt $verificationAttempts failed, retrying..."
-                Start-Sleep -Seconds 2
+                Write-LogMessage "Winget command not found after installation" -Level "ERROR"
+                return $false
             }
         }
-        
-        return $installationVerified
+        catch {
+            Write-LogMessage "Failed to install winget: $_" -Level "ERROR"
+            return $false
+        }
     }
     catch {
         Write-Warning "Failed to install winget directly: $_"
