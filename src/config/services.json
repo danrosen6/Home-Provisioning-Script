@@ -1,0 +1,143 @@
+{
+  "Telemetry & Privacy": [
+    {
+      "Name": "Connected User Experiences and Telemetry",
+      "Key": "diagtrack",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "WAP Push Message Routing",
+      "Key": "dmwappushsvc",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Windows Insider Service",
+      "Key": "wisvc",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    }
+  ],
+  "Performance & Storage": [
+    {
+      "Name": "Superfetch/SysMain",
+      "Key": "sysmain",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Windows Search",
+      "Key": "wsearch",
+      "Default": false,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Offline Files",
+      "Key": "cscservice",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    }
+  ],
+  "Network & Media": [
+    {
+      "Name": "Windows Media Player Network Sharing",
+      "Key": "wmpnetworksvc",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Remote Registry",
+      "Key": "remoteregistry",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Remote Access",
+      "Key": "remoteaccess",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Fax Service",
+      "Key": "fax",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    }
+  ],
+  "System & Interface": [
+    {
+      "Name": "Program Compatibility Assistant",
+      "Key": "pcasvc",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Parental Controls",
+      "Key": "wpcmonsvc",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Downloaded Maps Manager",
+      "Key": "mapsbroker",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Printer Extensions and Notifications",
+      "Key": "printnotify",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Retail Demo Service",
+      "Key": "retaildemo",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Geolocation Service",
+      "Key": "lfsvc",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    },
+    {
+      "Name": "Touch Keyboard and Handwriting Panel",
+      "Key": "tabletinputservice",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    },
+    {
+      "Name": "HomeGroup Provider",
+      "Key": "homegrpservice",
+      "Default": true,
+      "Win10": true,
+      "Win11": false
+    },
+    {
+      "Name": "Microsoft Wallet Service",
+      "Key": "walletservice",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    }
+  ]
+}

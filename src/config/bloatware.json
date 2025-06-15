@@ -1,0 +1,353 @@
+{
+  "Microsoft Office & Productivity": [
+    {
+      "Name": "Microsoft Office Hub",
+      "Key": "ms-officehub",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Microsoft Teams (Consumer)",
+      "Key": "ms-teams",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    },
+    {
+      "Name": "OneNote (Store)",
+      "Key": "ms-onenote",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Microsoft People",
+      "Key": "ms-people",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Microsoft To-Do",
+      "Key": "ms-todo",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    }
+  ],
+  "Windows Built-ins": [
+    {
+      "Name": "Microsoft 3D Viewer",
+      "Key": "ms-3dviewer",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Mixed Reality Portal",
+      "Key": "ms-mixedreality",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Print 3D",
+      "Key": "win-print3d",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Your Phone",
+      "Key": "win-yourphone",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Windows Camera",
+      "Key": "win-camera",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Mail and Calendar",
+      "Key": "win-mail",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Windows Sound Recorder",
+      "Key": "win-soundrec",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Microsoft Wallet",
+      "Key": "ms-wallet",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Messaging",
+      "Key": "ms-messaging",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "OneConnect",
+      "Key": "ms-oneconnect",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "ClipChamp",
+      "Key": "ms-clipchamp",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    },
+    {
+      "Name": "Bing Weather",
+      "Key": "bing-weather",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Bing News",
+      "Key": "bing-news",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Bing Finance",
+      "Key": "bing-finance",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Windows Alarms & Clock",
+      "Key": "win-alarms",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Windows Maps",
+      "Key": "win-maps",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Windows Feedback Hub",
+      "Key": "win-feedback",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Get Help",
+      "Key": "win-gethelp",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Get Started",
+      "Key": "win-getstarted",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Microsoft Widgets",
+      "Key": "ms-widgets",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    },
+    {
+      "Name": "Microsoft Copilot",
+      "Key": "ms-copilot",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Skype App",
+      "Key": "skype-app",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    }
+  ],
+  "Entertainment & Gaming": [
+    {
+      "Name": "Xbox Gaming App",
+      "Key": "gaming-app",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Xbox Game Overlay",
+      "Key": "xbox-gameoverlay",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    },
+    {
+      "Name": "Xbox Gaming Overlay",
+      "Key": "xbox-gamingoverlay",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    },
+    {
+      "Name": "Xbox Identity Provider",
+      "Key": "xbox-identity",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    },
+    {
+      "Name": "Xbox Speech to Text",
+      "Key": "xbox-speech",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    },
+    {
+      "Name": "Xbox TCUI",
+      "Key": "xbox-tcui",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    },
+    {
+      "Name": "Groove Music",
+      "Key": "zune-music",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Movies & TV",
+      "Key": "zune-video",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Solitaire Collection",
+      "Key": "solitaire",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    }
+  ],
+  "Third-Party Apps": [
+    {
+      "Name": "Candy Crush Games",
+      "Key": "candy-crush",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Facebook",
+      "Key": "facebook",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Netflix",
+      "Key": "netflix",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Disney+",
+      "Key": "disney",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "TikTok",
+      "Key": "tiktok",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Spotify (Store)",
+      "Key": "spotify-store",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Twitter",
+      "Key": "twitter",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "LinkedIn",
+      "Key": "linkedin",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    },
+    {
+      "Name": "Instagram",
+      "Key": "instagram",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "WhatsApp",
+      "Key": "whatsapp",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Amazon Prime Video",
+      "Key": "amazon-prime",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Hulu",
+      "Key": "hulu",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "PicsArt",
+      "Key": "picsart",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    }
+  ]
+}

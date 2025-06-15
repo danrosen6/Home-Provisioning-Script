@@ -1,0 +1,164 @@
+{
+  "Development": [
+    {
+      "Name": "Visual Studio Code",
+      "Key": "vscode",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Git",
+      "Key": "git",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Python",
+      "Key": "python",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "PyCharm Community",
+      "Key": "pycharm",
+      "Default": false,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "IntelliJ IDEA Community",
+      "Key": "intellij",
+      "Default": false,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "WebStorm",
+      "Key": "webstorm",
+      "Default": false,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Android Studio",
+      "Key": "androidstudio",
+      "Default": false,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "GitHub Desktop",
+      "Key": "github",
+      "Default": false,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Postman",
+      "Key": "postman",
+      "Default": false,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Node.js",
+      "Key": "nodejs",
+      "Default": false,
+      "Win10": false,
+      "Win11": true
+    },
+    {
+      "Name": "Windows Terminal",
+      "Key": "terminal",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    }
+  ],
+  "Browsers": [
+    {
+      "Name": "Google Chrome",
+      "Key": "chrome",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Mozilla Firefox",
+      "Key": "firefox",
+      "Default": false,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Brave Browser",
+      "Key": "brave",
+      "Default": false,
+      "Win10": true,
+      "Win11": true
+    }
+  ],
+  "Media & Communication": [
+    {
+      "Name": "Spotify",
+      "Key": "spotify",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Discord",
+      "Key": "discord",
+      "Default": true,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Steam",
+      "Key": "steam",
+      "Default": false,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "VLC Media Player",
+      "Key": "vlc",
+      "Default": false,
+      "Win10": true,
+      "Win11": true
+    }
+  ],
+  "Utilities": [
+    {
+      "Name": "7-Zip",
+      "Key": "7zip",
+      "Default": false,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Notepad++",
+      "Key": "notepad",
+      "Default": false,
+      "Win10": true,
+      "Win11": true
+    },
+    {
+      "Name": "Microsoft PowerToys",
+      "Key": "powertoys",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    },
+    {
+      "Name": "Windows Terminal",
+      "Key": "terminal",
+      "Default": true,
+      "Win10": false,
+      "Win11": true
+    }
+  ]
+}

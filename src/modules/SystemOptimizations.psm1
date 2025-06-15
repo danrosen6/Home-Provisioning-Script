@@ -268,8 +268,13 @@ function Restore-ServiceState {
 }
 
 function Set-SystemOptimization {
+    [CmdletBinding()]
     param (
+        [Parameter(Mandatory=$true)]
+        [ValidateNotNullOrEmpty()]
         [string]$OptimizationKey,
+        
+        [Parameter(Mandatory=$false)]
         [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
     )
 
@@ -804,9 +809,11 @@ function Remove-Bloatware {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true, ParameterSetName="Key")]
+        [ValidateNotNullOrEmpty()]
         [string]$BloatwareKey,
         
         [Parameter(Mandatory=$true, ParameterSetName="List")]
+        [ValidateNotNullOrEmpty()]
         [string[]]$Bloatware,
         
         [Parameter(Mandatory=$false)]

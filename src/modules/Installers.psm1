@@ -938,15 +938,22 @@ ASSIGNMENTOPTIONS=
 }
 
 function Install-Application {
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
+        [ValidateNotNullOrEmpty()]
         [string]$AppName,
+        
         [Parameter(Mandatory=$false)]
         [string]$WingetId = "",
+        
         [Parameter(Mandatory=$false)]
         [hashtable]$DirectDownload = $null,
+        
         [Parameter(Mandatory=$false)]
         [switch]$Force,
+        
+        [Parameter(Mandatory=$false)]
         [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
     )
     

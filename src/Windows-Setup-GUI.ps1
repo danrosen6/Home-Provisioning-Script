@@ -15,62 +15,12 @@ Import-Module (Join-Path $scriptPath "utils\Logging.psm1") -Force
 Initialize-Logging
 
 Import-Module (Join-Path $scriptPath "utils\RecoveryUtils.psm1") -Force
+Import-Module (Join-Path $scriptPath "utils\ConfigLoader.psm1") -Force
+Import-Module (Join-Path $scriptPath "utils\WingetUtils.psm1") -Force
 Import-Module (Join-Path $scriptPath "modules\Installers.psm1") -Force
 Import-Module (Join-Path $scriptPath "modules\SystemOptimizations.psm1") -Force
 
 # Helper functions
-function Test-WingetCompatibility {
-    try {
-        $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
-        $osName = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
-        
-        $isCompatible = ([int]$buildNumber -ge 16299)
-        $wingetAvailable = (Get-Command winget -ErrorAction SilentlyContinue) -ne $null
-        
-        # Get Windows version name for better user information
-        $versionName = "Unknown"
-        $buildInt = [int]$buildNumber
-        if ($buildInt -ge 22000) {
-            $versionName = "Windows 11"
-        } elseif ($buildInt -ge 19041) {
-            $versionName = "Windows 10 2004+"
-        } elseif ($buildInt -ge 18363) {
-            $versionName = "Windows 10 1909"
-        } elseif ($buildInt -ge 18362) {
-            $versionName = "Windows 10 1903"
-        } elseif ($buildInt -ge 17763) {
-            $versionName = "Windows 10 1809"
-        } elseif ($buildInt -ge 17134) {
-            $versionName = "Windows 10 1803"
-        } elseif ($buildInt -ge 16299) {
-            $versionName = "Windows 10 1709"
-        } else {
-            $versionName = "Windows 10 (Pre-1709)"
-        }
-        
-        return @{
-            Compatible = $isCompatible
-            Available = $wingetAvailable
-            BuildNumber = $buildNumber
-            OSName = $osName
-            VersionName = $versionName
-            MinimumBuild = 16299
-            MinimumVersion = "Windows 10 1709"
-        }
-    }
-    catch {
-        return @{
-            Compatible = $false
-            Available = $false
-            BuildNumber = "Unknown"
-            OSName = "Unknown"
-            VersionName = "Unknown"
-            MinimumBuild = 16299
-            MinimumVersion = "Windows 10 1709"
-            Error = $_.Exception.Message
-        }
-    }
-}
 
 # Global variables
 $script:SelectedApps = @()
@@ -94,198 +44,75 @@ if ($script:OSInfo) {
     $script:IsWindows11 = $false
 }
 
-# App definitions
-$script:Apps = @{
-    "Development" = @(
-        @{Name="Visual Studio Code"; Key="vscode"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Git"; Key="git"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Python"; Key="python"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="PyCharm Community"; Key="pycharm"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="IntelliJ IDEA Community"; Key="intellij"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="WebStorm"; Key="webstorm"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Android Studio"; Key="androidstudio"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="GitHub Desktop"; Key="github"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Postman"; Key="postman"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Node.js"; Key="nodejs"; Default=$false; Win10=$false; Win11=$true}
-        @{Name="Windows Terminal"; Key="terminal"; Default=$true; Win10=$false; Win11=$true}
-    )
-    "Browsers" = @(
-        @{Name="Google Chrome"; Key="chrome"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Mozilla Firefox"; Key="firefox"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Brave Browser"; Key="brave"; Default=$false; Win10=$true; Win11=$true}
-    )
-    "Media & Communication" = @(
-        @{Name="Spotify"; Key="spotify"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Discord"; Key="discord"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Steam"; Key="steam"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="VLC Media Player"; Key="vlc"; Default=$false; Win10=$true; Win11=$true}
-    )
-    "Utilities" = @(
-        @{Name="7-Zip"; Key="7zip"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Notepad++"; Key="notepad"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Microsoft PowerToys"; Key="powertoys"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Windows Terminal"; Key="terminal"; Default=$true; Win10=$false; Win11=$true}
-    )
+# Load configuration data
+try {
+    $script:Apps = Get-ConfigurationData -ConfigType "Apps"
+    if ($script:Apps.Keys.Count -eq 0) {
+        throw "Apps configuration is empty"
+    }
+} catch {
+    Write-LogMessage "Failed to load apps configuration: $_" -Level "ERROR"
+    # Fallback to minimal configuration
+    $script:Apps = @{
+        "Essential" = @(
+            @{Name="Visual Studio Code"; Key="vscode"; Default=$true; Win10=$true; Win11=$true}
+            @{Name="Git"; Key="git"; Default=$true; Win10=$true; Win11=$true}
+            @{Name="Google Chrome"; Key="chrome"; Default=$true; Win10=$true; Win11=$true}
+        )
+    }
 }
 
-# Bloatware definitions
-$script:Bloatware = @{
-    "Microsoft Office & Productivity" = @(
-        @{Name="Microsoft Office Hub"; Key="ms-officehub"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Microsoft Teams (Consumer)"; Key="ms-teams"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="OneNote (Store)"; Key="ms-onenote"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Microsoft People"; Key="ms-people"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Microsoft To-Do"; Key="ms-todo"; Default=$true; Win10=$false; Win11=$true}
-    )
-    "Windows Built-ins" = @(
-        @{Name="Microsoft 3D Viewer"; Key="ms-3dviewer"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Mixed Reality Portal"; Key="ms-mixedreality"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Print 3D"; Key="win-print3d"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Your Phone"; Key="win-yourphone"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Camera"; Key="win-camera"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Mail and Calendar"; Key="win-mail"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Sound Recorder"; Key="win-soundrec"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Microsoft Wallet"; Key="ms-wallet"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Messaging"; Key="ms-messaging"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="OneConnect"; Key="ms-oneconnect"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="ClipChamp"; Key="ms-clipchamp"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Bing Weather"; Key="bing-weather"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Bing News"; Key="bing-news"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Bing Finance"; Key="bing-finance"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Alarms & Clock"; Key="win-alarms"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Maps"; Key="win-maps"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Feedback Hub"; Key="win-feedback"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Get Help"; Key="win-gethelp"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Get Started"; Key="win-getstarted"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Microsoft Widgets"; Key="ms-widgets"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Microsoft Copilot"; Key="ms-copilot"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Skype App"; Key="skype-app"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "Entertainment & Gaming" = @(
-        @{Name="Xbox Gaming App"; Key="gaming-app"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Xbox Game Overlay"; Key="xbox-gameoverlay"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Xbox Gaming Overlay"; Key="xbox-gamingoverlay"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Xbox Identity Provider"; Key="xbox-identity"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Xbox Speech to Text"; Key="xbox-speech"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Xbox TCUI"; Key="xbox-tcui"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Groove Music"; Key="zune-music"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Movies & TV"; Key="zune-video"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Solitaire Collection"; Key="solitaire"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "Third-Party Apps" = @(
-        @{Name="Candy Crush Games"; Key="candy-crush"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Facebook"; Key="facebook"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Netflix"; Key="netflix"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disney+"; Key="disney"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="TikTok"; Key="tiktok"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Spotify (Store)"; Key="spotify-store"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Twitter"; Key="twitter"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="LinkedIn"; Key="linkedin"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Instagram"; Key="instagram"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="WhatsApp"; Key="whatsapp"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Amazon Prime Video"; Key="amazon-prime"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Hulu"; Key="hulu"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="PicsArt"; Key="picsart"; Default=$true; Win10=$true; Win11=$true}
-    )
+try {
+    $script:Bloatware = Get-ConfigurationData -ConfigType "Bloatware"
+    if ($script:Bloatware.Keys.Count -eq 0) {
+        throw "Bloatware configuration is empty"
+    }
+} catch {
+    Write-LogMessage "Failed to load bloatware configuration: $_" -Level "ERROR"
+    # Fallback to minimal configuration
+    $script:Bloatware = @{
+        "Common Bloatware" = @(
+            @{Name="Microsoft Office Hub"; Key="ms-officehub"; Default=$true; Win10=$true; Win11=$true}
+            @{Name="Candy Crush Games"; Key="candy-crush"; Default=$true; Win10=$true; Win11=$true}
+        )
+    }
 }
 
-# Services definitions
-$script:Services = @{
-    "Telemetry & Privacy" = @(
-        @{Name="Connected User Experiences and Telemetry"; Key="diagtrack"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="WAP Push Message Routing"; Key="dmwappushsvc"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Insider Service"; Key="wisvc"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "Performance & Storage" = @(
-        @{Name="Superfetch/SysMain"; Key="sysmain"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Search"; Key="wsearch"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Offline Files"; Key="cscservice"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "Network & Media" = @(
-        @{Name="Windows Media Player Network Sharing"; Key="wmpnetworksvc"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Remote Registry"; Key="remoteregistry"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Remote Access"; Key="remoteaccess"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Fax Service"; Key="fax"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "System & Interface" = @(
-        @{Name="Program Compatibility Assistant"; Key="pcasvc"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Parental Controls"; Key="wpcmonsvc"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Downloaded Maps Manager"; Key="mapsbroker"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Printer Extensions and Notifications"; Key="printnotify"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Retail Demo Service"; Key="retaildemo"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Geolocation Service"; Key="lfsvc"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Touch Keyboard and Handwriting Panel"; Key="tabletinputservice"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="HomeGroup Provider"; Key="homegrpservice"; Default=$true; Win10=$true; Win11=$false}
-        @{Name="Microsoft Wallet Service"; Key="walletservice"; Default=$true; Win10=$false; Win11=$true}
-    )
+try {
+    $script:Services = Get-ConfigurationData -ConfigType "Services"
+    if ($script:Services.Keys.Count -eq 0) {
+        throw "Services configuration is empty"
+    }
+} catch {
+    Write-LogMessage "Failed to load services configuration: $_" -Level "ERROR"
+    # Fallback to minimal configuration
+    $script:Services = @{
+        "Essential Services" = @(
+            @{Name="Connected User Experiences and Telemetry"; Key="diagtrack"; Default=$true; Win10=$true; Win11=$true}
+        )
+    }
 }
 
-# System tweaks definitions
-$script:Tweaks = @{
-    "File Explorer" = @(
-        @{Name="Show file extensions"; Key="show-extensions"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Show hidden files"; Key="show-hidden"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disable quick access"; Key="disable-quickaccess"; Default=$false; Win10=$true; Win11=$true}
-    )
-    "Privacy & Telemetry" = @(
-        @{Name="Disable Cortana"; Key="disable-cortana"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disable OneDrive auto-start"; Key="disable-onedrive"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Reduce telemetry"; Key="reduce-telemetry"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disable activity history"; Key="disable-activity"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disable web search in Start Menu"; Key="search-bing"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disable background apps"; Key="disable-background"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "Windows 11 Interface" = @(
-        @{Name="Taskbar left alignment"; Key="taskbar-left"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Classic right-click menu"; Key="classic-context"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Disable widgets"; Key="disable-widgets"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Disable Chat icon on taskbar"; Key="disable-chat"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Disable Snap layouts hover"; Key="disable-snap"; Default=$false; Win10=$false; Win11=$true}
-        @{Name="Configure Start menu layout"; Key="start-menu-pins"; Default=$false; Win10=$false; Win11=$true}
-    )
-    "Windows 10 Interface" = @(
-        @{Name="Hide Task View button"; Key="hide-taskview"; Default=$true; Win10=$true; Win11=$false}
-        @{Name="Hide Cortana button"; Key="hide-cortana-button"; Default=$true; Win10=$true; Win11=$false}
-        @{Name="Configure search box"; Key="configure-searchbox"; Default=$true; Win10=$true; Win11=$false}
-        @{Name="Disable News and Interests"; Key="disable-news-interests"; Default=$true; Win10=$true; Win11=$false}
-    )
-    "General Interface" = @(
-        @{Name="Dark theme"; Key="dark-theme"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Disable tips and suggestions"; Key="disable-tips"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disable startup sound"; Key="disable-startup-sound"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "System Performance" = @(
-        @{Name="Enable developer mode"; Key="dev-mode"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Disable Teams auto-start"; Key="disable-teams-autostart"; Default=$true; Win10=$true; Win11=$true}
-    )
+try {
+    $script:Tweaks = Get-ConfigurationData -ConfigType "Tweaks"
+    if ($script:Tweaks.Keys.Count -eq 0) {
+        throw "Tweaks configuration is empty"
+    }
+} catch {
+    Write-LogMessage "Failed to load tweaks configuration: $_" -Level "ERROR"
+    # Fallback to minimal configuration
+    $script:Tweaks = @{
+        "Essential Tweaks" = @(
+            @{Name="Show file extensions"; Key="show-extensions"; Default=$true; Win10=$true; Win11=$true}
+            @{Name="Disable Cortana"; Key="disable-cortana"; Default=$true; Win10=$true; Win11=$true}
+        )
+    }
 }
 
 function Get-InstallerName {
     param([string]$AppKey)
     
-    $mapping = @{
-        "vscode" = "Visual Studio Code"
-        "git" = "Git"
-        "python" = "Python"
-        "pycharm" = "PyCharm"
-        "intellij" = "IntelliJ IDEA"
-        "webstorm" = "WebStorm"
-        "androidstudio" = "Android Studio"
-        "github" = "GitHub Desktop"
-        "postman" = "Postman"
-        "nodejs" = "Node.js"
-        "terminal" = "Windows Terminal"
-        "chrome" = "Chrome"
-        "firefox" = "Firefox"
-        "brave" = "Brave"
-        "spotify" = "Spotify"
-        "discord" = "Discord"
-        "steam" = "Steam"
-        "vlc" = "VLC"
-        "7zip" = "7-Zip"
-        "notepad" = "Notepad++"
-        "powertoys" = "Microsoft PowerToys"
-    }
+    $mapping = Get-InstallerNameMapping
     
     if ($mapping.ContainsKey($AppKey)) {
         return $mapping[$AppKey]
@@ -297,28 +124,7 @@ function Get-InstallerName {
 function Get-WingetId {
     param([string]$AppKey)
     
-    $wingetIds = @{
-        "vscode" = "Microsoft.VisualStudioCode"
-        "git" = "Git.Git"
-        "python" = "Python.Python.3.13"
-        "pycharm" = "JetBrains.PyCharm.Community"
-        "intellij" = "JetBrains.IntelliJIDEA.Community"
-        "webstorm" = "JetBrains.WebStorm"
-        "github" = "GitHub.GitHubDesktop"
-        "postman" = "Postman.Postman"
-        "nodejs" = "OpenJS.NodeJS"
-        "terminal" = "Microsoft.WindowsTerminal"
-        "chrome" = "Google.Chrome"
-        "firefox" = "Mozilla.Firefox"
-        "brave" = "Brave.Brave"
-        "spotify" = "Spotify.Spotify"
-        "discord" = "Discord.Discord"
-        "steam" = "Valve.Steam"
-        "vlc" = "VideoLAN.VLC"
-        "7zip" = "7zip.7zip"
-        "notepad" = "Notepad++.Notepad++"
-        "powertoys" = "Microsoft.PowerToys"
-    }
+    $wingetIds = Get-WingetIdMapping
     
     if ($wingetIds.ContainsKey($AppKey)) {
         return $wingetIds[$AppKey]
@@ -742,32 +548,6 @@ function Restore-CheckboxStates {
     }
 }
 
-function Get-WingetId {
-    param($AppKey)
-    
-    $wingetIds = @{
-        "chrome" = "Google.Chrome"
-        "firefox" = "Mozilla.Firefox" 
-        "brave" = "Brave.Brave"
-        "vscode" = "Microsoft.VisualStudioCode"
-        "git" = "Git.Git"
-        "python" = "Python.Python.3.12"
-        "pycharm" = "JetBrains.PyCharm.Community"
-        "github" = "GitHub.GitHubDesktop"
-        "postman" = "Postman.Postman"
-        "nodejs" = "OpenJS.NodeJS"
-        "terminal" = "Microsoft.WindowsTerminal"
-        "spotify" = "Spotify.Spotify"
-        "discord" = "Discord.Discord"
-        "steam" = "Valve.Steam"
-        "vlc" = "VideoLAN.VLC"
-        "7zip" = "7zip.7zip"
-        "notepad" = "Notepad++.Notepad++"
-        "powertoys" = "Microsoft.PowerToys"
-    }
-    
-    return $wingetIds[$AppKey]
-}
 
 
 function Show-WindowsUpdateDialog {
