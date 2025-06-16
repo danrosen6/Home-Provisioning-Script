@@ -6,6 +6,34 @@ $script:MaxRetries = 3
 $script:RetryDelay = 5 # seconds
 $script:InstallerTimeoutMinutes = 5 # Timeout for installer processes
 
+# Function to run code with timeout to prevent hanging
+function Invoke-WithTimeout {
+    param(
+        [Parameter(Mandatory=$true)]
+        [scriptblock]$ScriptBlock,
+        
+        [Parameter(Mandatory=$false)]
+        [int]$TimeoutSeconds = 30
+    )
+    
+    try {
+        $job = Start-Job -ScriptBlock $ScriptBlock
+        $completed = Wait-Job $job -Timeout $TimeoutSeconds
+        
+        if ($completed) {
+            $result = Receive-Job $job
+            Remove-Job $job
+            return $result
+        } else {
+            Remove-Job $job -Force
+            throw "Operation timed out after $TimeoutSeconds seconds"
+        }
+    }
+    catch {
+        throw $_
+    }
+}
+
 # Function to run processes with timeout to prevent hanging
 function Start-ProcessWithTimeout {
     param(
@@ -102,17 +130,10 @@ function Start-ProcessWithTimeout {
     }
 }
 
-# Import required modules
-$LoggingModule = Join-Path (Split-Path $PSScriptRoot) "utils\Logging.psm1"
-$ConfigModule = Join-Path (Split-Path $PSScriptRoot) "utils\ConfigLoader.psm1"
-$WingetModule = Join-Path (Split-Path $PSScriptRoot) "utils\WingetUtils.psm1"
-$RecoveryModule = Join-Path (Split-Path $PSScriptRoot) "utils\RecoveryUtils.psm1"
+# Note: Required modules are imported by the main GUI script
+# Provide fallback functions only if not available
 
-if (Test-Path $LoggingModule) {
-    Import-Module $LoggingModule -Force -Global
-    Write-Verbose "Imported centralized logging module"
-} else {
-    # Fallback Write-LogMessage function if centralized logging is not available
+if (-not (Get-Command Write-LogMessage -ErrorAction SilentlyContinue)) {
     function Write-LogMessage {
         param (
             [Parameter(Mandatory=$true)]
@@ -126,7 +147,6 @@ if (Test-Path $LoggingModule) {
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         $logMessage = "[$timestamp] [$Level] $Message"
         
-        # Write to console with color
         $color = switch ($Level) {
             "ERROR" { "Red" }
             "WARNING" { "Yellow" }
@@ -135,61 +155,10 @@ if (Test-Path $LoggingModule) {
             default { "White" }
         }
         Write-Host $logMessage -ForegroundColor $color
-        
-        # Try to write to GUI if available
-        if ($script:txtLog -ne $null) {
-            try {
-                $script:txtLog.SelectionColor = switch ($Level) {
-                    "ERROR" { [System.Drawing.Color]::Red }
-                    "WARNING" { [System.Drawing.Color]::Orange }
-                    "SUCCESS" { [System.Drawing.Color]::Green }
-                    default { [System.Drawing.Color]::Black }
-                }
-                $script:txtLog.AppendText("$logMessage`r`n")
-                $script:txtLog.SelectionStart = $script:txtLog.Text.Length
-                $script:txtLog.ScrollToCaret()
-            }
-            catch {
-                Write-Host "Error updating log textbox: $_" -ForegroundColor Red
-            }
-        }
-        
-        # Write to log file if enabled
-        if ($script:EnableFileLogging -and $script:LogPath) {
-            try {
-                Add-Content -Path $script:LogPath -Value $logMessage -ErrorAction Stop
-            }
-            catch {
-                Write-Host "Failed to write to log file: $_" -ForegroundColor Red
-            }
-        }
     }
-    Write-Warning "Centralized logging module not found, using fallback logging"
 }
 
-# Import ConfigLoader module
-if (Test-Path $ConfigModule) {
-    Import-Module $ConfigModule -Force -Global
-    Write-Verbose "Imported ConfigLoader module"
-} else {
-    Write-Warning "ConfigLoader module not found, JSON configuration features will not work"
-}
-
-# Import WingetUtils module
-if (Test-Path $WingetModule) {
-    Import-Module $WingetModule -Force -Global
-    Write-Verbose "Imported WingetUtils module"
-} else {
-    Write-Warning "WingetUtils module not found, enhanced winget installation features will not work"
-}
-
-# Import RecoveryUtils module
-if (Test-Path $RecoveryModule) {
-    Import-Module $RecoveryModule -Force -Global
-    Write-Verbose "Imported RecoveryUtils module"
-} else {
-    Write-Warning "RecoveryUtils module not found, operation state tracking will not work"
-    # Fallback function for operation state tracking
+if (-not (Get-Command Save-OperationState -ErrorAction SilentlyContinue)) {
     function Save-OperationState {
         param([string]$OperationType, [string]$ItemKey, [string]$Status, [hashtable]$AdditionalData)
         Write-Verbose "Operation state tracking disabled: $OperationType - $ItemKey - $Status"
@@ -497,18 +466,53 @@ function Test-ApplicationInstalled {
     return $false
 }
 
-# Legacy function - kept for backward compatibility during transition
-# All download info is now stored in apps.json and accessed via Get-AppDownloadInfo
+# Legacy function - provides basic download info as fallback when JSON config fails
 function Get-AppDirectDownloadInfo {
     param(
         [Parameter(Mandatory=$true)]
         [string]$AppName
     )
     
-    Write-LogMessage "Using legacy Get-AppDirectDownloadInfo for $AppName - consider updating to use AppKey and JSON config" -Level "DEBUG"
+    Write-LogMessage "Using legacy fallback download info for $AppName" -Level "DEBUG"
     
-    # Return null to force fallback to old hardcoded mapping if needed
-    # This function is kept for compatibility but should be replaced
+    # Basic fallback download information for common apps
+    $fallbackDownloads = @{
+        "Google Chrome" = @{
+            Url = "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi"
+            Extension = ".msi"
+            Arguments = @("/quiet", "/norestart")
+        }
+        "Mozilla Firefox" = @{
+            Url = "https://download.mozilla.org/?product=firefox-latest-ssl&os=win64&lang=en-US"
+            Extension = ".exe"
+            Arguments = "-ms"
+        }
+        "Visual Studio Code" = @{
+            Url = "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user"
+            Extension = ".exe"
+            Arguments = "/VERYSILENT /NORESTART /MERGETASKS=!runcode"
+        }
+        "Git" = @{
+            Url = "https://github.com/git-for-windows/git/releases/download/v2.49.0.windows.1/Git-2.49.0-64-bit.exe"
+            Extension = ".exe"
+            Arguments = "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS"
+        }
+        "Python" = @{
+            Url = "https://www.python.org/ftp/python/3.13.4/python-3.13.4-amd64.exe"
+            Extension = ".exe"
+            Arguments = "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0"
+        }
+        "Microsoft PowerToys" = @{
+            Url = "https://github.com/microsoft/PowerToys/releases/latest/download/PowerToysSetup-x64.exe"
+            Extension = ".exe"
+            Arguments = "-silent"
+        }
+    }
+    
+    if ($fallbackDownloads.ContainsKey($AppName)) {
+        return $fallbackDownloads[$AppName]
+    }
+    
     return $null
 }
 
@@ -746,7 +750,10 @@ function Install-Application {
         [switch]$Force,
         
         [Parameter(Mandatory=$false)]
-        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
+        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None,
+        
+        [Parameter(Mandatory=$false)]
+        [int]$TimeoutMinutes = 10
     )
     
     Write-LogMessage "Installing application: $AppName" -Level "INFO"
@@ -790,34 +797,48 @@ function Install-Application {
         }
     }
     
-    # Check winget compatibility and availability using enhanced utilities
-    $wingetCompatible = $false
+    # Check global and script-level UseDirectDownloadOnly flags
+    if ((Get-Variable -Name "UseDirectDownloadOnly" -Scope Global -ErrorAction SilentlyContinue) -and $Global:UseDirectDownloadOnly) {
+        $script:UseDirectDownloadOnly = $true
+    }
+    
+    # Check if winget should be used (determined by main GUI)
     $wingetAvailable = $false
     
     if (-not $script:UseDirectDownloadOnly) {
-        # Use enhanced winget compatibility check
-        $compatibility = Test-WingetCompatibility
-        $wingetCompatible = $compatibility.Compatible
-        $wingetAvailable = $compatibility.Available
-        
-        if (-not $wingetCompatible) {
-            Write-LogMessage "Windows $($compatibility.VersionName) (Build $($compatibility.BuildNumber)) is below minimum for winget ($($compatibility.MinimumBuild)). Using direct download." -Level "INFO"
-        } elseif (-not $wingetAvailable) {
-            Write-LogMessage "Windows is compatible with winget but it's not currently available for $AppName installation" -Level "DEBUG"
+        # Simple check for winget command availability
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            $wingetAvailable = $true
+            Write-LogMessage "Winget is available for $AppName installation" -Level "DEBUG"
         } else {
-            Write-LogMessage "Winget is available and compatible for $AppName installation" -Level "INFO"
+            Write-LogMessage "Winget not available for $AppName, using direct download" -Level "DEBUG"
         }
+    } else {
+        Write-LogMessage "Direct download mode enabled - skipping winget for $AppName" -Level "DEBUG"
     }
     
     if ($wingetAvailable) {
         # WingetId was already determined earlier for installation verification
+        Write-LogMessage "Winget is available, checking WingetId for $AppName..." -Level "DEBUG"
         
         if ($WingetId) {
             Write-LogMessage "Installing $AppName via winget (ID: $WingetId)..." -Level "INFO"
             try {
-                $wingetOutput = winget install --id $WingetId --accept-source-agreements --accept-package-agreements --silent 2>&1
+                Write-LogMessage "Executing: winget install --id $WingetId --accept-source-agreements --accept-package-agreements --silent" -Level "DEBUG"
                 
-                if ($LASTEXITCODE -eq 0 -or $wingetOutput -match "Successfully installed") {
+                # Use timeout protection for winget install to prevent GUI freezing
+                $wingetResult = Invoke-WithTimeout -ScriptBlock {
+                    $output = winget install --id $WingetId --accept-source-agreements --accept-package-agreements --silent 2>&1
+                    return @{
+                        Output = $output
+                        ExitCode = $LASTEXITCODE
+                    }
+                } -TimeoutSeconds 300  # 5 minute timeout
+                
+                $wingetExitCode = $wingetResult.ExitCode
+                $wingetOutput = $wingetResult.Output
+                
+                if ($wingetOutput -match "Successfully installed" -or $wingetOutput -match "No applicable update found") {
                     Write-LogMessage "$AppName installed successfully via winget!" -Level "SUCCESS"
                     # Get build number for logging
                     $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -ErrorAction SilentlyContinue).CurrentBuild
@@ -837,7 +858,7 @@ function Install-Application {
                     # Get build number for error logging
                     $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -ErrorAction SilentlyContinue).CurrentBuild
                     
-                    Write-LogMessage "Winget installation failed with exit code: $LASTEXITCODE" -Level "WARNING"
+                    Write-LogMessage "Winget installation failed for $AppName" -Level "WARNING"
                     Write-LogMessage "Winget output: $wingetOutput" -Level "DEBUG"
                     Write-LogMessage "Windows build: $buildNumber (winget requires 16299+)" -Level "DEBUG"
                     # Continue to direct download method
@@ -847,14 +868,26 @@ function Install-Application {
                 Write-LogMessage "Error using winget: $_" -Level "WARNING"
                 # Continue to direct download method
             }
+        } else {
+            Write-LogMessage "No WingetId available for $AppName, proceeding to direct download" -Level "DEBUG"
         }
+    } else {
+        Write-LogMessage "Winget not available for $AppName installation, using direct download method" -Level "DEBUG"
     }
     
     # If no direct download info was provided, try to get it
     if ($null -eq $DirectDownload) {
+        Write-LogMessage "No DirectDownload provided, attempting to retrieve for $AppName (AppKey: $AppKey)" -Level "DEBUG"
+        
         # Try to get from JSON configuration first if AppKey is provided
         if ($AppKey) {
+            Write-LogMessage "Looking up JSON configuration for AppKey: $AppKey" -Level "DEBUG"
             $appConfig = Get-AppDownloadInfo -AppKey $AppKey
+            if ($appConfig) {
+                Write-LogMessage "JSON config found for $AppKey - URL: $($appConfig.Url)" -Level "DEBUG"
+            } else {
+                Write-LogMessage "JSON config NOT found for $AppKey" -Level "WARNING"
+            }
             if ($appConfig -and $appConfig.Url) {
                 $DirectDownload = @{
                     Url = $appConfig.Url
@@ -862,7 +895,7 @@ function Install-Application {
                     Arguments = $appConfig.Arguments
                     VerificationPaths = $appConfig.VerificationPaths
                 }
-                Write-LogMessage "Using download info from JSON config for $AppName" -Level "INFO"
+                Write-LogMessage "Using download info from JSON config for $AppName (URL: $($appConfig.Url))" -Level "INFO"
                 
                 # Handle dynamic URL retrieval based on UrlType
                 if ($appConfig.UrlType) {
@@ -894,12 +927,18 @@ function Install-Application {
     }
     
     if ($null -eq $DirectDownload) {
-        Write-LogMessage "No download information available for $AppName" -Level "ERROR"
+        Write-LogMessage "No download information available for $AppName (AppKey: $AppKey)" -Level "ERROR"
+        Write-LogMessage "This means both winget and direct download methods failed to provide installation info" -Level "ERROR"
         Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Failed" -AdditionalData @{
             Error = "No download information available"
+            AppKey = $AppKey
+            WingetAvailable = $wingetAvailable
+            WingetId = $WingetId
             Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         }
         return $false
+    } else {
+        Write-LogMessage "DirectDownload info retrieved for $AppName - URL: $($DirectDownload.Url), Extension: $($DirectDownload.Extension)" -Level "DEBUG"
     }
     
     try {

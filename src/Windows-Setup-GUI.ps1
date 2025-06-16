@@ -28,6 +28,8 @@ $script:SelectedApps = @()
 $script:SelectedBloatware = @()
 $script:SelectedServices = @()
 $script:SelectedTweaks = @()
+$script:UseDirectDownloadOnly = $false
+$script:UseWingetForApps = $false
 
 # Checkbox state storage
 $script:CheckboxStates = @{
@@ -825,19 +827,22 @@ $runBtn.Add_Click({
                     switch ($wingetResult.Reason) {
                         "IncompatibleWindows" {
                             $buildNumber = $wingetResult.Details.BuildNumber
-                            Update-StatusMessage "ERROR: Windows build $buildNumber incompatible with winget (requires 16299+)" "ERROR"
-                            Write-LogMessage "Cannot proceed: Windows version incompatible with winget" -Level "ERROR"
-                            throw "Windows version incompatible with winget. Please update Windows or use a different installation method."
+                            Update-StatusMessage "WARNING: Windows build $buildNumber incompatible with winget - using direct downloads" "WARNING"
+                            Write-LogMessage "Windows version incompatible with winget, proceeding with direct downloads only" -Level "WARNING"
+                            $script:UseDirectDownloadOnly = $true
+                            $Global:UseDirectDownloadOnly = $true
                         }
                         "InstallationFailed" {
-                            Update-StatusMessage "ERROR: Failed to install winget - this is required for app installations" "ERROR"
-                            Write-LogMessage "Winget installation failed and is required as primary install method" -Level "ERROR"
-                            throw "Winget installation failed. Cannot proceed with app installations."
+                            Update-StatusMessage "WARNING: Winget installation failed - using direct downloads instead" "WARNING"
+                            Write-LogMessage "Winget installation failed, proceeding with direct downloads only" -Level "WARNING"
+                            $script:UseDirectDownloadOnly = $true
+                            $Global:UseDirectDownloadOnly = $true
                         }
                         default {
-                            Update-StatusMessage "ERROR: Winget setup failed - cannot proceed" "ERROR"
-                            Write-LogMessage "Winget setup failed and is required as primary install method" -Level "ERROR" 
-                            throw "Winget setup failed. Cannot proceed with app installations."
+                            Update-StatusMessage "WARNING: Winget setup failed - using direct downloads instead" "WARNING"
+                            Write-LogMessage "Winget setup failed, proceeding with direct downloads only" -Level "WARNING"
+                            $script:UseDirectDownloadOnly = $true
+                            $Global:UseDirectDownloadOnly = $true
                         }
                     }
                 }
@@ -850,14 +855,20 @@ $runBtn.Add_Click({
                     $installerName = Get-InstallerName -AppKey $appKey
                     Update-StatusMessage "Installing $installerName... ($currentStep/$($selectedItems.Count))" "INFO"
                     try {
-                        # Use winget as primary installation method (now guaranteed to be available)
-                        $wingetId = Get-WingetId -AppKey $appKey
-                        if ($wingetId) {
-                            Write-LogMessage "Installing $installerName via winget (ID: $wingetId)" -Level "INFO"
-                            Install-Application -AppName $installerName -WingetId $wingetId -AppKey $appKey
-                        } else {
-                            Write-LogMessage "No winget ID found for $installerName, using direct download as fallback" -Level "INFO"
+                        # Check if we should use direct downloads only
+                        if ($script:UseDirectDownloadOnly) {
+                            Write-LogMessage "Installing $installerName via direct download (winget disabled)" -Level "INFO"
                             Install-Application -AppName $installerName -AppKey $appKey
+                        } else {
+                            # Use winget as primary installation method (now guaranteed to be available)
+                            $wingetId = Get-WingetId -AppKey $appKey
+                            if ($wingetId) {
+                                Write-LogMessage "Installing $installerName via winget (ID: $wingetId)" -Level "INFO"
+                                Install-Application -AppName $installerName -WingetId $wingetId -AppKey $appKey
+                            } else {
+                                Write-LogMessage "No winget ID found for $installerName, using direct download as fallback" -Level "INFO"
+                                Install-Application -AppName $installerName -AppKey $appKey
+                            }
                         }
                         Update-StatusMessage "Successfully installed $installerName" "SUCCESS"
                     } catch {

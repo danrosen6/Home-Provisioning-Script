@@ -366,20 +366,21 @@ function Install-WingetDirect {
             Write-LogMessage "Created download directory at: $downloadDir" -Level "INFO"
         }
         
-        # Step 1: Install dependencies first
+        # Step 1: Install dependencies first - simplified approach for better compatibility
+        Write-LogMessage "Installing dependencies with fallback handling..." -Level "INFO"
+        
         $dependencies = @(
             @{
                 Name = "Microsoft.VCLibs.x64.14.00.Desktop"
                 Url = "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx"
-                Required = $true
             },
             @{
                 Name = "Microsoft.UI.Xaml.2.8"
                 Url = "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx"
-                Required = $true
             }
         )
         
+        $dependenciesInstalled = 0
         foreach ($dep in $dependencies) {
             $depPath = Join-Path $downloadDir "$($dep.Name).appx"
             Write-LogMessage "Downloading dependency: $($dep.Name)" -Level "INFO"
@@ -392,15 +393,14 @@ function Install-WingetDirect {
                 if (Test-Path $depPath) {
                     Add-AppxPackage -Path $depPath -ErrorAction Stop
                     Write-LogMessage "Installed dependency: $($dep.Name)" -Level "SUCCESS"
+                    $dependenciesInstalled++
                 } else {
-                    throw "Download failed - file not found"
+                    Write-LogMessage "Download failed for dependency: $($dep.Name)" -Level "WARNING"
                 }
             }
             catch {
-                if ($dep.Required) {
-                    throw "Failed to install required dependency: $($dep.Name) - $_"
-                }
-                Write-LogMessage "Failed to install optional dependency: $($dep.Name)" -Level "WARNING"
+                Write-LogMessage "Failed to install dependency $($dep.Name): $_" -Level "WARNING"
+                Write-LogMessage "Continuing with winget installation despite dependency failure..." -Level "INFO"
             }
         }
         
@@ -463,9 +463,28 @@ function Install-WingetDirect {
         $fileSize = (Get-Item $bundlePath).Length
         Write-LogMessage "Download completed successfully (Size: $([math]::Round($fileSize/1MB, 2)) MB)" -Level "SUCCESS"
         
-        # Install the bundle
+        # Install the bundle with dependency tolerance
         Write-LogMessage "Installing winget package..." -Level "INFO"
-        Add-AppxPackage -Path $bundlePath -ForceApplicationShutdown -ErrorAction Stop
+        try {
+            Add-AppxPackage -Path $bundlePath -ForceApplicationShutdown -ErrorAction Stop
+            Write-LogMessage "Winget package installed successfully" -Level "SUCCESS"
+        }
+        catch {
+            Write-LogMessage "Winget installation failed (this may be due to dependency version conflicts): $_" -Level "WARNING"
+            
+            # Check if it's a dependency version issue - if so, consider it a soft failure
+            if ($_.Exception.Message -like "*dependency*" -or $_.Exception.Message -like "*VCLibs*") {
+                Write-LogMessage "Dependency version conflict detected - this is common on older Windows 10 systems" -Level "WARNING"
+                Write-LogMessage "The script will continue using direct downloads instead of winget" -Level "INFO"
+                
+                # Clean up and return false to indicate winget installation failed
+                Remove-Item $downloadDir -Recurse -Force -ErrorAction SilentlyContinue
+                return $false
+            } else {
+                # Re-throw other types of errors
+                throw $_
+            }
+        }
         
         # Clean up
         Remove-Item $downloadDir -Recurse -Force -ErrorAction SilentlyContinue

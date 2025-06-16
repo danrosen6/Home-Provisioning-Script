@@ -15,10 +15,25 @@ function Get-ConfigurationData {
     )
     
     try {
-        $configPath = Join-Path $PSScriptRoot "..\config\$($ConfigType.ToLower()).json"
+        # More robust path resolution - try multiple possible locations
+        $possiblePaths = @(
+            (Join-Path $PSScriptRoot "..\config\$($ConfigType.ToLower()).json"),
+            (Join-Path (Split-Path $PSScriptRoot) "config\$($ConfigType.ToLower()).json"),
+            (Join-Path (Get-Location) "config\$($ConfigType.ToLower()).json"),
+            (Join-Path (Split-Path (Split-Path $PSScriptRoot)) "src\config\$($ConfigType.ToLower()).json")
+        )
         
-        if (-not (Test-Path $configPath)) {
-            Write-Warning "Configuration file not found: $configPath"
+        $configPath = $null
+        foreach ($path in $possiblePaths) {
+            if (Test-Path $path) {
+                $configPath = $path
+                Write-Verbose "Found config file at: $configPath"
+                break
+            }
+        }
+        
+        if (-not $configPath) {
+            Write-Warning "Configuration file not found for $ConfigType. Searched paths: $($possiblePaths -join ', ')"
             return @{}
         }
         
