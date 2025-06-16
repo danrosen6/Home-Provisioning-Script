@@ -4,7 +4,61 @@
 $script:UseDirectDownloadOnly = $false
 $script:MaxRetries = 3
 $script:RetryDelay = 5 # seconds
-$script:InstallerTimeoutMinutes = 5 # Timeout for installer processes
+$script:InstallerTimeoutMinutes = 10 # Timeout for installer processes
+
+# Timeout configuration - can be adjusted based on system performance
+$script:TimeoutSettings = @{
+    InstallerTimeout = 10       # Minutes for individual installers
+    WingetTimeout = 5          # Minutes for winget operations  
+    DownloadTimeout = 5        # Minutes for downloads
+    VerificationDelay = 3      # Seconds to wait after installation
+    StatusUpdateInterval = 30  # Seconds between progress updates
+}
+
+# Initialize timeout settings on module import
+$script:InstallerTimeoutMinutes = $script:TimeoutSettings.InstallerTimeout
+
+function Show-TimeoutSettings {
+    [CmdletBinding()]
+    param()
+    
+    Write-LogMessage "📋 Current Timeout Settings:" -Level "INFO"
+    Write-LogMessage "   • Installer Timeout: $($script:TimeoutSettings.InstallerTimeout) minutes" -Level "INFO"
+    Write-LogMessage "   • Winget Timeout: $($script:TimeoutSettings.WingetTimeout) minutes" -Level "INFO"
+    Write-LogMessage "   • Download Timeout: $($script:TimeoutSettings.DownloadTimeout) minutes" -Level "INFO"
+    Write-LogMessage "   • Post-Install Verification Delay: $($script:TimeoutSettings.VerificationDelay) seconds" -Level "INFO"
+    Write-LogMessage "   • Status Update Interval: $($script:TimeoutSettings.StatusUpdateInterval) seconds" -Level "INFO"
+}
+
+function Set-TimeoutSettings {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$false)]
+        [int]$InstallerTimeoutMinutes,
+        
+        [Parameter(Mandatory=$false)]
+        [int]$WingetTimeoutMinutes,
+        
+        [Parameter(Mandatory=$false)]
+        [int]$DownloadTimeoutMinutes
+    )
+    
+    if ($InstallerTimeoutMinutes) {
+        $script:TimeoutSettings.InstallerTimeout = $InstallerTimeoutMinutes
+        $script:InstallerTimeoutMinutes = $InstallerTimeoutMinutes
+        Write-LogMessage "Updated installer timeout to $InstallerTimeoutMinutes minutes" -Level "INFO"
+    }
+    
+    if ($WingetTimeoutMinutes) {
+        $script:TimeoutSettings.WingetTimeout = $WingetTimeoutMinutes
+        Write-LogMessage "Updated winget timeout to $WingetTimeoutMinutes minutes" -Level "INFO"
+    }
+    
+    if ($DownloadTimeoutMinutes) {
+        $script:TimeoutSettings.DownloadTimeout = $DownloadTimeoutMinutes
+        Write-LogMessage "Updated download timeout to $DownloadTimeoutMinutes minutes" -Level "INFO"
+    }
+}
 
 # Function to run code with timeout to prevent hanging
 function Invoke-WithTimeout {
@@ -70,6 +124,10 @@ function Start-ProcessWithTimeout {
         $timeoutMs = $TimeoutMinutes * 60 * 1000
         $checkIntervalMs = 1000 # Check for cancellation every second
         $elapsed = 0
+        $statusUpdateInterval = 30000 # 30 seconds in milliseconds
+        $lastStatusUpdate = 0
+        
+        Write-LogMessage "Process started (PID: $($process.Id)). Waiting up to $TimeoutMinutes minutes..." -Level "INFO"
         
         while ($elapsed -lt $timeoutMs -and -not $process.HasExited) {
             # Check for cancellation
@@ -90,6 +148,22 @@ function Start-ProcessWithTimeout {
                 }
             }
             
+            # Provide periodic status updates
+            if (($elapsed - $lastStatusUpdate) -ge $statusUpdateInterval) {
+                $elapsedMinutes = [math]::Round($elapsed / 60000, 1)
+                $remainingMinutes = [math]::Round(($timeoutMs - $elapsed) / 60000, 1)
+                Write-LogMessage "Installer still running... Elapsed: ${elapsedMinutes}m, Remaining: ${remainingMinutes}m" -Level "INFO"
+                $lastStatusUpdate = $elapsed
+                
+                # Update progress system if available
+                try {
+                    $percentComplete = [math]::Min(95, ($elapsed / $timeoutMs) * 100)
+                    Update-ProgressStatus -Message "Installing... (${elapsedMinutes}m elapsed)" -PercentComplete $percentComplete
+                } catch {
+                    # Progress system not available, continue
+                }
+            }
+            
             Start-Sleep -Milliseconds $checkIntervalMs
             $elapsed += $checkIntervalMs
         }
@@ -97,17 +171,28 @@ function Start-ProcessWithTimeout {
         $completed = $process.HasExited
         
         if ($completed) {
-            Write-LogMessage "Process completed with exit code: $($process.ExitCode)" -Level "INFO"
+            $elapsedMinutes = [math]::Round($elapsed / 60000, 1)
+            Write-LogMessage "Process completed successfully after ${elapsedMinutes}m with exit code: $($process.ExitCode)" -Level "SUCCESS"
             return $process
         } else {
             # Timeout occurred
-            Write-LogMessage "Process timed out after $TimeoutMinutes minutes, killing process" -Level "WARNING"
+            $elapsedMinutes = [math]::Round($elapsed / 60000, 1)
+            Write-LogMessage "⏰ TIMEOUT: Process exceeded $TimeoutMinutes minute limit (ran for ${elapsedMinutes}m)" -Level "ERROR"
+            Write-LogMessage "Attempting to terminate installer process (PID: $($process.Id))..." -Level "WARNING"
             
             try {
                 $process.Kill()
                 $process.WaitForExit(5000) # Wait up to 5 seconds for cleanup
+                Write-LogMessage "Process terminated successfully" -Level "INFO"
             } catch {
                 Write-LogMessage "Error killing timed-out process: $_" -Level "ERROR"
+            }
+            
+            # Update progress system with timeout status
+            try {
+                Update-ProgressStatus -Message "Installation timed out after ${elapsedMinutes}m" -Level "ERROR"
+            } catch {
+                # Progress system not available
             }
             
             # Return a process-like object with timeout exit code
@@ -116,6 +201,8 @@ function Start-ProcessWithTimeout {
                 HasExited = $true
                 Id = $process.Id
                 TimedOut = $true
+                ElapsedMinutes = $elapsedMinutes
+                TimeoutMinutes = $TimeoutMinutes
             }
         }
     }
@@ -327,7 +414,7 @@ function Test-ApplicationInstalled {
             $installedPrograms = Get-ItemProperty $regPath -ErrorAction SilentlyContinue | Where-Object {
                 $_.DisplayName -like "*$AppName*" -or 
                 $_.DisplayName -like "*$(($AppName -split ' ')[0])*" -or
-                ($AppName -eq "Google Chrome" -and $_.DisplayName -like "*Chrome*") -or
+                ($AppName -eq "Google Chrome" -and ($_.DisplayName -like "*Chrome*" -or $_.DisplayName -like "*Google Chrome*")) -or
                 ($AppName -eq "Mozilla Firefox" -and $_.DisplayName -like "*Firefox*") -or
                 ($AppName -eq "Visual Studio Code" -and $_.DisplayName -like "*Visual Studio Code*") -or
                 ($AppName -eq "7-Zip" -and $_.DisplayName -like "*7-Zip*") -or
@@ -827,6 +914,7 @@ function Install-Application {
                 Write-LogMessage "Executing: winget install --id $WingetId --accept-source-agreements --accept-package-agreements --silent" -Level "DEBUG"
                 
                 # Use timeout protection for winget install to prevent GUI freezing
+                Write-LogMessage "Starting winget installation with 5-minute timeout..." -Level "INFO"
                 $wingetResult = Invoke-WithTimeout -ScriptBlock {
                     $output = winget install --id $WingetId --accept-source-agreements --accept-package-agreements --silent 2>&1
                     return @{
@@ -834,6 +922,12 @@ function Install-Application {
                         ExitCode = $LASTEXITCODE
                     }
                 } -TimeoutSeconds 300  # 5 minute timeout
+                
+                if (-not $wingetResult) {
+                    Write-LogMessage "⏰ WINGET TIMEOUT: Installation exceeded 5-minute limit" -Level "ERROR"
+                    Write-LogMessage "Winget may be hung on package source updates or dependency resolution" -Level "WARNING"
+                    throw "Winget installation timed out"
+                }
                 
                 $wingetExitCode = $wingetResult.ExitCode
                 $wingetOutput = $wingetResult.Output
@@ -1046,19 +1140,62 @@ function Install-Application {
             return $false
         }
         elseif ($process.PSObject.Properties.Name -contains "TimedOut" -and $process.TimedOut) {
-            Write-LogMessage "Installation timed out after $script:InstallerTimeoutMinutes minutes" -Level "ERROR"
+            $elapsedTime = if ($process.PSObject.Properties.Name -contains "ElapsedMinutes") { $process.ElapsedMinutes } else { "Unknown" }
+            $timeoutLimit = if ($process.PSObject.Properties.Name -contains "TimeoutMinutes") { $process.TimeoutMinutes } else { $script:InstallerTimeoutMinutes }
+            
+            Write-LogMessage " INSTALLATION TIMEOUT for $AppName" -Level "ERROR"
+            Write-LogMessage "   • Elapsed Time: ${elapsedTime} minutes" -Level "ERROR"
+            Write-LogMessage "   • Timeout Limit: ${timeoutLimit} minutes" -Level "ERROR"
+            Write-LogMessage "   • Process ID: $($process.Id)" -Level "ERROR"
+            Write-LogMessage "   • This may indicate the installer is hung or requires user interaction" -Level "WARNING"
+            
             Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Failed" -AdditionalData @{
                 Error = "Installation timed out"
-                TimeoutMinutes = $script:InstallerTimeoutMinutes
+                ElapsedMinutes = $elapsedTime
+                TimeoutMinutes = $timeoutLimit
+                ProcessId = $process.Id
                 Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+                Suggestion = "Installer may be hung or requiring user interaction"
             }
             return $false
         }
         elseif ($process.ExitCode -eq 0 -or $process.ExitCode -eq $null -or $process.ExitCode -eq "") {
             Write-LogMessage "Installation completed successfully" -Level "SUCCESS"
             
-            # Verify installation
-            $verificationResult = Test-ApplicationInstalled -AppName $AppName -VerificationPaths $DirectDownload.VerificationPaths -CheckCommand -WingetId $WingetId
+            # Wait a moment for installer to finish file operations
+            Start-Sleep -Seconds 3
+            
+            # Special handling for Chrome MSI installation
+            if ($AppName -eq "Google Chrome" -and $DirectDownload.Extension -eq ".msi") {
+                Write-LogMessage "Performing Chrome-specific verification..." -Level "INFO"
+                Start-Sleep -Seconds 5  # Chrome MSI needs extra time
+                
+                # Check Chrome-specific paths
+                $chromeInstalled = $false
+                $chromePaths = @(
+                    "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe",
+                    "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+                )
+                
+                foreach ($path in $chromePaths) {
+                    if (Test-Path $path) {
+                        Write-LogMessage "Chrome verified at: $path" -Level "SUCCESS"
+                        $chromeInstalled = $true
+                        break
+                    }
+                }
+                
+                if ($chromeInstalled) {
+                    $verificationResult = $true
+                } else {
+                    # Fallback to standard verification
+                    Write-LogMessage "Chrome not found in standard paths, checking registry..." -Level "INFO"
+                    $verificationResult = Test-ApplicationInstalled -AppName $AppName -VerificationPaths $DirectDownload.VerificationPaths -CheckCommand -WingetId $WingetId
+                }
+            } else {
+                # Standard verification for other apps
+                $verificationResult = Test-ApplicationInstalled -AppName $AppName -VerificationPaths $DirectDownload.VerificationPaths -CheckCommand -WingetId $WingetId
+            }
             
             if ($verificationResult) {
                 Write-LogMessage "Installation verified for $AppName" -Level "SUCCESS"
@@ -1387,5 +1524,7 @@ Export-ModuleMember -Function @(
     'Install-Python',
     'New-DevelopmentFolders',
     'Install-VSCodeExtensions',
-    'Set-PathEnvironment'
+    'Set-PathEnvironment',
+    'Show-TimeoutSettings',
+    'Set-TimeoutSettings'
 )

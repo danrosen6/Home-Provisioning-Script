@@ -375,6 +375,11 @@ function Install-WingetDirect {
                 Url = "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx"
             },
             @{
+                Name = "Microsoft.VCLibs.140.00.UWPDesktop"
+                Url = "https://www.nuget.org/api/v2/package/Microsoft.VCLibs.x64.14.00.Desktop/14.0.33728.0"
+                AlternateUrl = "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx"
+            },
+            @{
                 Name = "Microsoft.UI.Xaml.2.8"
                 Url = "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx"
             }
@@ -388,7 +393,19 @@ function Install-WingetDirect {
             try {
                 # Use WebClient for more reliable downloads
                 $webClient = New-Object System.Net.WebClient
-                $webClient.DownloadFile($dep.Url, $depPath)
+                
+                # Try primary URL first
+                try {
+                    $webClient.DownloadFile($dep.Url, $depPath)
+                } catch {
+                    # Try alternate URL if available
+                    if ($dep.AlternateUrl) {
+                        Write-LogMessage "Primary URL failed, trying alternate URL for $($dep.Name)" -Level "WARNING"
+                        $webClient.DownloadFile($dep.AlternateUrl, $depPath)
+                    } else {
+                        throw $_
+                    }
+                }
                 
                 if (Test-Path $depPath) {
                     Add-AppxPackage -Path $depPath -ErrorAction Stop
@@ -414,7 +431,8 @@ function Install-WingetDirect {
                 Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
                 Write-LogMessage "Winget registration command completed" -Level "INFO"
                 
-                Start-Sleep -Seconds 5
+                # Give more time for registration to complete
+                Start-Sleep -Seconds 10
                 if (Get-Command winget -ErrorAction SilentlyContinue) {
                     $version = winget --version 2>$null
                     Write-LogMessage "Winget successfully registered: $version" -Level "SUCCESS"
