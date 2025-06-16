@@ -5,21 +5,48 @@
       "Key": "show-extensions",
       "Default": true,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "RegistryKey": "HideFileExt",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Shows file extensions for known file types. Major security improvement."
     },
     {
       "Name": "Show hidden files",
       "Key": "show-hidden",
       "Default": true,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "RegistryKey": "Hidden",
+      "RegistryValue": 1,
+      "RegistryType": "DWORD",
+      "Description": "Shows hidden files and folders for troubleshooting and system access."
+    },
+    {
+      "Name": "Show system files",
+      "Key": "show-system-files",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "RegistryKey": "ShowSuperHidden",
+      "RegistryValue": 1,
+      "RegistryType": "DWORD",
+      "Description": "Shows protected system files. Advanced users only."
     },
     {
       "Name": "Disable quick access",
       "Key": "disable-quickaccess",
       "Default": false,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer",
+      "RegistryKey": "ShowQuickAccess",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Disables recent files tracking in File Explorer for privacy."
     }
   ],
   "Privacy & Telemetry": [
@@ -28,42 +55,85 @@
       "Key": "disable-cortana",
       "Default": true,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+      "RegistryKey": "AllowCortana",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Disables Cortana voice assistant and data collection."
     },
     {
       "Name": "Disable OneDrive auto-start",
       "Key": "disable-onedrive",
       "Default": true,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+      "RegistryKey": "OneDriveSetup",
+      "RegistryValue": "",
+      "RegistryType": "DELETE",
+      "Description": "Prevents OneDrive from starting automatically at boot."
     },
     {
       "Name": "Reduce telemetry",
       "Key": "reduce-telemetry",
       "Default": true,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+      "RegistryKey": "AllowTelemetry",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Sets telemetry to Security level (Enterprise) or Basic level (Home/Pro).",
+      "Warning": "Full disable only works on Enterprise/Education editions."
     },
     {
       "Name": "Disable activity history",
       "Key": "disable-activity",
       "Default": true,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+      "RegistryKey": "EnableActivityFeed",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Disables activity history tracking and timeline features."
     },
     {
       "Name": "Disable web search in Start Menu",
       "Key": "search-bing",
       "Default": true,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Search",
+      "RegistryKey": "BingSearchEnabled",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Removes web search results from Start menu search."
     },
     {
       "Name": "Disable background apps",
       "Key": "disable-background",
       "Default": true,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications",
+      "RegistryKey": "GlobalUserDisabled",
+      "RegistryValue": 1,
+      "RegistryType": "DWORD",
+      "Description": "Prevents apps from running in background to save resources."
+    },
+    {
+      "Name": "Disable advertising ID",
+      "Key": "disable-advertising-id",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo",
+      "RegistryKey": "Enabled",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Disables personalized advertising identifier tracking."
     }
   ],
   "Windows 11 Interface": [
@@ -72,42 +142,84 @@
       "Key": "taskbar-left",
       "Default": true,
       "Win10": false,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "RegistryKey": "TaskbarAl",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Moves taskbar icons to left side like Windows 10."
     },
     {
       "Name": "Classic right-click menu",
       "Key": "classic-context",
       "Default": true,
       "Win10": false,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\\InprocServer32",
+      "RegistryKey": "(Default)",
+      "RegistryValue": "",
+      "RegistryType": "STRING",
+      "Description": "Restores full right-click context menu without 'Show more options'."
     },
     {
       "Name": "Disable widgets",
       "Key": "disable-widgets",
       "Default": true,
       "Win10": false,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "RegistryKey": "TaskbarDa",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Hides widgets button from taskbar and disables panel."
     },
     {
       "Name": "Disable Chat icon on taskbar",
       "Key": "disable-chat",
       "Default": true,
       "Win10": false,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "RegistryKey": "TaskbarMn",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Removes Teams Chat icon from taskbar."
     },
     {
       "Name": "Disable Snap layouts hover",
       "Key": "disable-snap",
       "Default": false,
       "Win10": false,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "RegistryKey": "EnableSnapAssistFlyout",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Disables snap layout suggestions when hovering over maximize button."
     },
     {
       "Name": "Configure Start menu layout",
       "Key": "start-menu-pins",
       "Default": false,
       "Win10": false,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "RegistryKey": "Start_Layout",
+      "RegistryValue": 1,
+      "RegistryType": "DWORD",
+      "Description": "Shows more pinned items and fewer recommendations in Start menu."
+    },
+    {
+      "Name": "Disable search highlights",
+      "Key": "disable-search-highlights",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\SearchSettings",
+      "RegistryKey": "IsDynamicSearchBoxEnabled",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Disables dynamic search suggestions and highlights in search box."
     }
   ],
   "Windows 10 Interface": [
@@ -116,28 +228,48 @@
       "Key": "hide-taskview",
       "Default": true,
       "Win10": true,
-      "Win11": false
+      "Win11": false,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "RegistryKey": "ShowTaskViewButton",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Hides Task View button from taskbar (use Win+Tab instead)."
     },
     {
       "Name": "Hide Cortana button",
       "Key": "hide-cortana-button",
       "Default": true,
       "Win10": true,
-      "Win11": false
+      "Win11": false,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "RegistryKey": "ShowCortanaButton",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Hides Cortana button from taskbar."
     },
     {
       "Name": "Configure search box",
       "Key": "configure-searchbox",
       "Default": true,
       "Win10": true,
-      "Win11": false
+      "Win11": false,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Search",
+      "RegistryKey": "SearchboxTaskbarMode",
+      "RegistryValue": 1,
+      "RegistryType": "DWORD",
+      "Description": "Shows search icon instead of full search box (0=hidden, 1=icon, 2=box)."
     },
     {
       "Name": "Disable News and Interests",
       "Key": "disable-news-interests",
       "Default": true,
       "Win10": true,
-      "Win11": false
+      "Win11": false,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Feeds",
+      "RegistryKey": "ShellFeedsTaskbarViewMode",
+      "RegistryValue": 2,
+      "RegistryType": "DWORD",
+      "Description": "Disables weather and news feed on taskbar."
     }
   ],
   "General Interface": [
@@ -146,21 +278,48 @@
       "Key": "dark-theme",
       "Default": false,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+      "RegistryKey": "AppsUseLightTheme",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Enables dark mode for applications and system UI."
     },
     {
       "Name": "Disable tips and suggestions",
       "Key": "disable-tips",
       "Default": true,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+      "RegistryKey": "SoftLandingEnabled",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Disables Windows tips, suggestions, and promotional content."
     },
     {
       "Name": "Disable startup sound",
       "Key": "disable-startup-sound",
       "Default": true,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\AppEvents\\EventLabels\\WindowsLogon",
+      "RegistryKey": "ExcludeFromCPL",
+      "RegistryValue": 1,
+      "RegistryType": "DWORD",
+      "Description": "Disables Windows startup sound for faster and quieter boot."
+    },
+    {
+      "Name": "Disable lock screen",
+      "Key": "disable-lock-screen",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "RegistryPath": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization",
+      "RegistryKey": "NoLockScreen",
+      "RegistryValue": 1,
+      "RegistryType": "DWORD",
+      "Description": "Skips lock screen and goes directly to login screen."
     }
   ],
   "System Performance": [
@@ -169,14 +328,48 @@
       "Key": "dev-mode",
       "Default": false,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AppModelUnlock",
+      "RegistryKey": "AllowDevelopmentWithoutDevLicense",
+      "RegistryValue": 1,
+      "RegistryType": "DWORD",
+      "Description": "Enables sideloading of apps and developer features."
     },
     {
       "Name": "Disable Teams auto-start",
       "Key": "disable-teams-autostart",
       "Default": true,
       "Win10": true,
-      "Win11": true
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+      "RegistryKey": "com.squirrel.Teams.Teams",
+      "RegistryValue": "",
+      "RegistryType": "DELETE",
+      "Description": "Prevents Microsoft Teams from starting automatically."
+    },
+    {
+      "Name": "Disable Windows Update automatic restart",
+      "Key": "disable-auto-restart",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "RegistryPath": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU",
+      "RegistryKey": "NoAutoRebootWithLoggedOnUsers",
+      "RegistryValue": 1,
+      "RegistryType": "DWORD",
+      "Description": "Prevents automatic restart for Windows Updates when users are logged in."
+    },
+    {
+      "Name": "Disable fast startup",
+      "Key": "disable-fast-startup",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "RegistryPath": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power",
+      "RegistryKey": "HiberbootEnabled",
+      "RegistryValue": 0,
+      "RegistryType": "DWORD",
+      "Description": "Disables hybrid shutdown for more reliable power cycles."
     }
   ]
 }

@@ -8,7 +8,9 @@
       "Win11": true,
       "WingetId": "Microsoft.VisualStudioCode",
       "DirectDownload": {
-        "Url": "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user",
+        "Url": "https://code.visualstudio.com/download",
+        "UrlType": "redirect-page",
+        "FallbackUrl": "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user",
         "Extension": ".exe",
         "Arguments": "/VERYSILENT /NORESTART /MERGETASKS=!runcode",
         "VerificationPaths": [
@@ -44,17 +46,17 @@
       "Default": true,
       "Win10": true,
       "Win11": true,
-      "WingetId": "Python.Python.3.13",
+      "WingetId": "Python.Python.3.12",
       "DirectDownload": {
         "Url": "https://www.python.org/downloads/windows/",
         "UrlType": "dynamic-python",
-        "FallbackUrl": "https://www.python.org/ftp/python/3.13.4/python-3.13.4-amd64.exe",
+        "FallbackUrl": "https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe",
         "Extension": ".exe",
         "Arguments": "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0 Include_pip=1 Include_tcltk=1",
         "VerificationPaths": [
-          "%ProgramFiles%\\Python313\\python.exe",
           "%ProgramFiles%\\Python312\\python.exe",
-          "%LocalAppData%\\Programs\\Python\\Python313\\python.exe",
+          "%ProgramFiles%\\Python313\\python.exe",
+          "%LocalAppData%\\Programs\\Python\\Python312\\python.exe",
           "%LocalAppData%\\Microsoft\\WindowsApps\\python.exe"
         ]
       }
@@ -173,7 +175,7 @@
       "Default": false,
       "Win10": true,
       "Win11": true,
-      "WingetId": "OpenJS.NodeJS.LTS",
+      "WingetId": "OpenJS.NodeJS",
       "DirectDownload": {
         "Url": "https://nodejs.org/dist/latest/node-latest-x64.msi",
         "Extension": ".msi",
@@ -356,9 +358,10 @@
       "Win11": true,
       "WingetId": "Notepad++.Notepad++",
       "DirectDownload": {
-        "Url": "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.1/npp.8.8.1.Installer.x64.exe",
+        "Url": "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/latest",
         "UrlType": "github-asset",
         "AssetPattern": "*Installer.x64.exe",
+        "FallbackUrl": "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.1/npp.8.8.1.Installer.x64.exe",
         "Extension": ".exe",
         "Arguments": "/S",
         "VerificationPaths": [

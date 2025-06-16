@@ -53,28 +53,30 @@ function Get-WingetIdMapping {
     [CmdletBinding()]
     param()
     
-    return @{
-        "vscode" = "Microsoft.VisualStudioCode"
-        "git" = "Git.Git"
-        "python" = "Python.Python.3.13"
-        "pycharm" = "JetBrains.PyCharm.Community"
-        "intellij" = "JetBrains.IntelliJIDEA.Community"
-        "webstorm" = "JetBrains.WebStorm"
-        "androidstudio" = "JetBrains.AndroidStudio"
-        "github" = "GitHub.GitHubDesktop"
-        "postman" = "Postman.Postman"
-        "nodejs" = "OpenJS.NodeJS"
-        "terminal" = "Microsoft.WindowsTerminal"
-        "chrome" = "Google.Chrome"
-        "firefox" = "Mozilla.Firefox"
-        "brave" = "Brave.Brave"
-        "spotify" = "Spotify.Spotify"
-        "discord" = "Discord.Discord"
-        "steam" = "Valve.Steam"
-        "vlc" = "VideoLAN.VLC"
-        "7zip" = "7zip.7zip"
-        "notepad" = "Notepad++.Notepad++"
-        "powertoys" = "Microsoft.PowerToys"
+    try {
+        # Get winget IDs from the apps configuration JSON
+        $appsConfig = Get-ConfigurationData -ConfigType "Apps"
+        $wingetIds = @{}
+        
+        foreach ($category in $appsConfig.Keys) {
+            $appsInCategory = $appsConfig[$category]
+            foreach ($app in $appsInCategory) {
+                if ($app.WingetId -and $app.Key) {
+                    $wingetIds[$app.Key] = $app.WingetId
+                }
+            }
+        }
+        
+        return $wingetIds
+    } catch {
+        Write-LogMessage "Error building winget ID mapping from JSON: $_" -Level "WARNING"
+        # Fallback to minimal hardcoded mapping
+        return @{
+            "vscode" = "Microsoft.VisualStudioCode"
+            "git" = "Git.Git"
+            "chrome" = "Google.Chrome"
+            "firefox" = "Mozilla.Firefox"
+        }
     }
 }
 
@@ -82,28 +84,30 @@ function Get-InstallerNameMapping {
     [CmdletBinding()]
     param()
     
-    return @{
-        "vscode" = "Visual Studio Code"
-        "git" = "Git"
-        "python" = "Python"
-        "pycharm" = "PyCharm"
-        "intellij" = "IntelliJ IDEA"
-        "webstorm" = "WebStorm"
-        "androidstudio" = "Android Studio"
-        "github" = "GitHub Desktop"
-        "postman" = "Postman"
-        "nodejs" = "Node.js"
-        "terminal" = "Windows Terminal"
-        "chrome" = "Google Chrome"
-        "firefox" = "Mozilla Firefox"
-        "brave" = "Brave"
-        "spotify" = "Spotify"
-        "discord" = "Discord"
-        "steam" = "Steam"
-        "vlc" = "VLC"
-        "7zip" = "7-Zip"
-        "notepad" = "Notepad++"
-        "powertoys" = "Microsoft PowerToys"
+    try {
+        # Get installer names from the apps configuration JSON
+        $appsConfig = Get-ConfigurationData -ConfigType "Apps"
+        $installerNames = @{}
+        
+        foreach ($category in $appsConfig.Keys) {
+            $appsInCategory = $appsConfig[$category]
+            foreach ($app in $appsInCategory) {
+                if ($app.Name -and $app.Key) {
+                    $installerNames[$app.Key] = $app.Name
+                }
+            }
+        }
+        
+        return $installerNames
+    } catch {
+        Write-LogMessage "Error building installer name mapping from JSON: $_" -Level "WARNING"
+        # Fallback to minimal hardcoded mapping
+        return @{
+            "vscode" = "Visual Studio Code"
+            "git" = "Git"
+            "chrome" = "Google Chrome"
+            "firefox" = "Mozilla Firefox"
+        }
     }
 }
 

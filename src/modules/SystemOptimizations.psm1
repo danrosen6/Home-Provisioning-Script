@@ -267,6 +267,158 @@ function Restore-ServiceState {
     }
 }
 
+function Find-ServiceConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$ServiceKey
+    )
+    
+    try {
+        $servicesConfig = Get-ConfigurationData -ConfigType "Services"
+        
+        foreach ($category in $servicesConfig.Keys) {
+            $servicesInCategory = $servicesConfig[$category]
+            foreach ($service in $servicesInCategory) {
+                if ($service.Key -eq $ServiceKey) {
+                    return $service
+                }
+            }
+        }
+        
+        return $null
+    } catch {
+        Write-LogMessage "Error finding service configuration for '$ServiceKey': $_" -Level "ERROR"
+        return $null
+    }
+}
+
+function Find-TweakConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$TweakKey
+    )
+    
+    try {
+        $tweaksConfig = Get-ConfigurationData -ConfigType "Tweaks"
+        
+        foreach ($category in $tweaksConfig.Keys) {
+            $tweaksInCategory = $tweaksConfig[$category]
+            foreach ($tweak in $tweaksInCategory) {
+                if ($tweak.Key -eq $TweakKey) {
+                    return $tweak
+                }
+            }
+        }
+        
+        return $null
+    } catch {
+        Write-LogMessage "Error finding tweak configuration for '$TweakKey': $_" -Level "ERROR"
+        return $null
+    }
+}
+
+function Set-ServiceOptimization {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$ServiceConfig,
+        
+        [Parameter(Mandatory=$false)]
+        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
+    )
+    
+    $serviceName = $ServiceConfig.ServiceName
+    $serviceKey = $ServiceConfig.Key
+    
+    Write-LogMessage "Disabling service: $($ServiceConfig.Name) ($serviceName)" -Level "INFO"
+    
+    try {
+        # Check dependencies first
+        $dependencyCheck = Test-ServiceDependency -ServiceName $serviceName
+        
+        if ($dependencyCheck.HasDependencies) {
+            $dependencyMessage = "The following services depend on ${serviceName}:`n"
+            $dependencyMessage += ($dependencyCheck.DependencyList -join "`n")
+            $dependencyMessage += "`n`nDisabling $serviceName may affect these services. Continue anyway?"
+            
+            $result = Show-TimeoutMessageBox -Message $dependencyMessage -Title "Service Dependencies Found" -TimeoutSeconds 30 -DefaultResponse "No"
+            
+            if ($result -eq [System.Windows.Forms.DialogResult]::No) {
+                Write-LogMessage "Skipping $serviceName service due to dependencies" -Level "WARNING"
+                Save-OperationState -OperationType "SystemOptimization" -ItemKey $serviceKey -Status "Skipped" -AdditionalData @{
+                    Reason = "User opted to skip due to dependencies"
+                    Dependencies = $dependencyCheck.DependencyList -join ", "
+                }
+                return $false
+            }
+        }
+        
+        Save-ServiceState -ServiceName $serviceName
+        Stop-Service $serviceName -Force -ErrorAction SilentlyContinue
+        Set-Service $serviceName -StartupType Disabled
+        
+        Write-LogMessage "Successfully disabled service: $serviceName" -Level "SUCCESS"
+        Save-OperationState -OperationType "SystemOptimization" -ItemKey $serviceKey -Status "Completed"
+        return $true
+        
+    } catch {
+        Write-LogMessage "Failed to disable service ${serviceName}: $_" -Level "ERROR"
+        Save-OperationState -OperationType "SystemOptimization" -ItemKey $serviceKey -Status "Failed" -AdditionalData @{ Error = $_.Exception.Message }
+        return $false
+    }
+}
+
+function Set-TweakOptimization {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$TweakConfig,
+        
+        [Parameter(Mandatory=$false)]
+        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
+    )
+    
+    $tweakKey = $TweakConfig.Key
+    $registryPath = $TweakConfig.RegistryPath
+    $registryKey = $TweakConfig.RegistryKey  
+    $registryValue = $TweakConfig.RegistryValue
+    $registryType = $TweakConfig.RegistryType
+    
+    Write-LogMessage "Applying registry tweak: $($TweakConfig.Name)" -Level "INFO"
+    
+    try {
+        # Backup current registry value
+        $backupResult = Backup-RegistryValue -Path $registryPath -Key $registryKey
+        
+        # Apply the registry change
+        $setResult = Set-RegistryValue -Path $registryPath -Key $registryKey -Value $registryValue -Type $registryType
+        
+        if ($setResult) {
+            Write-LogMessage "Successfully applied registry tweak: $($TweakConfig.Name)" -Level "SUCCESS"
+            Save-OperationState -OperationType "SystemOptimization" -ItemKey $tweakKey -Status "Completed"
+            
+            # Check if this change requires restart
+            if ($TweakConfig.RequiresRestart -eq $true) {
+                $script:RegistryChangesRequiringRestart += $TweakConfig.Name
+                $script:RestartRequired = $true
+            }
+            
+            return $true
+        } else {
+            Write-LogMessage "Failed to apply registry tweak: $($TweakConfig.Name)" -Level "ERROR"
+            Save-OperationState -OperationType "SystemOptimization" -ItemKey $tweakKey -Status "Failed"
+            return $false
+        }
+        
+    } catch {
+        Write-LogMessage "Error applying registry tweak '$($TweakConfig.Name)': $_" -Level "ERROR"
+        Save-OperationState -OperationType "SystemOptimization" -ItemKey $tweakKey -Status "Failed" -AdditionalData @{ Error = $_.Exception.Message }
+        return $false
+    }
+}
+
 function Set-SystemOptimization {
     [CmdletBinding()]
     param (
@@ -284,6 +436,21 @@ function Set-SystemOptimization {
     Save-OperationState -OperationType "SystemOptimization" -ItemKey $OptimizationKey -Status "InProgress"
 
     try {
+        # First try to find the optimization in services configuration
+        $serviceConfig = Find-ServiceConfiguration -ServiceKey $OptimizationKey
+        if ($serviceConfig) {
+            return Set-ServiceOptimization -ServiceConfig $serviceConfig -CancellationToken $CancellationToken
+        }
+        
+        # Then try to find the optimization in tweaks configuration  
+        $tweakConfig = Find-TweakConfiguration -TweakKey $OptimizationKey
+        if ($tweakConfig) {
+            return Set-TweakOptimization -TweakConfig $tweakConfig -CancellationToken $CancellationToken
+        }
+        
+        # If not found in JSON configs, fall back to legacy hardcoded optimizations
+        Write-LogMessage "Optimization key '$OptimizationKey' not found in JSON configs, checking legacy hardcoded optimizations" -Level "WARNING"
+        
         switch ($OptimizationKey) {
             # Service optimizations with dependency checks
             "diagtrack" {
@@ -820,59 +987,32 @@ function Remove-Bloatware {
         [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
     )
     
-    # Map keys to actual package names and wildcard patterns
-    $packageMap = @{
-        "ms-officehub" = "Microsoft.MicrosoftOfficeHub"
-        "ms-teams" = "Microsoft.MicrosoftTeams"
-        "ms-teams-consumer" = "MicrosoftTeams"
-        "ms-todo" = "*.Todos*"
-        "ms-3dviewer" = "Microsoft.Microsoft3DViewer"
-        "ms-mixedreality" = "Microsoft.MixedReality.Portal"
-        "ms-onenote" = "Microsoft.Office.OneNote"
-        "ms-people" = "Microsoft.People"
-        "ms-wallet" = "Microsoft.Wallet"
-        "ms-messaging" = "Microsoft.Messaging"
-        "ms-oneconnect" = "Microsoft.OneConnect"
-        "ms-skype" = "Microsoft.SkypeApp"
-        "bing-weather" = "Microsoft.BingWeather"
-        "bing-news" = "Microsoft.BingNews"
-        "bing-finance" = "Microsoft.BingFinance"
-        "win-alarms" = "Microsoft.WindowsAlarms"
-        "win-camera" = "Microsoft.WindowsCamera"
-        "win-mail" = "Microsoft.WindowsCommunicationsApps"
-        "win-maps" = "Microsoft.WindowsMaps"
-        "win-feedback" = "Microsoft.WindowsFeedbackHub"
-        "win-gethelp" = "Microsoft.GetHelp"
-        "win-getstarted" = "Microsoft.Getstarted"
-        "win-soundrec" = "Microsoft.WindowsSoundRecorder"
-        "win-yourphone" = "Microsoft.YourPhone"
-        "win-print3d" = "Microsoft.Print3D"
-        "zune-music" = "Microsoft.ZuneMusic"
-        "zune-video" = "Microsoft.ZuneVideo"
-        "solitaire" = "Microsoft.MicrosoftSolitaireCollection"
-        "gaming-app" = "Microsoft.GamingApp"
-        "xbox-gameoverlay" = "Microsoft.XboxGameOverlay"
-        "xbox-gamingoverlay" = "Microsoft.XboxGamingOverlay"
-        "xbox-identity" = "Microsoft.XboxIdentityProvider"
-        "xbox-speech" = "Microsoft.XboxSpeechToTextOverlay"
-        "xbox-tcui" = "Microsoft.Xbox.TCUI"
-        "candy-crush" = "*.CandyCrush*"
-        "spotify-store" = "*.Spotify*"
-        "facebook" = "*.Facebook*"
-        "twitter" = "*.Twitter*"
-        "netflix" = "*.Netflix*"
-        "hulu" = "*.Hulu*"
-        "picsart" = "*.PicsArt*"
-        "disney" = "*.Disney*"
-        "tiktok" = "*.TikTok*"
-        "ms-widgets" = "MicrosoftWindows.Client.WebExperience"
-        "ms-copilot" = @("Microsoft.Windows.Ai.Copilot.Provider", "Microsoft.Copilot")
-        "ms-clipchamp" = "*.ClipChamp*"
-        "linkedin" = "*.LinkedIn*"
-        "instagram" = "*.Instagram*"
-        "whatsapp" = "*.WhatsApp*"
-        "amazon-prime" = "*.AmazonPrimeVideo*"
-        "skype-app" = "Microsoft.SkypeApp"
+    # Get package names from bloatware configuration JSON
+    try {
+        $bloatwareConfig = Get-ConfigurationData -ConfigType "Bloatware"
+        $packageMap = @{}
+        
+        foreach ($category in $bloatwareConfig.Keys) {
+            $bloatwareInCategory = $bloatwareConfig[$category]
+            foreach ($bloatware in $bloatwareInCategory) {
+                if ($bloatware.PackageName -and $bloatware.Key) {
+                    $packageMap[$bloatware.Key] = $bloatware.PackageName
+                }
+            }
+        }
+        
+        Write-LogMessage "Loaded $($packageMap.Keys.Count) bloatware package mappings from JSON configuration" -Level "INFO"
+    } catch {
+        Write-LogMessage "Error loading bloatware configuration from JSON: $_" -Level "ERROR"
+        # Fallback to minimal hardcoded mapping for critical functionality
+        $packageMap = @{
+            "ms-officehub" = "Microsoft.MicrosoftOfficeHub"
+            "ms-teams" = "MicrosoftTeams"
+            "candy-crush" = "*.CandyCrush*"
+            "xbox-app" = "Microsoft.XboxApp"
+            "solitaire" = "Microsoft.MicrosoftSolitaireCollection"
+        }
+        Write-LogMessage "Using fallback bloatware package mapping with $($packageMap.Keys.Count) entries" -Level "WARNING"
     }
     
     Write-LogMessage "Starting bloatware removal..." -Level "INFO"
@@ -1309,4 +1449,4 @@ function Configure-Services {
 }
 
 # Export updated functions
-Export-ModuleMember -Function Set-SystemOptimization, Save-RegistryValue, Save-ServiceState, Restore-RegistryValue, Restore-ServiceState, Optimize-System, Remove-Bloatware, Configure-Services, Test-ServiceDependency, Add-RestartRegistryChange
+Export-ModuleMember -Function Set-SystemOptimization, Save-RegistryValue, Save-ServiceState, Restore-RegistryValue, Restore-ServiceState, Optimize-System, Remove-Bloatware, Configure-Services, Test-ServiceDependency, Add-RestartRegistryChange, Find-ServiceConfiguration, Find-TweakConfiguration, Set-ServiceOptimization, Set-TweakOptimization
