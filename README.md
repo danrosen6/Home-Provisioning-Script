@@ -12,11 +12,31 @@ This script provides a graphical interface for automating common Windows setup t
 
 ## Files Structure
 
-- `Windows-Setup-GUI.ps1` - Main GUI application with tabs for different operations
-- `modules/Installers.psm1` - Application installation and winget management
-- `modules/SystemOptimizations.psm1` - System tweaks, service configuration, and bloatware removal
-- `utils/Logging.psm1` - Centralized logging system with file rotation
-- `utils/RecoveryUtils.psm1` - Recovery and operation state tracking
+### Main Application
+- `src/Windows-Setup-GUI.ps1` - Main GUI application with tabs for different operations
+
+### Configuration Files
+- `src/config/apps.json` - Application definitions and installation methods
+- `src/config/bloatware.json` - Windows bloatware removal definitions
+- `src/config/services.json` - System services configuration
+- `src/config/tweaks.json` - System tweaks and registry modifications
+
+### Core Modules
+- `src/modules/Installers.psm1` - Application installation and winget management
+- `src/modules/SystemOptimizations.psm1` - System tweaks, service configuration, and bloatware removal
+
+### Utility Modules
+- `src/utils/ConfigLoader.psm1` - JSON configuration file loading and validation
+- `src/utils/GuiComponents.psm1` - GUI components and interface management
+- `src/utils/JsonUtils.psm1` - JSON parsing and manipulation utilities
+- `src/utils/Logging.psm1` - Centralized logging system with file rotation
+- `src/utils/ProgressSystem.psm1` - Progress tracking and UI updates
+- `src/utils/RecoveryUtils.psm1` - Recovery and operation state tracking
+- `src/utils/RegistryUtils.psm1` - Registry backup and modification utilities
+- `src/utils/WingetUtils.psm1` - Winget package manager utilities
+
+### Runtime Directories
+- `src/logs/` - Application logs and debug information
 
 ## How to Run
 
