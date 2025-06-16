@@ -29,6 +29,7 @@
         "Url": "https://api.github.com/repos/git-for-windows/git/releases/latest",
         "UrlType": "github-asset",
         "AssetPattern": "Git-*-64-bit.exe",
+        "FallbackUrl": "https://github.com/git-for-windows/git/releases/download/v2.49.0.windows.1/Git-2.49.0-64-bit.exe",
         "Extension": ".exe",
         "Arguments": "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS=\"icons,ext\\reg\\shellhere,assoc,assoc_sh\"",
         "VerificationPaths": [
@@ -45,7 +46,9 @@
       "Win11": true,
       "WingetId": "Python.Python.3.13",
       "DirectDownload": {
-        "Url": "https://www.python.org/ftp/python/3.13.1/python-3.13.1-amd64.exe",
+        "Url": "https://www.python.org/downloads/windows/",
+        "UrlType": "dynamic-python",
+        "FallbackUrl": "https://www.python.org/ftp/python/3.13.4/python-3.13.4-amd64.exe",
         "Extension": ".exe",
         "Arguments": "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0 Include_pip=1 Include_tcltk=1",
         "VerificationPaths": [
@@ -64,7 +67,9 @@
       "Win11": true,
       "WingetId": "JetBrains.PyCharm.Community",
       "DirectDownload": {
-        "Url": "https://download.jetbrains.com/python/pycharm-community-latest.exe",
+        "Url": "https://data.services.jetbrains.com/products/releases?code=PCC&latest=true&type=release",
+        "UrlType": "jetbrains-api",
+        "FallbackUrl": "https://download.jetbrains.com/python/pycharm-community-latest.exe",
         "Extension": ".exe",
         "Arguments": "/S /CONFIG=%TEMP%\\silent.config",
         "VerificationPaths": [
@@ -311,7 +316,9 @@
       "Win11": true,
       "WingetId": "VideoLAN.VLC",
       "DirectDownload": {
-        "Url": "https://download.videolan.org/pub/videolan/vlc/last/win64/vlc-latest-win64.exe",
+        "Url": "https://www.videolan.org/vlc/download-windows.html",
+        "UrlType": "dynamic-vlc",
+        "FallbackUrl": "https://download.videolan.org/pub/videolan/vlc/last/win64/vlc-latest-win64.exe",
         "Extension": ".exe",
         "Arguments": "/S",
         "VerificationPaths": [
@@ -330,7 +337,9 @@
       "Win11": true,
       "WingetId": "7zip.7zip",
       "DirectDownload": {
-        "Url": "https://www.7-zip.org/a/7z2409-x64.exe",
+        "Url": "https://www.7-zip.org/download.html",
+        "UrlType": "dynamic-7zip",
+        "FallbackUrl": "https://www.7-zip.org/a/7z2409-x64.exe",
         "Extension": ".exe",
         "Arguments": "/S",
         "VerificationPaths": [

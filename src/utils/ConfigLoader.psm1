@@ -122,6 +122,7 @@ function Get-AppDownloadInfo {
                 Url = $appInfo.DirectDownload.Url
                 UrlType = $appInfo.DirectDownload.UrlType
                 AssetPattern = $appInfo.DirectDownload.AssetPattern
+                FallbackUrl = $appInfo.DirectDownload.FallbackUrl
                 Extension = $appInfo.DirectDownload.Extension
                 Arguments = $appInfo.DirectDownload.Arguments
                 VerificationPaths = $appInfo.DirectDownload.VerificationPaths
