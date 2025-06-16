@@ -952,13 +952,6 @@ $cancelBtn.Add_Click({
 Write-Host "Launching Windows Setup GUI..." -ForegroundColor Green
 Write-Host "4 tabs: Install Apps, Remove Bloatware, Disable Services, System Tweaks" -ForegroundColor Yellow
 
-# Display timeout settings for user awareness
-try {
-    Show-TimeoutSettings
-} catch {
-    Write-Host " Timeout Settings: Installer=10min, Winget=5min, Downloads=5min" -ForegroundColor Cyan
-}
-
 # Display log file location
 $logPath = Get-LogFilePath
 if ($logPath) {
