@@ -518,10 +518,43 @@ function Test-ApplicationInstalled {
     if ($UseWingetCheck -and $WingetId -and (Get-Command winget -ErrorAction SilentlyContinue)) {
         try {
             Write-LogMessage "Checking winget for $AppName (ID: $WingetId)..." -Level "INFO"
-            $wingetResult = winget list --id $WingetId --exact 2>$null
-            if ($LASTEXITCODE -eq 0 -and $wingetResult -match $WingetId) {
-                Write-LogMessage "Installation verified: Found $AppName via winget" -Level "SUCCESS"
-                return $true
+            
+            # Use a job with timeout to prevent hanging
+            $job = Start-Job -ScriptBlock {
+                param($wingetId)
+                try {
+                    $result = winget list --id $wingetId --exact 2>$null
+                    return @{
+                        Success = ($LASTEXITCODE -eq 0)
+                        Output = $result
+                        ExitCode = $LASTEXITCODE
+                    }
+                }
+                catch {
+                    return @{
+                        Success = $false
+                        Error = $_.Exception.Message
+                        ExitCode = -1
+                    }
+                }
+            } -ArgumentList $WingetId
+            
+            # Wait for job with 30 second timeout
+            $completed = Wait-Job -Job $job -Timeout 30
+            
+            if ($completed) {
+                $result = Receive-Job -Job $job
+                Remove-Job -Job $job -Force
+                
+                if ($result.Success -and $result.Output -match $WingetId) {
+                    Write-LogMessage "Installation verified: Found $AppName via winget" -Level "SUCCESS"
+                    return $true
+                } else {
+                    Write-LogMessage "Winget check completed but app not found (Exit: $($result.ExitCode))" -Level "DEBUG"
+                }
+            } else {
+                Write-LogMessage "Winget check timed out after 30 seconds, falling back to path verification" -Level "WARNING"
+                Remove-Job -Job $job -Force
             }
         }
         catch {
@@ -1164,18 +1197,37 @@ function Install-Application {
     # Enhanced winget installation with proper dependency checks and extended time
     if (-not $script:UseDirectDownloadOnly -and $wingetCompatible) {
         
-        # First, ensure winget is properly installed and working
+        # First, check if winget is already working properly  
         Write-LogMessage "Verifying winget installation status..." -Level "INFO"
         $wingetAvailable = $false
         
         if (Get-Command winget -ErrorAction SilentlyContinue) {
             try {
-                $version = winget --version 2>$null
-                if ($version -and $version.Trim() -ne "") {
-                    Write-LogMessage "Winget is available: $version" -Level "INFO"
-                    $wingetAvailable = $true
+                # Use timeout for version check to prevent hanging
+                $versionJob = Start-Job -ScriptBlock {
+                    try {
+                        $version = winget --version 2>$null
+                        return @{ Success = $true; Version = $version; ExitCode = $LASTEXITCODE }
+                    }
+                    catch {
+                        return @{ Success = $false; Error = $_.Exception.Message; ExitCode = -1 }
+                    }
+                }
+                
+                $versionCompleted = Wait-Job -Job $versionJob -Timeout 10
+                if ($versionCompleted) {
+                    $versionResult = Receive-Job -Job $versionJob
+                    Remove-Job -Job $versionJob -Force
+                    
+                    if ($versionResult.Success -and $versionResult.Version -and $versionResult.Version.Trim() -ne "") {
+                        Write-LogMessage "Winget is available: $($versionResult.Version)" -Level "INFO"
+                        $wingetAvailable = $true
+                    } else {
+                        Write-LogMessage "Winget version check failed (Exit: $($versionResult.ExitCode))" -Level "WARNING"
+                    }
                 } else {
-                    Write-LogMessage "Winget command exists but version check failed" -Level "WARNING"
+                    Remove-Job -Job $versionJob -Force
+                    Write-LogMessage "Winget version check timed out" -Level "WARNING"
                 }
             }
             catch {
@@ -1183,7 +1235,7 @@ function Install-Application {
             }
         }
         
-        # If winget is not available, try to install it first with extended time
+        # Only install winget if it's not already working
         if (-not $wingetAvailable) {
             Write-LogMessage "Winget not available, attempting installation before proceeding..." -Level "INFO"
             
@@ -1260,28 +1312,71 @@ function Install-Application {
                 for ($attempt = 1; $attempt -le 2; $attempt++) {
                     try {
                         Write-LogMessage "Winget installation attempt $attempt/2 for $AppName..." -Level "INFO"
-                        $wingetOutput = winget install --id $WingetId --accept-source-agreements --accept-package-agreements --silent 2>&1
                         
-                        if ($LASTEXITCODE -eq 0 -or $wingetOutput -match "Successfully installed") {
-                            Write-LogMessage "$AppName installed successfully via winget!" -Level "SUCCESS"
-                            Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Completed" -AdditionalData @{
-                                Method = "Winget"
-                                WingetId = $WingetId
-                                WindowsBuild = $buildNumber
-                                Attempt = $attempt
+                        # Use a job with timeout to prevent hanging
+                        $installJob = Start-Job -ScriptBlock {
+                            param($wingetId)
+                            try {
+                                $output = winget install --id $wingetId --accept-source-agreements --accept-package-agreements --silent 2>&1
+                                return @{
+                                    Success = ($LASTEXITCODE -eq 0)
+                                    Output = $output
+                                    ExitCode = $LASTEXITCODE
+                                }
                             }
+                            catch {
+                                return @{
+                                    Success = $false
+                                    Output = $_.Exception.Message
+                                    ExitCode = -999
+                                }
+                            }
+                        } -ArgumentList $WingetId
+                        
+                        # Wait for installation with 5 minute timeout
+                        $installCompleted = Wait-Job -Job $installJob -Timeout 300
+                        
+                        if ($installCompleted) {
+                            $installResult = Receive-Job -Job $installJob
+                            Remove-Job -Job $installJob -Force
                             
-                            # Refresh environment variables
-                            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+                            $wingetOutput = $installResult.Output
+                            $exitCode = $installResult.ExitCode
                             
-                            $wingetSuccess = $true
-                            break
+                            if ($exitCode -eq 0 -or $wingetOutput -match "Successfully installed") {
+                                Write-LogMessage "$AppName installed successfully via winget!" -Level "SUCCESS"
+                                Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Completed" -AdditionalData @{
+                                    Method = "Winget"
+                                    WingetId = $WingetId
+                                    WindowsBuild = $buildNumber
+                                    Attempt = $attempt
+                                }
+                                
+                                # Refresh environment variables
+                                $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+                                
+                                $wingetSuccess = $true
+                                break
+                            }
+                        } else {
+                            Write-LogMessage "Winget install timed out after 5 minutes for $AppName" -Level "WARNING"
+                            Remove-Job -Job $installJob -Force
+                            $wingetOutput = "Installation timed out"
+                            $exitCode = -1
                         }
-                        elseif ($LASTEXITCODE -eq -1978335146) {
+                        
+                        # Check for hash validation error (common with Chrome when running as admin)
+                        if ($wingetOutput -match "Installer hash does not match.*cannot be overridden when running as admin") {
+                            Write-LogMessage "Winget hash validation failed for $AppName when running as admin" -Level "WARNING"
+                            Write-LogMessage "This is a security feature - falling back to direct download method" -Level "INFO"
+                            break  # Exit winget attempts and proceed to direct download
+                        }
+                        
+                        if ($exitCode -eq -1978335146) {
                             # Error code -1978335146: "The installer cannot be run from an administrator context"
                             # This occurs with apps like Spotify, Discord, and other user-mode applications
                             # that refuse to install when PowerShell is running with elevated privileges
-                            Write-LogMessage "Winget installation failed: $AppName cannot be installed with elevated privileges (Exit code: $LASTEXITCODE)" -Level "WARNING"
+                            Write-LogMessage "Winget installation failed: $AppName cannot be installed with elevated privileges (Exit code: $exitCode)" -Level "WARNING"
                             Write-LogMessage "This app needs to be installed in user context. Attempting user-context installation..." -Level "INFO"
                             
                             # Try to install without elevated privileges using PowerShell job
@@ -1331,7 +1426,16 @@ function Install-Application {
                             }
                         }
                         else {
-                            Write-LogMessage "Winget installation attempt $attempt failed with exit code: $LASTEXITCODE" -Level "WARNING"
+                            # Decode common winget error codes
+                            $errorDescription = switch ($exitCode) {
+                                -1978335212 { "APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED or source agreement not accepted" }
+                                -1978335166 { "APPINSTALLER_CLI_ERROR_NO_APPLICABLE_INSTALLER" }
+                                -1978335146 { "APPINSTALLER_CLI_ERROR_ADMINISTRATOR_CONTEXT_REQUIRED" }
+                                0 { "Success (but output suggests failure)" }
+                                default { "Unknown winget error code" }
+                            }
+                            
+                            Write-LogMessage "Winget installation attempt $attempt failed with exit code: $exitCode ($errorDescription)" -Level "WARNING"
                             Write-LogMessage "Winget output: $wingetOutput" -Level "DEBUG"
                             
                             # Check for other common privilege-related errors in output
@@ -1579,12 +1683,40 @@ function Install-Application {
                 # Try using winget if available
                 if (Get-Command winget -ErrorAction SilentlyContinue) {
                     Write-LogMessage "Using winget to install $AppName..." -Level "INFO"
-                    $wingetResult = winget install --id Microsoft.WindowsTerminal -e --accept-source-agreements --accept-package-agreements --silent 2>&1
                     
-                    if ($LASTEXITCODE -eq 0) {
-                        $process = [PSCustomObject]@{ ExitCode = 0 }
+                    # Use job with timeout for Windows Terminal winget install
+                    $terminalJob = Start-Job -ScriptBlock {
+                        try {
+                            $output = winget install --id Microsoft.WindowsTerminal -e --accept-source-agreements --accept-package-agreements --silent 2>&1
+                            return @{
+                                Success = ($LASTEXITCODE -eq 0)
+                                Output = $output
+                                ExitCode = $LASTEXITCODE
+                            }
+                        }
+                        catch {
+                            return @{
+                                Success = $false
+                                Output = $_.Exception.Message
+                                ExitCode = -999
+                            }
+                        }
+                    }
+                    
+                    $terminalCompleted = Wait-Job -Job $terminalJob -Timeout 300
+                    
+                    if ($terminalCompleted) {
+                        $terminalResult = Receive-Job -Job $terminalJob
+                        Remove-Job -Job $terminalJob -Force
+                        
+                        if ($terminalResult.Success) {
+                            $process = [PSCustomObject]@{ ExitCode = 0 }
+                        } else {
+                            throw "Winget installation failed: $($terminalResult.Output)"
+                        }
                     } else {
-                        throw "Winget installation failed: $wingetResult"
+                        Remove-Job -Job $terminalJob -Force
+                        throw "Winget installation timed out after 5 minutes"
                     }
                 } else {
                     throw "Failed to install MSIX bundle and winget not available`: $_"
@@ -1693,9 +1825,42 @@ function Install-Python {
     if (-not $script:UseDirectDownloadOnly -and (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-LogMessage "Installing Python via winget..." -Level "INFO"
         try {
-            $wingetOutput = winget install --id $WingetId --accept-source-agreements --accept-package-agreements --silent 2>&1
+            # Use job with timeout for Python winget install
+            $pythonJob = Start-Job -ScriptBlock {
+                param($wingetId)
+                try {
+                    $output = winget install --id $wingetId --accept-source-agreements --accept-package-agreements --silent 2>&1
+                    return @{
+                        Success = ($LASTEXITCODE -eq 0)
+                        Output = $output
+                        ExitCode = $LASTEXITCODE
+                    }
+                }
+                catch {
+                    return @{
+                        Success = $false
+                        Output = $_.Exception.Message
+                        ExitCode = -999
+                    }
+                }
+            } -ArgumentList $WingetId
             
-            if ($LASTEXITCODE -eq 0 -or $wingetOutput -match "Successfully installed") {
+            $pythonCompleted = Wait-Job -Job $pythonJob -Timeout 300
+            
+            if ($pythonCompleted) {
+                $pythonResult = Receive-Job -Job $pythonJob
+                Remove-Job -Job $pythonJob -Force
+                
+                $wingetOutput = $pythonResult.Output
+                $wingetExitCode = $pythonResult.ExitCode
+            } else {
+                Remove-Job -Job $pythonJob -Force
+                Write-LogMessage "Python winget install timed out after 5 minutes" -Level "WARNING"
+                $wingetOutput = "Installation timed out"
+                $wingetExitCode = -1
+            }
+            
+            if ($wingetExitCode -eq 0 -or $wingetOutput -match "Successfully installed") {
                 Write-LogMessage "Python installed successfully via winget!" -Level "SUCCESS"
                 
                 # Refresh environment variables and verify

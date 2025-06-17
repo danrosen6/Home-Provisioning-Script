@@ -463,45 +463,7 @@ function Initialize-WingetEnvironment {
             }
         }
         
-        # Method 2: Try Microsoft Store installation (for compatible versions)
-        if (-not $ForceGitHubMethod -and $installationMethod -in @("PreInstalled", "StoreOrDirect")) {
-            Write-LogMessage "Attempting Microsoft Store installation..." -Level "INFO"
-            try {
-                $wingetUrl = "ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1"
-                Start-Process $wingetUrl -ErrorAction Stop
-                Write-LogMessage "Opened Microsoft Store for winget installation" -Level "INFO"
-                Write-LogMessage "Please complete the installation manually..." -Level "INFO"
-                
-                # Wait for user to complete Store installation
-                for ($check = 1; $check -le 8; $check++) {
-                    Start-Sleep -Seconds 15
-                    
-                    if (Get-Command winget -ErrorAction SilentlyContinue) {
-                        try {
-                            $version = winget --version 2>$null
-                            if ($version -and $version.Trim() -ne "") {
-                                Write-LogMessage "Winget detected after Store installation: $version" -Level "SUCCESS"
-                                return @{
-                                    Success = $true
-                                    Method = "MicrosoftStore"
-                                    Version = $version
-                                }
-                            }
-                        }
-                        catch { }
-                    }
-                    
-                    Write-LogMessage "Waiting for Store installation completion... (check $check/8)" -Level "INFO"
-                }
-                
-                Write-LogMessage "Store installation timeout - proceeding to GitHub method" -Level "WARNING"
-            }
-            catch {
-                Write-LogMessage "Failed to open Microsoft Store: $_" -Level "WARNING"
-            }
-        }
-        
-        # Method 3: GitHub direct installation (enhanced method)
+        # Method 2: GitHub direct installation (enhanced method) - prioritized for reliability
         Write-LogMessage "Attempting GitHub direct installation..." -Level "INFO"
         
         # Install dependencies if required for older Windows versions
@@ -647,8 +609,49 @@ function Initialize-WingetEnvironment {
             }
         }
         catch {
-            Write-LogMessage "Failed to install winget via GitHub: $_" -Level "ERROR"
-            return @{ Success = $false; Reason = "GitHubInstallationFailed"; Error = $_.Exception.Message }
+            Write-LogMessage "GitHub installation failed: $_" -Level "WARNING"
+            Write-LogMessage "Attempting Microsoft Store as final fallback..." -Level "INFO"
+            
+            # Final fallback: Microsoft Store installation
+            try {
+                $wingetUrl = "ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1"
+                Start-Process $wingetUrl -ErrorAction Stop
+                Write-LogMessage "Opened Microsoft Store for winget installation" -Level "INFO"
+                Write-LogMessage "Please complete the installation manually and restart the application..." -Level "WARNING"
+                
+                # Brief wait to see if user installs quickly
+                for ($check = 1; $check -le 4; $check++) {
+                    Start-Sleep -Seconds 10
+                    
+                    if (Get-Command winget -ErrorAction SilentlyContinue) {
+                        try {
+                            $version = winget --version 2>$null
+                            if ($version -and $version.Trim() -ne "") {
+                                Write-LogMessage "Winget detected after Store installation: $version" -Level "SUCCESS"
+                                return @{
+                                    Success = $true
+                                    Method = "MicrosoftStore"
+                                    Version = $version
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                    
+                    Write-LogMessage "Waiting for Store installation... (check $check/4)" -Level "INFO"
+                }
+                
+                Write-LogMessage "Store installation initiated - please complete manually and restart" -Level "WARNING"
+                return @{ 
+                    Success = $false 
+                    Reason = "StoreInstallationInitiated"
+                    Message = "Microsoft Store opened for manual winget installation. Please complete and restart the application."
+                }
+            }
+            catch {
+                Write-LogMessage "Failed to open Microsoft Store: $_" -Level "ERROR"
+                return @{ Success = $false; Reason = "AllMethodsFailed"; Error = $_.Exception.Message }
+            }
         }
     }
     catch {

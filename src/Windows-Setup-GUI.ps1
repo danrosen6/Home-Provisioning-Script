@@ -735,8 +735,27 @@ $runButton.Add_Click({
         # Execute operations based on tab type
         switch ($operationType) {
             "Apps" {
-                Update-StatusLabel "Setting up winget environment..." "Blue"
-                $wingetResult = Initialize-WingetEnvironment
+                # Check if winget is already available before initializing
+                $wingetNeedsSetup = $true
+                if (Get-Command winget -ErrorAction SilentlyContinue) {
+                    try {
+                        $testVersion = winget --version 2>$null
+                        if ($testVersion -and $testVersion.Trim() -ne "") {
+                            Write-LogMessage "Winget already available: $testVersion" -Level "INFO"
+                            $wingetNeedsSetup = $false
+                        }
+                    }
+                    catch {
+                        Write-LogMessage "Winget command found but not working properly" -Level "WARNING"
+                    }
+                }
+                
+                if ($wingetNeedsSetup) {
+                    Update-StatusLabel "Setting up winget environment..." "Blue"
+                    $wingetResult = Initialize-WingetEnvironment
+                } else {
+                    Update-StatusLabel "Winget ready, starting installations..." "Blue"
+                }
                 
                 foreach ($appKey in $selectedItems) {
                     if ($script:OperationCancelled) {
