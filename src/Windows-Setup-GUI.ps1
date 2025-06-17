@@ -1,23 +1,18 @@
 #Requires -RunAsAdministrator
 
-# Windows Setup Automation GUI - Enhanced Version
-# A comprehensive GUI-based tool to automate Windows 10/11 setup, install applications, 
-# remove bloatware, optimize settings, and manage services.
-# 
-# Run this script as Administrator in PowerShell
+# Windows Setup Automation GUI - Clean Fixed Version
+# A comprehensive GUI-based tool to automate Windows 10/11 setup
 
-# Load Windows Forms assemblies with error handling
+# Load Windows Forms assemblies
 try {
     Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
     Add-Type -AssemblyName System.Drawing -ErrorAction Stop
     Write-Host "Loaded Windows Forms assemblies successfully" -ForegroundColor Green
 } catch {
     Write-Host "Failed to load Windows Forms assemblies: $_" -ForegroundColor Red
-    Write-Host "Make sure .NET Framework is properly installed" -ForegroundColor Yellow
     exit 1
 }
 
-# Enable visual styles
 try {
     [System.Windows.Forms.Application]::EnableVisualStyles()
     Write-Host "Enabled visual styles successfully" -ForegroundColor Green
@@ -25,26 +20,20 @@ try {
     Write-Host "Failed to enable visual styles: $_" -ForegroundColor Red
 }
 
-# Import required modules with updated paths for new structure
+# Import required modules
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# Import utilities first (logging needs to be available for other modules)
 try {
     Import-Module (Join-Path $ScriptPath "utils/Logging.psm1") -Force -ErrorAction Stop
     Import-Module (Join-Path $ScriptPath "utils/ConfigLoader.psm1") -Force -ErrorAction Stop
     Import-Module (Join-Path $ScriptPath "utils/JsonUtils.psm1") -Force -ErrorAction Stop
     Import-Module (Join-Path $ScriptPath "utils/WingetUtils.psm1") -Force -ErrorAction Stop
     Import-Module (Join-Path $ScriptPath "utils/ProfileManager.psm1") -Force -ErrorAction Stop
-
-    # Import core modules
     Import-Module (Join-Path $ScriptPath "modules/Installers.psm1") -Force -ErrorAction Stop
     Import-Module (Join-Path $ScriptPath "modules/SystemOptimizations.psm1") -Force -ErrorAction Stop
-    
     Write-Host "All modules loaded successfully" -ForegroundColor Green
 } catch {
     Write-Host "CRITICAL ERROR: Failed to load required modules: $_" -ForegroundColor Red
-    Write-Host "Please ensure all module files are present in the utils/ and modules/ directories" -ForegroundColor Yellow
-    Write-Host "Script path: $ScriptPath" -ForegroundColor Gray
     Read-Host "Press Enter to exit"
     exit 1
 }
@@ -61,7 +50,7 @@ Write-Host "===========================================================" -Foregr
 Write-Host "           Windows Setup Automation GUI" -ForegroundColor Green
 Write-Host "===========================================================" -ForegroundColor Cyan
 
-# Global variables for selections
+# Global variables
 $script:SelectedApps = @()
 $script:SelectedBloatware = @()
 $script:SelectedServices = @()
@@ -70,7 +59,6 @@ $script:SelectedTweaks = @()
 # Detect Windows version
 $script:OSInfo = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
 if ($script:OSInfo) {
-    # Windows 11 has build numbers 22000 and above
     $buildNumber = [int]$script:OSInfo.BuildNumber
     $script:IsWindows11 = $buildNumber -ge 22000
     $script:WindowsVersion = if ($script:IsWindows11) { "Windows 11" } else { "Windows 10" }
@@ -96,37 +84,29 @@ try {
     Write-Host "Error loading configuration: $_" -ForegroundColor Red
     Write-LogMessage "Failed to load configuration: $_" -Level "ERROR"
     
-    # Fallback to comprehensive minimal configuration
+    # Fallback configuration
     Write-Host "Using fallback configuration..." -ForegroundColor Yellow
     $script:Apps = @{
         "Essential" = @(
             @{Name="Visual Studio Code"; Key="vscode"; Default=$true; Win10=$true; Win11=$true}
             @{Name="Git"; Key="git"; Default=$true; Win10=$true; Win11=$true}
             @{Name="Google Chrome"; Key="chrome"; Default=$true; Win10=$true; Win11=$true}
-            @{Name="7-Zip"; Key="7zip"; Default=$false; Win10=$true; Win11=$true}
-            @{Name="Notepad++"; Key="notepad"; Default=$false; Win10=$true; Win11=$true}
         )
     }
     $script:Bloatware = @{
         "Common Bloatware" = @(
             @{Name="Microsoft Office Hub"; Key="ms-officehub"; Default=$true; Win10=$true; Win11=$true}
             @{Name="Candy Crush Games"; Key="candy-crush"; Default=$true; Win10=$true; Win11=$true}
-            @{Name="Xbox Console Companion"; Key="xbox-console"; Default=$true; Win10=$true; Win11=$true}
-            @{Name="Microsoft Teams"; Key="ms-teams"; Default=$false; Win10=$true; Win11=$true}
         )
     }
     $script:Services = @{
-        "Privacy & Performance" = @(
+        "Privacy and Performance" = @(
             @{Name="Connected User Experiences and Telemetry"; Key="diagtrack"; Default=$true; Win10=$true; Win11=$true}
-            @{Name="Superfetch/SysMain"; Key="sysmain"; Default=$false; Win10=$true; Win11=$true}
-            @{Name="Windows Search"; Key="wsearch"; Default=$false; Win10=$true; Win11=$true}
         )
     }
     $script:Tweaks = @{
         "Basic Tweaks" = @(
             @{Name="Show file extensions"; Key="show-extensions"; Default=$true; Win10=$true; Win11=$true}
-            @{Name="Disable Cortana"; Key="disable-cortana"; Default=$true; Win10=$true; Win11=$true}
-            @{Name="Show hidden files"; Key="show-hidden"; Default=$false; Win10=$true; Win11=$true}
         )
     }
 }
@@ -134,7 +114,6 @@ try {
 # Helper functions
 function Get-InstallerName {
     param([string]$AppKey)
-    
     $mapping = Get-InstallerNameMapping
     if ($mapping.ContainsKey($AppKey)) {
         return $mapping[$AppKey]
@@ -145,7 +124,6 @@ function Get-InstallerName {
 
 function Get-WingetId {
     param([string]$AppKey)
-    
     $wingetIds = Get-WingetIdMapping
     if ($wingetIds.ContainsKey($AppKey)) {
         return $wingetIds[$AppKey]
@@ -184,14 +162,14 @@ $versionLabel.Location = New-Object System.Drawing.Point(20, 50)
 $versionLabel.AutoSize = $true
 $headerPanel.Controls.Add($versionLabel)
 
-# Check winget compatibility and show in header
+# Check winget compatibility
 $wingetInfo = Test-WingetCompatibility
 $wingetStatusLabel = New-Object System.Windows.Forms.Label
 if ($wingetInfo.Compatible) {
-    $wingetStatusLabel.Text = "✓ Winget Compatible"
+    $wingetStatusLabel.Text = "[OK] Winget Compatible"
     $wingetStatusLabel.ForeColor = [System.Drawing.Color]::LightGreen
 } else {
-    $wingetStatusLabel.Text = "⚠ Winget Incompatible (Build $($wingetInfo.BuildNumber) < 16299)"
+    $wingetStatusLabel.Text = "[WARN] Winget Incompatible (Build $($wingetInfo.BuildNumber) less than 16299)"
     $wingetStatusLabel.ForeColor = [System.Drawing.Color]::Yellow
 }
 $wingetStatusLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10)
@@ -234,7 +212,7 @@ $appsSelectAll.AutoSize = $true
 $appsPanel.Controls.Add($appsSelectAll)
 $yPos += 35
 
-# Store app checkboxes for Select All functionality
+# Store app checkboxes
 $script:AppCheckboxes = @()
 
 # Add app categories and checkboxes
@@ -252,7 +230,6 @@ foreach ($category in $script:Apps.Keys | Sort-Object) {
     # Apps in category (3 columns)
     $col = 0
     $colWidth = 280
-    $rowStartY = $yPos
     $itemsInRow = 0
     
     foreach ($app in $script:Apps[$category]) {
@@ -576,33 +553,6 @@ $runButton.ForeColor = [System.Drawing.Color]::White
 $runButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $runButton.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 
-$batchButton = New-Object System.Windows.Forms.Button
-$batchButton.Text = "Quick Setup"
-$batchButton.Size = New-Object System.Drawing.Size(120, 35)
-$batchButton.Location = New-Object System.Drawing.Point(220, 20)
-$batchButton.BackColor = [System.Drawing.Color]::FromArgb(40, 167, 69)
-$batchButton.ForeColor = [System.Drawing.Color]::White
-$batchButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$batchButton.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-
-$profileButton = New-Object System.Windows.Forms.Button
-$profileButton.Text = "Profiles"
-$profileButton.Size = New-Object System.Drawing.Size(80, 35)
-$profileButton.Location = New-Object System.Drawing.Point(360, 20)
-$profileButton.BackColor = [System.Drawing.Color]::FromArgb(108, 117, 125)
-$profileButton.ForeColor = [System.Drawing.Color]::White
-$profileButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$profileButton.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-
-$logButton = New-Object System.Windows.Forms.Button
-$logButton.Text = "View Logs"
-$logButton.Size = New-Object System.Drawing.Size(80, 35)
-$logButton.Location = New-Object System.Drawing.Point(460, 20)
-$logButton.BackColor = [System.Drawing.Color]::FromArgb(108, 117, 125)
-$logButton.ForeColor = [System.Drawing.Color]::White
-$logButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$logButton.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-
 $closeButton = New-Object System.Windows.Forms.Button
 $closeButton.Text = "Close"
 $closeButton.Size = New-Object System.Drawing.Size(80, 35)
@@ -627,7 +577,7 @@ $progressBar.Location = New-Object System.Drawing.Point(550, 45)
 $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
 $progressBar.Visible = $false
 
-$bottomPanel.Controls.AddRange(@($runButton, $batchButton, $profileButton, $logButton, $closeButton, $statusLabel, $progressBar))
+$bottomPanel.Controls.AddRange(@($runButton, $closeButton, $statusLabel, $progressBar))
 $form.Controls.Add($bottomPanel)
 
 # Event handlers
@@ -684,13 +634,13 @@ $runButton.Add_Click({
                 $progressBar.Value = $currentStep
                 
                 $installerName = Get-InstallerName -AppKey $appKey
-                Update-StatusLabel "Installing $installerName... ($currentStep/$totalOperations)" "Blue"
+                Update-StatusLabel "Installing $installerName... ($currentStep of $totalOperations)" "Blue"
                 
                 try {
                     Install-Application -AppName $installerName -AppKey $appKey
                     Write-LogMessage "Successfully installed $installerName" -Level "SUCCESS"
                 } catch {
-                    Write-LogMessage "Failed to install $installerName`: $_" -Level "ERROR"
+                    Write-LogMessage "Failed to install $installerName : $_" -Level "ERROR"
                 }
                 [System.Windows.Forms.Application]::DoEvents()
             }
@@ -701,13 +651,13 @@ $runButton.Add_Click({
             foreach ($bloatKey in $selectedBloatware) {
                 $currentStep++
                 $progressBar.Value = $currentStep
-                Update-StatusLabel "Removing bloatware $bloatKey... ($currentStep/$totalOperations)" "Blue"
+                Update-StatusLabel "Removing bloatware $bloatKey... ($currentStep of $totalOperations)" "Blue"
                 
                 try {
                     Remove-Bloatware -BloatwareKey $bloatKey
                     Write-LogMessage "Successfully removed bloatware $bloatKey" -Level "SUCCESS"
                 } catch {
-                    Write-LogMessage "Failed to remove bloatware $bloatKey`: $_" -Level "ERROR"
+                    Write-LogMessage "Failed to remove bloatware $bloatKey : $_" -Level "ERROR"
                 }
                 [System.Windows.Forms.Application]::DoEvents()
             }
@@ -718,13 +668,13 @@ $runButton.Add_Click({
             foreach ($serviceKey in $selectedServices) {
                 $currentStep++
                 $progressBar.Value = $currentStep
-                Update-StatusLabel "Disabling service $serviceKey... ($currentStep/$totalOperations)" "Blue"
+                Update-StatusLabel "Disabling service $serviceKey... ($currentStep of $totalOperations)" "Blue"
                 
                 try {
                     Set-SystemOptimization -OptimizationKey $serviceKey
                     Write-LogMessage "Successfully disabled service $serviceKey" -Level "SUCCESS"
                 } catch {
-                    Write-LogMessage "Failed to disable service $serviceKey`: $_" -Level "ERROR"
+                    Write-LogMessage "Failed to disable service $serviceKey : $_" -Level "ERROR"
                 }
                 [System.Windows.Forms.Application]::DoEvents()
             }
@@ -735,13 +685,13 @@ $runButton.Add_Click({
             foreach ($tweakKey in $selectedTweaks) {
                 $currentStep++
                 $progressBar.Value = $currentStep
-                Update-StatusLabel "Applying tweak $tweakKey... ($currentStep/$totalOperations)" "Blue"
+                Update-StatusLabel "Applying tweak $tweakKey... ($currentStep of $totalOperations)" "Blue"
                 
                 try {
                     Set-SystemOptimization -OptimizationKey $tweakKey
                     Write-LogMessage "Successfully applied tweak $tweakKey" -Level "SUCCESS"
                 } catch {
-                    Write-LogMessage "Failed to apply tweak $tweakKey`: $_" -Level "ERROR"
+                    Write-LogMessage "Failed to apply tweak $tweakKey : $_" -Level "ERROR"
                 }
                 [System.Windows.Forms.Application]::DoEvents()
             }
@@ -757,64 +707,6 @@ $runButton.Add_Click({
     } finally {
         $runButton.Enabled = $true
         $progressBar.Visible = $false
-    }
-})
-
-$batchButton.Add_Click({
-    $result = [System.Windows.Forms.MessageBox]::Show(
-        "Quick Setup will install essential applications and remove common bloatware using default selections. Continue?",
-        "Quick Setup",
-        [System.Windows.Forms.MessageBoxButtons]::YesNo,
-        [System.Windows.Forms.MessageBoxIcon]::Question
-    )
-    
-    if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
-        # Select all default items
-        foreach ($checkbox in $script:AppCheckboxes) {
-            $checkbox.Checked = $false
-        }
-        foreach ($checkbox in $script:BloatwareCheckboxes) {
-            $checkbox.Checked = $false
-        }
-        
-        # Check defaults from configuration
-        foreach ($category in $script:Apps.Keys) {
-            foreach ($app in $script:Apps[$category]) {
-                if ($app.Default) {
-                    $checkbox = $script:AppCheckboxes | Where-Object { $_.Tag -eq $app.Key }
-                    if ($checkbox) { $checkbox.Checked = $true }
-                }
-            }
-        }
-        
-        foreach ($category in $script:Bloatware.Keys) {
-            foreach ($item in $script:Bloatware[$category]) {
-                if ($item.Default) {
-                    $checkbox = $script:BloatwareCheckboxes | Where-Object { $_.Tag -eq $item.Key }
-                    if ($checkbox) { $checkbox.Checked = $true }
-                }
-            }
-        }
-        
-        # Trigger the run operation
-        $runButton.PerformClick()
-    }
-})
-
-$profileButton.Add_Click({
-    [System.Windows.Forms.MessageBox]::Show("Profile management features are available but require additional implementation for GUI integration.", "Profiles", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
-})
-
-$logButton.Add_Click({
-    $logPath = Get-LogFilePath
-    if ($logPath -and (Test-Path $logPath)) {
-        try {
-            Start-Process notepad.exe -ArgumentList $logPath
-        } catch {
-            [System.Windows.Forms.MessageBox]::Show("Could not open log file: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
-        }
-    } else {
-        [System.Windows.Forms.MessageBox]::Show("Log file not found or logging not initialized.", "No Logs", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
     }
 })
 
