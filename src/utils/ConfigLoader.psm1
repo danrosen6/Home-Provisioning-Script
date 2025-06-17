@@ -167,6 +167,8 @@ function Get-AppDownloadInfo {
                 RequiredFeatures = $appInfo.DirectDownload.RequiredFeatures
                 PostInstall = $appInfo.DirectDownload.PostInstall
                 Commands = $appInfo.DirectDownload.Commands
+                RequiresUserContext = $appInfo.RequiresUserContext
+                InstallNotes = $appInfo.DirectDownload.InstallNotes
             }
             
             # Resolve dynamic URLs
@@ -318,11 +320,23 @@ function Resolve-PythonUrl {
         Write-Verbose "Resolving latest Python URL"
         $webRequest = Invoke-WebRequest -Uri "https://www.python.org/downloads/windows/" -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
         
-        if ($webRequest.Content -match "Latest Python 3 Release - Python (3\.\d+\.\d+)") {
-            $latestVersion = $matches[1]
-            return "https://www.python.org/ftp/python/$latestVersion/python-$latestVersion-amd64.exe"
+        # Try multiple patterns for different website layouts
+        $patterns = @(
+            "Latest Python 3 Release - Python (3\.\d+\.\d+)",
+            "Download Python (3\.\d+\.\d+)",
+            "Python (3\.\d+\.\d+) - Latest"
+        )
+        
+        foreach ($pattern in $patterns) {
+            if ($webRequest.Content -match $pattern) {
+                $latestVersion = $matches[1]
+                $downloadUrl = "https://www.python.org/ftp/python/$latestVersion/python-$latestVersion-amd64.exe"
+                Write-Verbose "Found Python version $latestVersion at $downloadUrl"
+                return $downloadUrl
+            }
         }
         
+        Write-Verbose "No Python version pattern matched, using fallback"
         return $FallbackUrl
     }
     catch {

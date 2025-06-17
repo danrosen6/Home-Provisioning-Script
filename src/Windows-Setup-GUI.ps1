@@ -748,10 +748,11 @@ $runButton.Add_Click({
                     $progressBar.Value = $currentStep
                     
                     $installerName = Get-InstallerName -AppKey $appKey
+                    $wingetId = Get-WingetId -AppKey $appKey
                     Update-StatusLabel "Installing $installerName... ($currentStep of $($selectedItems.Count))" "Blue"
                     
                     try {
-                        Install-Application -AppName $installerName -AppKey $appKey
+                        Install-Application -AppName $installerName -AppKey $appKey -WingetId $wingetId
                         Write-LogMessage "Successfully installed $installerName" -Level "SUCCESS"
                     } catch {
                         Write-LogMessage "Failed to install $installerName`: $_" -Level "ERROR"

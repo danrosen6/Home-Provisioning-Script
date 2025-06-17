@@ -69,7 +69,8 @@ function Start-ProcessWithTimeout {
         $completed = $process.HasExited
         
         if ($completed) {
-            Write-LogMessage "Process completed with exit code: $($process.ExitCode)" -Level "INFO"
+            $exitCode = if ($process.ExitCode -ne $null -and $process.ExitCode -ne "") { $process.ExitCode } else { "Unknown" }
+            Write-LogMessage "Process completed with exit code: $exitCode" -Level "INFO"
             return $process
         } else {
             # Timeout occurred
@@ -291,18 +292,39 @@ function Test-ApplicationInstalled {
         [string[]]$VerificationPaths = @(),
         
         [Parameter(Mandatory=$false)]
+        [string]$WingetId = "",
+        
+        [Parameter(Mandatory=$false)]
         [string]$RegistryPath = "",
         
         [Parameter(Mandatory=$false)]
         [string]$RegistryValue = "",
         
         [Parameter(Mandatory=$false)]
-        [switch]$CheckCommand = $false
+        [switch]$CheckCommand = $false,
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$UseWingetCheck = $true
     )
     
     Write-LogMessage "Verifying installation for $AppName..." -Level "INFO"
     
-    # First try checking verification paths if provided
+    # First try winget detection if WingetId is provided and winget is available
+    if ($UseWingetCheck -and $WingetId -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+        try {
+            Write-LogMessage "Checking winget for $AppName (ID: $WingetId)..." -Level "INFO"
+            $wingetResult = winget list --id $WingetId --exact 2>$null
+            if ($LASTEXITCODE -eq 0 -and $wingetResult -match $WingetId) {
+                Write-LogMessage "Installation verified: Found $AppName via winget" -Level "SUCCESS"
+                return $true
+            }
+        }
+        catch {
+            Write-LogMessage "Winget check failed for $AppName`: $_" -Level "DEBUG"
+        }
+    }
+    
+    # Try checking verification paths if provided
     if ($VerificationPaths -and $VerificationPaths.Count -gt 0) {
         foreach ($path in $VerificationPaths) {
             # Handle wildcard paths specially
@@ -354,7 +376,32 @@ function Test-ApplicationInstalled {
         }
     }
     
-    # Check registry if path provided
+    # Enhanced registry detection - scan common installation locations
+    if (-not $RegistryPath) {
+        try {
+            Write-LogMessage "Scanning registry for $AppName..." -Level "INFO"
+            $registryPaths = @(
+                "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+                "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+                "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+            )
+            
+            foreach ($regPath in $registryPaths) {
+                $installed = Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue | 
+                    Where-Object { $_.DisplayName -like "*$AppName*" }
+                
+                if ($installed) {
+                    Write-LogMessage "Installation verified: Found '$($installed[0].DisplayName)' in registry" -Level "SUCCESS"
+                    return $true
+                }
+            }
+        }
+        catch {
+            Write-LogMessage "Registry scan failed for $AppName`: $_" -Level "DEBUG"
+        }
+    }
+    
+    # Check specific registry path if provided
     if ($RegistryPath -and $RegistryValue) {
         try {
             $regValue = Get-ItemProperty -Path $RegistryPath -Name $RegistryValue -ErrorAction SilentlyContinue
@@ -380,6 +427,20 @@ function Test-ApplicationInstalled {
             "Python" = "python"
             "Notepad++" = "notepad++"
             "7-Zip" = "7z"
+            "Node.js" = "node"
+            "GitHub Desktop" = "github"
+            "Postman" = "postman"
+            "Windows Terminal" = "wt"
+            "PyCharm Community" = "pycharm"
+            "IntelliJ IDEA Community" = "idea"
+            "WebStorm" = "webstorm"
+            "Android Studio" = "studio"
+            "Docker Desktop" = "docker"
+            "Spotify" = "spotify"
+            "Discord" = "discord"
+            "Steam" = "steam"
+            "Brave Browser" = "brave"
+            "VLC Media Player" = "vlc"
         }
         
         if ($commandMap.ContainsKey($AppName)) {
@@ -1096,7 +1157,7 @@ function Install-Application {
     
     # Skip if already installed and not forced
     if (-not $Force) {
-        $isInstalled = Test-ApplicationInstalled -AppName $AppName -CheckCommand
+        $isInstalled = Test-ApplicationInstalled -AppName $AppName -WingetId $WingetId -CheckCommand
         if ($isInstalled) {
             Write-LogMessage "$AppName is already installed, skipping installation" -Level "INFO"
             Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Skipped" -AdditionalData @{
@@ -1206,8 +1267,10 @@ function Install-Application {
             if ($WingetId) {
                 Write-LogMessage "Installing $AppName via winget (ID: $WingetId)..." -Level "INFO"
                 
-                # Enhanced winget installation with retry logic
+                # Enhanced winget installation with retry logic and elevated privilege handling
                 $wingetSuccess = $false
+                $needsUserContext = $false
+                
                 for ($attempt = 1; $attempt -le 2; $attempt++) {
                     try {
                         Write-LogMessage "Winget installation attempt $attempt/2 for $AppName..." -Level "INFO"
@@ -1228,9 +1291,69 @@ function Install-Application {
                             $wingetSuccess = $true
                             break
                         }
+                        elseif ($LASTEXITCODE -eq -1978335146) {
+                            # Error code -1978335146: "The installer cannot be run from an administrator context"
+                            # This occurs with apps like Spotify, Discord, and other user-mode applications
+                            # that refuse to install when PowerShell is running with elevated privileges
+                            Write-LogMessage "Winget installation failed: $AppName cannot be installed with elevated privileges (Exit code: $LASTEXITCODE)" -Level "WARNING"
+                            Write-LogMessage "This app needs to be installed in user context. Attempting user-context installation..." -Level "INFO"
+                            
+                            # Try to install without elevated privileges using PowerShell job
+                            try {
+                                Write-LogMessage "Attempting user-context installation for $AppName..." -Level "INFO"
+                                
+                                # Create a script block to run winget in user context
+                                $userContextScript = {
+                                    param($WingetId, $AppName)
+                                    
+                                    # Run winget without elevated privileges
+                                    $result = & winget install --id $WingetId --accept-source-agreements --accept-package-agreements --silent 2>&1
+                                    return @{
+                                        ExitCode = $LASTEXITCODE
+                                        Output = $result
+                                        AppName = $AppName
+                                    }
+                                }
+                                
+                                # Execute in a new PowerShell process without elevation
+                                $job = Start-Job -ScriptBlock $userContextScript -ArgumentList $WingetId, $AppName
+                                $jobResult = $job | Wait-Job -Timeout 300 | Receive-Job  # 5 minute timeout
+                                Remove-Job $job -Force
+                                
+                                if ($jobResult -and ($jobResult.ExitCode -eq 0 -or $jobResult.Output -match "Successfully installed")) {
+                                    Write-LogMessage "$AppName installed successfully via winget in user context!" -Level "SUCCESS"
+                                    Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Completed" -AdditionalData @{
+                                        Method = "WingetUserContext"
+                                        WingetId = $WingetId
+                                        WindowsBuild = $buildNumber
+                                        Attempt = $attempt
+                                        Note = "Installed in user context due to elevation restrictions"
+                                    }
+                                    
+                                    $wingetSuccess = $true
+                                    break
+                                } else {
+                                    Write-LogMessage "User-context installation also failed for $AppName. Exit code: $($jobResult.ExitCode)" -Level "WARNING"
+                                    $needsUserContext = $true
+                                    break  # Don't retry, proceed to direct download
+                                }
+                            }
+                            catch {
+                                Write-LogMessage "Error during user-context installation attempt: $_" -Level "WARNING"
+                                $needsUserContext = $true
+                                break  # Don't retry, proceed to direct download
+                            }
+                        }
                         else {
                             Write-LogMessage "Winget installation attempt $attempt failed with exit code: $LASTEXITCODE" -Level "WARNING"
                             Write-LogMessage "Winget output: $wingetOutput" -Level "DEBUG"
+                            
+                            # Check for other common privilege-related errors in output
+                            if ($wingetOutput -match "administrator|elevated|privilege|access.*denied" -and -not $needsUserContext) {
+                                Write-LogMessage "Output suggests privilege-related issue. Will try direct download." -Level "INFO"
+                                $needsUserContext = $true
+                                break
+                            }
                             
                             if ($attempt -lt 2) {
                                 Write-LogMessage "Waiting 5 seconds before retry..." -Level "INFO"
@@ -1249,8 +1372,13 @@ function Install-Application {
                 if ($wingetSuccess) {
                     return $true
                 } else {
-                    Write-LogMessage "All winget installation attempts failed for $AppName" -Level "WARNING"
-                    Write-LogMessage "Windows build: $buildNumber (winget requires 16299+)" -Level "DEBUG"
+                    if ($needsUserContext) {
+                        Write-LogMessage "Winget installation failed for $AppName due to privilege restrictions" -Level "WARNING"
+                        Write-LogMessage "Some apps (like Spotify) cannot be installed with administrator privileges" -Level "INFO"
+                    } else {
+                        Write-LogMessage "All winget installation attempts failed for $AppName" -Level "WARNING"
+                        Write-LogMessage "Windows build: $buildNumber (winget requires 16299+)" -Level "DEBUG"
+                    }
                     Write-LogMessage "Proceeding with direct download method..." -Level "INFO"
                 }
             } else {
@@ -1369,7 +1497,61 @@ function Install-Application {
                 }
             }
             
-            $process = Start-ProcessWithTimeout -FilePath $installerPath -ArgumentList $arguments -TimeoutMinutes $script:InstallerTimeoutMinutes -CancellationToken $CancellationToken
+            # Check if this app needs user context installation (came from winget failure or is known to need it)
+            if ($needsUserContext -and (Test-NeedsUserContext -AppName $AppName -AppKey $AppKey -DirectDownload $DirectDownload)) {
+                Write-LogMessage "Installing $AppName in user context (no elevation) due to previous winget failure..." -Level "INFO"
+                
+                # Try to run installer without elevation using a job
+                try {
+                    $userInstallScript = {
+                        param($InstallerPath, $Arguments, $TimeoutMinutes)
+                        
+                        $processInfo = New-Object System.Diagnostics.ProcessStartInfo
+                        $processInfo.FileName = $InstallerPath
+                        $processInfo.Arguments = $Arguments
+                        $processInfo.UseShellExecute = $false
+                        $processInfo.RedirectStandardOutput = $true
+                        $processInfo.RedirectStandardError = $true
+                        $processInfo.CreateNoWindow = $true
+                        
+                        $process = New-Object System.Diagnostics.Process
+                        $process.StartInfo = $processInfo
+                        
+                        $process.Start() | Out-Null
+                        $process.WaitForExit($TimeoutMinutes * 60 * 1000)
+                        
+                        return @{
+                            ExitCode = $process.ExitCode
+                            HasExited = $process.HasExited
+                            StandardOutput = $process.StandardOutput.ReadToEnd()
+                            StandardError = $process.StandardError.ReadToEnd()
+                        }
+                    }
+                    
+                    $job = Start-Job -ScriptBlock $userInstallScript -ArgumentList $installerPath, $arguments, $script:InstallerTimeoutMinutes
+                    $jobResult = $job | Wait-Job -Timeout ($script:InstallerTimeoutMinutes * 60) | Receive-Job
+                    Remove-Job $job -Force
+                    
+                    if ($jobResult) {
+                        $process = [PSCustomObject]@{
+                            ExitCode = $jobResult.ExitCode
+                            HasExited = $jobResult.HasExited
+                        }
+                        Write-LogMessage "User-context installation completed for $AppName" -Level "INFO"
+                    } else {
+                        Write-LogMessage "User-context installation timed out for $AppName, falling back to standard method" -Level "WARNING"
+                        $process = Start-ProcessWithTimeout -FilePath $installerPath -ArgumentList $arguments -TimeoutMinutes $script:InstallerTimeoutMinutes -CancellationToken $CancellationToken
+                    }
+                }
+                catch {
+                    Write-LogMessage "Error during user-context installation, falling back to standard method: $_" -Level "WARNING"
+                    $process = Start-ProcessWithTimeout -FilePath $installerPath -ArgumentList $arguments -TimeoutMinutes $script:InstallerTimeoutMinutes -CancellationToken $CancellationToken
+                }
+            }
+            else {
+                # Standard elevated installation
+                $process = Start-ProcessWithTimeout -FilePath $installerPath -ArgumentList $arguments -TimeoutMinutes $script:InstallerTimeoutMinutes -CancellationToken $CancellationToken
+            }
         }
         elseif ($DirectDownload.Extension -eq ".msi") {
             $arguments = if ($DirectDownload.Arguments) { $DirectDownload.Arguments } else { "/quiet", "/norestart" }
@@ -1429,7 +1611,7 @@ function Install-Application {
             Write-LogMessage "Installation completed successfully" -Level "SUCCESS"
             
             # Verify installation
-            $verificationResult = Test-ApplicationInstalled -AppName $AppName -VerificationPaths $DirectDownload.VerificationPaths -CheckCommand
+            $verificationResult = Test-ApplicationInstalled -AppName $AppName -WingetId $WingetId -VerificationPaths $DirectDownload.VerificationPaths -CheckCommand
             
             if ($verificationResult) {
                 Write-LogMessage "Installation verified for $AppName" -Level "SUCCESS"
@@ -1456,9 +1638,10 @@ function Install-Application {
             
             return $true
         } else {
-            Write-LogMessage "Installation failed with exit code: $($process.ExitCode)" -Level "ERROR"
+            $exitCode = if ($process.ExitCode -ne $null -and $process.ExitCode -ne "") { $process.ExitCode } else { "Unknown" }
+            Write-LogMessage "Installation failed with exit code: $exitCode" -Level "ERROR"
             Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Failed" -AdditionalData @{
-                Error = "Installation failed with exit code: $($process.ExitCode)"
+                Error = "Installation failed with exit code: $exitCode"
                 Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
             }
             return $false
@@ -1478,7 +1661,10 @@ function Install-Python {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$false)]
-        [string]$Version = "3.12",
+        [string]$Version = "3.13",
+        
+        [Parameter(Mandatory=$false)]
+        [string]$WingetId = "Python.Python.3",
         
         [Parameter(Mandatory=$false)]
         [switch]$CreateVirtualEnv,
@@ -1501,7 +1687,7 @@ function Install-Python {
     if (-not $script:UseDirectDownloadOnly -and (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-LogMessage "Installing Python via winget..." -Level "INFO"
         try {
-            $wingetOutput = winget install --id "Python.Python.3" --accept-source-agreements --accept-package-agreements --silent 2>&1
+            $wingetOutput = winget install --id $WingetId --accept-source-agreements --accept-package-agreements --silent 2>&1
             
             if ($LASTEXITCODE -eq 0 -or $wingetOutput -match "Successfully installed") {
                 Write-LogMessage "Python installed successfully via winget!" -Level "SUCCESS"
@@ -1640,7 +1826,8 @@ function Install-Python {
                 return $false
             }
         } else {
-            Write-LogMessage "Python installer failed with exit code: $($process.ExitCode)" -Level "ERROR"
+            $exitCode = if ($process.ExitCode -ne $null -and $process.ExitCode -ne "") { $process.ExitCode } else { "Unknown" }
+            Write-LogMessage "Python installer failed with exit code: $exitCode" -Level "ERROR"
             return $false
         }
     }
@@ -2045,6 +2232,36 @@ function Install-ApplicationBatch {
     }
 }
 
+# Function to check if an app commonly needs user context installation
+function Test-NeedsUserContext {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AppName,
+        [Parameter(Mandatory=$false)]
+        [string]$AppKey = "",
+        [Parameter(Mandatory=$false)]
+        [hashtable]$DirectDownload = $null
+    )
+    
+    # First check if configuration explicitly indicates user context requirement
+    if ($DirectDownload -and $DirectDownload.RequiresUserContext) {
+        return $true
+    }
+    
+    # Fallback: Apps that commonly require user context installation (not elevated)
+    $userContextApps = @(
+        "Spotify",
+        "Discord", 
+        "WhatsApp",
+        "Telegram",
+        "Slack"
+    )
+    
+    $keyToCheck = if ($AppKey -and $AppKey -ne "") { $AppKey } else { $AppName }
+    
+    return $userContextApps -contains $keyToCheck
+}
+
 # Export functions
 Export-ModuleMember -Function @(
     'Test-FileChecksum',
@@ -2061,5 +2278,6 @@ Export-ModuleMember -Function @(
     'Install-WindowsFeature',
     'Invoke-PostInstallActions',
     'Install-ApplicationBatch',
-    'Get-OptimalConcurrency'
+    'Get-OptimalConcurrency',
+    'Test-NeedsUserContext'
 )
