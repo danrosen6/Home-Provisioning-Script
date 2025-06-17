@@ -51,7 +51,7 @@ function Start-ProcessWithTimeout {
                     $process.Kill()
                     $process.WaitForExit(5000)
                 } catch {
-                    Write-LogMessage "Error killing cancelled process: $_" -Level "ERROR"
+                    Write-LogMessage "Error killing cancelled process``: $_" -Level "ERROR"
                 }
                 
                 return [PSCustomObject]@{
@@ -79,7 +79,7 @@ function Start-ProcessWithTimeout {
                 $process.Kill()
                 $process.WaitForExit(5000) # Wait up to 5 seconds for cleanup
             } catch {
-                Write-LogMessage "Error killing timed-out process: $_" -Level "ERROR"
+                Write-LogMessage "Error killing timed-out process``: $_" -Level "ERROR"
             }
             
             # Return a process-like object with timeout exit code
@@ -92,7 +92,7 @@ function Start-ProcessWithTimeout {
         }
     }
     catch {
-        Write-LogMessage "Error starting process: $_" -Level "ERROR"
+        Write-LogMessage "Error starting process``: $_" -Level "ERROR"
         return [PSCustomObject]@{
             ExitCode = -2
             HasExited = $true
@@ -146,7 +146,7 @@ if (Test-Path $LoggingModule) {
                 $script:txtLog.ScrollToCaret()
             }
             catch {
-                Write-Host "Error updating log textbox: $_" -ForegroundColor Red
+                Write-Host "Error updating log textbox`: $_" -ForegroundColor Red
             }
         }
         
@@ -156,7 +156,7 @@ if (Test-Path $LoggingModule) {
                 Add-Content -Path $script:LogPath -Value $logMessage -ErrorAction Stop
             }
             catch {
-                Write-Host "Failed to write to log file: $_" -ForegroundColor Red
+                Write-Host "Failed to write to log file`: $_" -ForegroundColor Red
             }
         }
     }
@@ -184,7 +184,7 @@ function Get-LatestVersionUrl {
                     return $asset.browser_download_url
                 }
             } catch {
-                Write-LogMessage "Error getting latest Git version: $_" -Level "WARNING"
+                Write-LogMessage "Error getting latest Git version``: $_" -Level "WARNING"
             }
             # Fallback to a known URL pattern without version
             return "https://github.com/git-for-windows/git/releases/download/v2.49.0.windows.1/Git-2.49.0-64-bit.exe"
@@ -200,7 +200,7 @@ function Get-LatestVersionUrl {
                     return "https://www.python.org/ftp/python/$latestVersion/python-$latestVersion-amd64.exe"
                 }
             } catch {
-                Write-LogMessage "Error getting latest Python version: $_" -Level "WARNING"
+                Write-LogMessage "Error getting latest Python version``: $_" -Level "WARNING"
             }
             # Fallback to a reasonably current version
             return "https://www.python.org/ftp/python/3.13.4/python-3.13.4-amd64.exe"
@@ -218,7 +218,7 @@ function Get-LatestVersionUrl {
                     return $downloadUrl
                 }
             } catch {
-                Write-LogMessage "Error getting latest PyCharm version: $_" -Level "WARNING"
+                Write-LogMessage "Error getting latest PyCharm version``: $_" -Level "WARNING"
             }
             # Fallback to a known URL pattern
             return "https://download.jetbrains.com/python/pycharm-community-latest.exe"
@@ -234,7 +234,7 @@ function Get-LatestVersionUrl {
                     return "https://get.videolan.org/vlc/$latestVersion/win64/vlc-$latestVersion-win64.exe"
                 }
             } catch {
-                Write-LogMessage "Error getting latest VLC version: $_" -Level "WARNING"
+                Write-LogMessage "Error getting latest VLC version``: $_" -Level "WARNING"
             }
             # Fallback to a mirror that may have the latest version
             return "https://download.videolan.org/pub/videolan/vlc/last/win64/vlc-latest-win64.exe"
@@ -251,7 +251,7 @@ function Get-LatestVersionUrl {
                     return "https://www.7-zip.org/a/7z$formattedVersion-x64.exe"
                 }
             } catch {
-                Write-LogMessage "Error getting latest 7-Zip version: $_" -Level "WARNING"
+                Write-LogMessage "Error getting latest 7-Zip version``: $_" -Level "WARNING"
             }
             # Fallback to a recent version
             return "https://www.7-zip.org/a/7z2409-x64.exe"
@@ -269,7 +269,7 @@ function Get-LatestVersionUrl {
                     return $asset.browser_download_url
                 }
             } catch {
-                Write-LogMessage "Error getting latest Notepad++ version: $_" -Level "WARNING"
+                Write-LogMessage "Error getting latest Notepad++ version``: $_" -Level "WARNING"
             }
             # Fallback to a URL that should redirect to the latest version
             return "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.1/npp.8.8.1.Installer.x64.exe"
@@ -690,7 +690,7 @@ function Test-FileChecksum {
         return $hash.Hash -eq $ExpectedChecksum.Split(':')[1]
     }
     catch {
-        Write-LogMessage "Failed to verify file checksum: $_" -Level "ERROR"
+        Write-LogMessage "Failed to verify file checksum``: $_" -Level "ERROR"
         return $false
     }
 }
@@ -745,7 +745,7 @@ function Install-Winget {
             }
         }
         catch {
-            Write-LogMessage "Enhanced winget installation failed: $_" -Level "WARNING"
+            Write-LogMessage "Enhanced winget installation failed``: $_" -Level "WARNING"
             Write-LogMessage "Falling back to legacy installation method..." -Level "INFO"
         }
     } else {
@@ -827,7 +827,7 @@ function Install-Winget {
             Write-LogMessage "Winget registration completed but command not yet available" -Level "WARNING"
             Write-LogMessage "This may require a new PowerShell session" -Level "INFO"
         } catch {
-            Write-LogMessage "Failed to register winget: $_" -Level "WARNING"
+            Write-LogMessage "Failed to register winget``: $_" -Level "WARNING"
         }
     }
     
@@ -862,7 +862,7 @@ function Install-Winget {
         Write-LogMessage "Store installation timeout - proceeding to direct download" -Level "WARNING"
     }
     catch {
-        Write-LogMessage "Failed to open Microsoft Store: $_" -Level "WARNING"
+        Write-LogMessage "Failed to open Microsoft Store``: $_" -Level "WARNING"
     }
     
     # Fallback to direct download with enhanced error handling
@@ -914,7 +914,7 @@ function Install-Winget {
                 break
             }
             catch {
-                Write-LogMessage "Installation attempt $attempt failed: $_" -Level "WARNING"
+                Write-LogMessage "Installation attempt $attempt failed``: $_" -Level "WARNING"
                 if ($attempt -lt 3) {
                     Start-Sleep -Seconds 5
                 }
@@ -957,7 +957,7 @@ function Install-Winget {
         return $true  # Return true since installation commands succeeded
     }
     catch {
-        Write-LogMessage "Failed to install winget: $_" -Level "ERROR"
+        Write-LogMessage "Failed to install winget``: $_" -Level "ERROR"
         return $false
     }
 }
@@ -1061,7 +1061,7 @@ ASSIGNMENTOPTIONS=
             return $null
         }
     } catch {
-        Write-LogMessage "Error creating silent config for $AppName`: $_" -Level "ERROR"
+        Write-LogMessage "Error creating silent config for $AppName```: $_" -Level "ERROR"
         return $null
     }
 }
@@ -1132,7 +1132,7 @@ function Install-Application {
                 }
             }
             catch {
-                Write-LogMessage "Winget command exists but not working properly: $_" -Level "WARNING"
+                Write-LogMessage "Winget command exists but not working properly``: $_" -Level "WARNING"
             }
         }
         
@@ -1239,7 +1239,7 @@ function Install-Application {
                         }
                     }
                     catch {
-                        Write-LogMessage "Error using winget on attempt $attempt: $_" -Level "WARNING"
+                        Write-LogMessage "Error using winget on attempt $attempt```: $_" -Level "WARNING"
                         if ($attempt -lt 2) {
                             Start-Sleep -Seconds 5
                         }
@@ -1336,9 +1336,9 @@ function Install-Application {
             Write-LogMessage "Download completed successfully" -Level "SUCCESS"
         }
         catch {
-            Write-LogMessage "Download failed: $_" -Level "ERROR"
+            Write-LogMessage "Download failed``: $_" -Level "ERROR"
             Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Failed" -AdditionalData @{
-                Error = "Download failed: $_"
+                Error = "Download failed`: $_"
                 Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
             }
             return $false
@@ -1386,7 +1386,7 @@ function Install-Application {
                 $process = [PSCustomObject]@{ ExitCode = 0 }
             }
             catch {
-                Write-LogMessage "Add-AppxPackage failed, trying winget fallback: $_" -Level "WARNING"
+                Write-LogMessage "Add-AppxPackage failed, trying winget fallback``: $_" -Level "WARNING"
                 
                 # Try using winget if available
                 if (Get-Command winget -ErrorAction SilentlyContinue) {
@@ -1399,7 +1399,7 @@ function Install-Application {
                         throw "Winget installation failed: $wingetResult"
                     }
                 } else {
-                    throw "Failed to install MSIX bundle and winget not available: $_"
+                    throw "Failed to install MSIX bundle and winget not available`: $_"
                 }
             }
         }
@@ -1465,7 +1465,7 @@ function Install-Application {
         }
     }
     catch {
-        Write-LogMessage "Failed to install $AppName : $_" -Level "ERROR"
+        Write-LogMessage "Failed to install $AppName ``: $_" -Level "ERROR"
         Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Failed" -AdditionalData @{
             Error = $_.Exception.Message
             Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -1522,7 +1522,7 @@ function Install-Python {
             }
         }
         catch {
-            Write-LogMessage "Winget installation failed: $_" -Level "WARNING"
+            Write-LogMessage "Winget installation failed``: $_" -Level "WARNING"
         }
     }
     
@@ -1627,7 +1627,7 @@ function Install-Python {
                     Write-LogMessage "Pip upgraded successfully" -Level "SUCCESS"
                 }
                 catch {
-                    Write-LogMessage "Warning: Could not upgrade pip: $_" -Level "WARNING"
+                    Write-LogMessage "Warning: Could not upgrade pip``: $_" -Level "WARNING"
                 }
                 
                 Write-LogMessage "Python is ready for development!" -Level "SUCCESS"
@@ -1645,7 +1645,7 @@ function Install-Python {
         }
     }
     catch {
-        Write-LogMessage "Failed to install Python: $_" -Level "ERROR"
+        Write-LogMessage "Failed to install Python``: $_" -Level "ERROR"
         return $false
     }
 }
@@ -1717,7 +1717,7 @@ function Install-VSCodeExtensions {
                 $failedCount++
             }
         } catch {
-            Write-LogMessage "Error installing extension $ext : $_" -Level "ERROR"
+            Write-LogMessage "Error installing extension $ext ``: $_" -Level "ERROR"
             $failedCount++
         }
     }
@@ -1785,7 +1785,7 @@ function Install-WindowsFeature {
         return $true
     }
     catch {
-        Write-LogMessage "Failed to install Windows feature $AppName : $_" -Level "ERROR"
+        Write-LogMessage "Failed to install Windows feature $AppName ``: $_" -Level "ERROR"
         return $false
     }
 }
@@ -1846,7 +1846,7 @@ function Invoke-PostInstallActions {
                     }
                 }
                 catch {
-                    Write-LogMessage "Post-install command error: $_" -Level "ERROR"
+                    Write-LogMessage "Post-install command error``: $_" -Level "ERROR"
                 }
             }
         }
@@ -1854,7 +1854,7 @@ function Invoke-PostInstallActions {
         Write-LogMessage "Post-install actions completed for $AppName" -Level "SUCCESS"
     }
     catch {
-        Write-LogMessage "Error in post-install actions for $AppName : $_" -Level "ERROR"
+        Write-LogMessage "Error in post-install actions for $AppName ``: $_" -Level "ERROR"
     }
 }
 
@@ -1907,7 +1907,7 @@ function Get-OptimalConcurrency {
         return $concurrency
     }
     catch {
-        Write-LogMessage "Error detecting system resources, defaulting to sequential installation: $_" -Level "WARNING"
+        Write-LogMessage "Error detecting system resources, defaulting to sequential installation``: $_" -Level "WARNING"
         return 1
     }
 }
@@ -2036,7 +2036,7 @@ function Install-ApplicationBatch {
         }
     }
     catch {
-        Write-LogMessage "Error in batch installation: $_" -Level "ERROR"
+        Write-LogMessage "Error in batch installation``: $_" -Level "ERROR"
         return @{
             Completed = $completed
             Failed = $failed + ($AppKeys | Where-Object { $_ -notin $completed })

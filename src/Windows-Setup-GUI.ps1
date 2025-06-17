@@ -9,7 +9,7 @@ try {
     Add-Type -AssemblyName System.Drawing -ErrorAction Stop
     Write-Host "Loaded Windows Forms assemblies successfully" -ForegroundColor Green
 } catch {
-    Write-Host "Failed to load Windows Forms assemblies: $_" -ForegroundColor Red
+    Write-Host "Failed to load Windows Forms assemblies`: $_" -ForegroundColor Red
     exit 1
 }
 
@@ -17,7 +17,7 @@ try {
     [System.Windows.Forms.Application]::EnableVisualStyles()
     Write-Host "Enabled visual styles successfully" -ForegroundColor Green
 } catch {
-    Write-Host "Failed to enable visual styles: $_" -ForegroundColor Red
+    Write-Host "Failed to enable visual styles`: $_" -ForegroundColor Red
 }
 
 # Import required modules
@@ -72,7 +72,7 @@ try {
     Import-Module (Join-Path $ScriptPath "modules/SystemOptimizations.psm1") -Force -ErrorAction Stop
     Write-Host "All modules loaded successfully" -ForegroundColor Green
 } catch {
-    Write-Host "CRITICAL ERROR: Failed to load required modules: $_" -ForegroundColor Red
+    Write-Host "CRITICAL ERROR: Failed to load required modules`: $_" -ForegroundColor Red
     Write-Host "Module load error details: $($_.Exception.Message)" -ForegroundColor Yellow
     Read-Host "Press Enter to exit"
     exit 1
@@ -83,7 +83,7 @@ try {
     Initialize-Logging
     Write-Host "Logging initialized successfully" -ForegroundColor Green
 } catch {
-    Write-Host "WARNING: Failed to initialize logging: $_" -ForegroundColor Yellow
+    Write-Host "WARNING: Failed to initialize logging`: $_" -ForegroundColor Yellow
 }
 
 Write-Host "===========================================================" -ForegroundColor Cyan
@@ -122,8 +122,7 @@ try {
     $script:Tweaks = Get-ConfigurationData -ConfigType "Tweaks"
     
     # Check if any configuration returned empty
-    if ($script:Apps.Keys.Count -eq 0 -or $script:Bloatware.Keys.Count -eq 0 -or 
-        $script:Services.Keys.Count -eq 0 -or $script:Tweaks.Keys.Count -eq 0) {
+    if ($script:Apps.Keys.Count -eq 0 -or $script:Bloatware.Keys.Count -eq 0 -or $script:Services.Keys.Count -eq 0 -or $script:Tweaks.Keys.Count -eq 0) {
         throw "One or more configuration files failed to load or are empty"
     }
     
@@ -138,35 +137,36 @@ try {
     }
     
     Write-Host "Configuration loaded successfully: Apps: $appsCount, Bloatware: $bloatwareCount, Services: $servicesCount, Tweaks: $tweaksCount" -ForegroundColor Green
-} catch {
-    Write-Host "CRITICAL ERROR loading configuration: $_" -ForegroundColor Red
+}
+catch {
+    Write-Host "CRITICAL ERROR loading configuration`: $_" -ForegroundColor Red
     
-    # Try to log error if logging is available
     try {
-        Write-LogMessage "Failed to load configuration: $_" -Level "ERROR"
-    } catch {
+        Write-LogMessage "Failed to load configuration`: $_" -Level "ERROR"
+    }
+    catch {
         # Logging not available, continue
     }
     
-    # More detailed error reporting
     Write-Host "Attempting to diagnose configuration issues..." -ForegroundColor Yellow
     
-    # Check if JSON files exist
     $configFiles = @("apps.json", "bloatware.json", "services.json", "tweaks.json")
     $expectedConfigPath = Join-Path $ScriptPath "config"
     foreach ($file in $configFiles) {
         $filePath = Join-Path $expectedConfigPath $file
         if (Test-Path $filePath) {
-            Write-Host "✓ Found: $file" -ForegroundColor Green
+            Write-Host "Found: $file" -ForegroundColor Green
             try {
                 $content = Get-Content $filePath -Raw
                 $json = $content | ConvertFrom-Json
-                Write-Host "  ✓ Valid JSON structure" -ForegroundColor Green
-            } catch {
-                Write-Host "  ✗ Invalid JSON: $_" -ForegroundColor Red
+                Write-Host "  Valid JSON structure" -ForegroundColor Green
             }
-        } else {
-            Write-Host "✗ Missing: $file at $filePath" -ForegroundColor Red
+            catch {
+                Write-Host "  Invalid JSON`: $_" -ForegroundColor Red
+            }
+        }
+        else {
+            Write-Host "Missing: $file at $filePath" -ForegroundColor Red
         }
     }
     
@@ -704,7 +704,7 @@ $runButton.Add_Click({
                     Install-Application -AppName $installerName -AppKey $appKey
                     Write-LogMessage "Successfully installed $installerName" -Level "SUCCESS"
                 } catch {
-                    Write-LogMessage "Failed to install $installerName : $_" -Level "ERROR"
+                    Write-LogMessage "Failed to install $installerName`: $_" -Level "ERROR"
                 }
                 [System.Windows.Forms.Application]::DoEvents()
             }
@@ -721,7 +721,7 @@ $runButton.Add_Click({
                     Remove-Bloatware -BloatwareKey $bloatKey
                     Write-LogMessage "Successfully removed bloatware $bloatKey" -Level "SUCCESS"
                 } catch {
-                    Write-LogMessage "Failed to remove bloatware $bloatKey : $_" -Level "ERROR"
+                    Write-LogMessage "Failed to remove bloatware $bloatKey`: $_" -Level "ERROR"
                 }
                 [System.Windows.Forms.Application]::DoEvents()
             }
@@ -738,7 +738,7 @@ $runButton.Add_Click({
                     Set-SystemOptimization -OptimizationKey $serviceKey
                     Write-LogMessage "Successfully disabled service $serviceKey" -Level "SUCCESS"
                 } catch {
-                    Write-LogMessage "Failed to disable service $serviceKey : $_" -Level "ERROR"
+                    Write-LogMessage "Failed to disable service $serviceKey`: $_" -Level "ERROR"
                 }
                 [System.Windows.Forms.Application]::DoEvents()
             }
@@ -755,7 +755,7 @@ $runButton.Add_Click({
                     Set-SystemOptimization -OptimizationKey $tweakKey
                     Write-LogMessage "Successfully applied tweak $tweakKey" -Level "SUCCESS"
                 } catch {
-                    Write-LogMessage "Failed to apply tweak $tweakKey : $_" -Level "ERROR"
+                    Write-LogMessage "Failed to apply tweak $tweakKey`: $_" -Level "ERROR"
                 }
                 [System.Windows.Forms.Application]::DoEvents()
             }
@@ -765,9 +765,9 @@ $runButton.Add_Click({
         [System.Windows.Forms.MessageBox]::Show("All selected operations have been completed!", "Operations Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
         
     } catch {
-        Update-StatusLabel "Error during operations: $_" "Red"
-        Write-LogMessage "GUI operation error: $_" -Level "ERROR"
-        [System.Windows.Forms.MessageBox]::Show("An error occurred: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        Update-StatusLabel "Error during operations`: $_" "Red"
+        Write-LogMessage "GUI operation error`: $_" -Level "ERROR"
+        [System.Windows.Forms.MessageBox]::Show("An error occurred`: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
     } finally {
         $runButton.Enabled = $true
         $progressBar.Visible = $false

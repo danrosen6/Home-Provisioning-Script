@@ -201,7 +201,7 @@ function Initialize-WingetEnvironment {
                 
                 Write-Verbose "Module repair completed but winget not yet available"
             } catch {
-                Write-Verbose "PowerShell module approach failed: $_"
+                Write-Verbose "PowerShell module approach failed`: $_"
             }
             
             # Method 2: Direct registration with extended verification
@@ -351,7 +351,7 @@ function Register-WingetPackage {
         return $verification.Available
     }
     catch {
-        Write-Warning "Failed to register winget: $_"
+        Write-Warning "Failed to register winget`: $_"
         return $false
     }
 }
@@ -368,7 +368,7 @@ function Install-WingetPackage {
         return Install-WingetDirect
     }
     catch {
-        Write-Warning "Failed to install winget: $_"
+        Write-Warning "Failed to install winget`: $_"
         return $false
     }
 }
@@ -498,7 +498,7 @@ function Install-WingetDirect {
                         }
                     }
                     catch {
-                        Write-LogMessage "Installation attempt $attempt failed for $($dep.Name): $_" -Level "WARNING"
+                        Write-LogMessage "Installation attempt $attempt failed for $($dep.Name)``: $_" -Level "WARNING"
                         if ($attempt -lt 3) {
                             Start-Sleep -Seconds 5
                         }
@@ -511,7 +511,7 @@ function Install-WingetDirect {
                 }
             }
             catch {
-                Write-LogMessage "Failed to download dependency $($dep.Name): $_" -Level "ERROR"
+                Write-LogMessage "Failed to download dependency $($dep.Name)``: $_" -Level "ERROR"
                 if ($dep.Required) { $requiredDependenciesFailed++ }
             }
         }
@@ -555,7 +555,7 @@ function Install-WingetDirect {
                         }
                     }
                     catch {
-                        Write-LogMessage "Winget test attempt $attempt failed: $_" -Level "DEBUG"
+                        Write-LogMessage "Winget test attempt $attempt failed``: $_" -Level "DEBUG"
                     }
                     
                     if ($attempt -lt 5) {
@@ -566,7 +566,7 @@ function Install-WingetDirect {
                 
                 Write-LogMessage "Registration completed but winget not yet functional" -Level "WARNING"
             } catch {
-                Write-LogMessage "Failed to register winget: $_" -Level "WARNING"
+                Write-LogMessage "Failed to register winget``: $_" -Level "WARNING"
             }
         } else {
             Write-LogMessage "App Installer not found, need to install winget from scratch" -Level "INFO"
@@ -621,7 +621,7 @@ function Install-WingetDirect {
                     break
                 }
                 catch {
-                    Write-LogMessage "Installation attempt $attempt failed: $_" -Level "WARNING"
+                    Write-LogMessage "Installation attempt $attempt failed``: $_" -Level "WARNING"
                     
                     # Check if it's a dependency version issue
                     if ($_.Exception.Message -like "*dependency*" -or $_.Exception.Message -like "*VCLibs*" -or $_.Exception.Message -like "*UI.Xaml*") {
@@ -634,7 +634,7 @@ function Install-WingetDirect {
                             return $false
                         }
                     } else {
-                        Write-LogMessage "Installation failed with unexpected error: $_" -Level "ERROR"
+                        Write-LogMessage "Installation failed with unexpected error``: $_" -Level "ERROR"
                     }
                     
                     if ($attempt -lt 3) {
@@ -651,7 +651,7 @@ function Install-WingetDirect {
             }
             
         } catch {
-            Write-LogMessage "Failed to download winget: $_" -Level "ERROR"
+            Write-LogMessage "Failed to download winget``: $_" -Level "ERROR"
             Remove-Item $downloadDir -Recurse -Force -ErrorAction SilentlyContinue
             return $false
         }
@@ -691,7 +691,7 @@ function Install-WingetDirect {
                 }
             }
             catch {
-                Write-LogMessage "Verification attempt $i error: $_" -Level "DEBUG"
+                Write-LogMessage "Verification attempt $i error``: $_" -Level "DEBUG"
             }
             
             if ($i -lt $maxAttempts) {
@@ -709,7 +709,7 @@ function Install-WingetDirect {
         return $installSuccess
     }
     catch {
-        Write-LogMessage "Failed to install winget: $_" -Level "ERROR"
+        Write-LogMessage "Failed to install winget``: $_" -Level "ERROR"
         return $false
     }
 }
@@ -762,7 +762,7 @@ function Install-WingetViaMSStore {
         return $false
     }
     catch {
-        Write-LogMessage "Store installation method failed: $_" -Level "ERROR"
+        Write-LogMessage "Store installation method failed``: $_" -Level "ERROR"
         return $false
     }
 }
@@ -801,7 +801,7 @@ function Install-WingetOffline {
                 Write-LogMessage "Successfully installed: $($dep.Name)" -Level "SUCCESS"
             }
             catch {
-                Write-LogMessage "Failed to install dependency $($dep.Name): $_" -Level "WARNING"
+                Write-LogMessage "Failed to install dependency $($dep.Name)``: $_" -Level "WARNING"
             }
         }
         
@@ -834,7 +834,7 @@ function Install-WingetOffline {
         return $true
     }
     catch {
-        Write-LogMessage "Offline installation failed: $_" -Level "ERROR"
+        Write-LogMessage "Offline installation failed``: $_" -Level "ERROR"
         return $false
     }
 }
@@ -893,7 +893,7 @@ function Get-WingetOfflinePackage {
         return $true
     }
     catch {
-        Write-Warning "Failed to create offline package: $_"
+        Write-Warning "Failed to create offline package`: $_"
         return $false
     }
 }

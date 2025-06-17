@@ -21,7 +21,7 @@ function New-SystemRestorePoint {
                 Write-LogMessage "System Restore has been enabled" -Level "SUCCESS"
             }
             catch {
-                Write-LogMessage "Failed to enable System Restore: $_" -Level "ERROR"
+                Write-LogMessage "Failed to enable System Restore``: $_" -Level "ERROR"
                 return $false
             }
         }
@@ -38,7 +38,7 @@ function New-SystemRestorePoint {
         }
     }
     catch {
-        Write-LogMessage "Error creating system restore point: $_" -Level "ERROR"
+        Write-LogMessage "Error creating system restore point``: $_" -Level "ERROR"
         return $false
     }
 }
@@ -100,7 +100,7 @@ function Save-OperationState {
         return $true
     }
     catch {
-        Write-LogMessage "Failed to save operation state: $_" -Level "ERROR"
+        Write-LogMessage "Failed to save operation state``: $_" -Level "ERROR"
         return $false
     }
 }
@@ -131,7 +131,7 @@ function Get-OperationState {
         try {
             $state = $stateContent | ConvertFrom-Json -AsHashtable
         } catch {
-            Write-LogMessage "Error parsing state file: $_" -Level "ERROR"
+            Write-LogMessage "Error parsing state file``: $_" -Level "ERROR"
             return $null
         }
         
@@ -150,7 +150,7 @@ function Get-OperationState {
         return $state
     }
     catch {
-        Write-LogMessage "Failed to get operation state: $_" -Level "ERROR"
+        Write-LogMessage "Failed to get operation state``: $_" -Level "ERROR"
         return $null
     }
 }
@@ -219,7 +219,7 @@ function Restore-FailedOperations {
         return $recoveryNeeded
     }
     catch {
-        Write-LogMessage "Failed to restore operations: $_" -Level "ERROR"
+        Write-LogMessage "Failed to restore operations``: $_" -Level "ERROR"
         return $false
     }
 }

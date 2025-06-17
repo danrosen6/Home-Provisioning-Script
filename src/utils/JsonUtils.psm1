@@ -12,7 +12,7 @@ function ConvertFrom-JsonToHashtable {
         return ConvertTo-Hashtable -InputObject $jsonObject
     }
     catch {
-        throw "Failed to convert JSON to hashtable: $_"
+        throw "Failed to convert JSON to hashtable`: $_"
     }
 }
 
@@ -71,7 +71,7 @@ function Test-JsonFile {
     catch {
         return @{
             Valid = $false
-            Error = "Invalid JSON: $_"
+            Error = "Invalid JSON`: $_"
         }
     }
 }
