@@ -701,13 +701,59 @@ function Install-Winget {
         [System.Threading.CancellationToken]$CancellationToken
     )
     
-    Write-LogMessage "Starting winget installation..." -Level "INFO"
+    Write-LogMessage "Starting enhanced winget installation process..." -Level "INFO"
     
     # Check for cancellation
     if ($CancellationToken.IsCancellationRequested) {
         Write-LogMessage "Winget installation cancelled" -Level "WARNING"
         return $false
     }
+    
+    # Import WingetUtils module for enhanced installation
+    $wingetUtilsPath = Join-Path (Split-Path $PSScriptRoot) "utils\WingetUtils.psm1"
+    if (Test-Path $wingetUtilsPath) {
+        Import-Module $wingetUtilsPath -Force -Global
+        Write-LogMessage "Imported enhanced WingetUtils module" -Level "INFO"
+        
+        # Use the enhanced installation environment
+        try {
+            Write-LogMessage "Initializing winget environment with improved dependency handling..." -Level "INFO"
+            $result = Initialize-WingetEnvironment -AllowManualInstall
+            
+            if ($result.Success) {
+                $method = if ($result.Method) { $result.Method } else { "Unknown" }
+                $version = if ($result.Version) { $result.Version } else { "Unknown" }
+                
+                Write-LogMessage "Winget installation successful via $method" -Level "SUCCESS"
+                Write-LogMessage "Winget version: $version" -Level "INFO"
+                
+                if ($result.Message) {
+                    Write-LogMessage $result.Message -Level "INFO"
+                }
+                
+                return $true
+            } else {
+                $reason = if ($result.Reason) { $result.Reason } else { "Unknown" }
+                Write-LogMessage "Winget installation failed: $reason" -Level "WARNING"
+                
+                if ($result.Message) {
+                    Write-LogMessage $result.Message -Level "INFO"
+                }
+                
+                # Don't return false immediately - fallback to legacy method
+                Write-LogMessage "Attempting legacy installation method as fallback..." -Level "INFO"
+            }
+        }
+        catch {
+            Write-LogMessage "Enhanced winget installation failed: $_" -Level "WARNING"
+            Write-LogMessage "Falling back to legacy installation method..." -Level "INFO"
+        }
+    } else {
+        Write-LogMessage "WingetUtils module not found, using legacy installation method" -Level "WARNING"
+    }
+    
+    # Legacy installation method as fallback
+    Write-LogMessage "Using legacy winget installation method..." -Level "INFO"
     
     # Check Windows version compatibility first
     $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
@@ -721,11 +767,18 @@ function Install-Winget {
         return $false
     }
     
-    # Check if winget is already installed
+    # Check if winget is already installed and working
     if (Get-Command winget -ErrorAction SilentlyContinue) {
-        $version = winget --version 2>$null
-        Write-LogMessage "Winget is already installed: $version" -Level "INFO"
-        return $true
+        try {
+            $version = winget --version 2>$null
+            if ($version -and $version.Trim() -ne "") {
+                Write-LogMessage "Winget is already installed and working: $version" -Level "INFO"
+                return $true
+            }
+        }
+        catch {
+            Write-LogMessage "Winget command exists but not working properly" -Level "WARNING"
+        }
     }
     
     # Create src-specific download directory
@@ -740,40 +793,79 @@ function Install-Winget {
     $appInstaller = Get-AppxPackage -Name "Microsoft.DesktopAppInstaller" -ErrorAction SilentlyContinue
     if ($appInstaller) {
         Write-LogMessage "App Installer found: $($appInstaller.Version)" -Level "INFO"
-        Write-LogMessage "Attempting to register winget..." -Level "INFO"
+        Write-LogMessage "Attempting to register winget with extended wait time..." -Level "INFO"
         
         try {
             Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
             Write-LogMessage "Winget registration command completed" -Level "INFO"
             
-            # Wait and verify
-            Start-Sleep -Seconds 5
-            if (Get-Command winget -ErrorAction SilentlyContinue) {
-                $version = winget --version 2>$null
-                Write-LogMessage "Winget successfully registered: $version" -Level "SUCCESS"
-                return $true
-            } else {
-                Write-LogMessage "Winget registration completed but command not yet available" -Level "WARNING"
-                Write-LogMessage "This may require a new PowerShell session or user logout/login" -Level "INFO"
+            # Extended wait and verification
+            Write-LogMessage "Waiting for winget registration to complete (15 seconds)..." -Level "INFO"
+            Start-Sleep -Seconds 15
+            
+            # Multiple verification attempts
+            for ($attempt = 1; $attempt -le 5; $attempt++) {
+                if (Get-Command winget -ErrorAction SilentlyContinue) {
+                    try {
+                        $version = winget --version 2>$null
+                        if ($version -and $version.Trim() -ne "") {
+                            Write-LogMessage "Winget successfully registered: $version" -Level "SUCCESS"
+                            return $true
+                        }
+                    }
+                    catch {
+                        Write-LogMessage "Winget test failed on attempt $attempt" -Level "DEBUG"
+                    }
+                }
+                
+                if ($attempt -lt 5) {
+                    Write-LogMessage "Winget not ready yet, waiting 5 more seconds... (attempt $attempt/5)" -Level "INFO"
+                    Start-Sleep -Seconds 5
+                }
             }
+            
+            Write-LogMessage "Winget registration completed but command not yet available" -Level "WARNING"
+            Write-LogMessage "This may require a new PowerShell session" -Level "INFO"
         } catch {
             Write-LogMessage "Failed to register winget: $_" -Level "WARNING"
         }
     }
     
-    # Try Microsoft Store installation
+    # Try Microsoft Store installation with extended wait
     Write-LogMessage "Attempting to install winget via Microsoft Store..." -Level "INFO"
     try {
         $wingetUrl = "ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1"
         Start-Process $wingetUrl
-        Write-LogMessage "Please complete the winget installation from the Microsoft Store" -Level "INFO"
-        return $true
+        Write-LogMessage "Opened Microsoft Store for winget installation" -Level "INFO"
+        Write-LogMessage "Please complete the installation and the script will wait for verification..." -Level "INFO"
+        
+        # Wait for user to complete Store installation with periodic checks
+        for ($check = 1; $check -le 12; $check++) {
+            Start-Sleep -Seconds 10
+            
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                try {
+                    $version = winget --version 2>$null
+                    if ($version -and $version.Trim() -ne "") {
+                        Write-LogMessage "Winget detected after Store installation: $version" -Level "SUCCESS"
+                        return $true
+                    }
+                }
+                catch {
+                    # Continue checking
+                }
+            }
+            
+            Write-LogMessage "Waiting for Store installation completion... (check $check/12)" -Level "INFO"
+        }
+        
+        Write-LogMessage "Store installation timeout - proceeding to direct download" -Level "WARNING"
     }
     catch {
         Write-LogMessage "Failed to open Microsoft Store: $_" -Level "WARNING"
     }
     
-    # Fallback to direct download
+    # Fallback to direct download with enhanced error handling
     Write-LogMessage "Attempting direct download of winget..." -Level "INFO"
     try {
         # Create winget-specific directory
@@ -786,7 +878,7 @@ function Install-Winget {
         # Download the latest winget release
         $releaseUrl = "https://api.github.com/repos/microsoft/winget-cli/releases/latest"
         Write-LogMessage "Fetching latest winget release information..." -Level "INFO"
-        $release = Invoke-RestMethod -Uri $releaseUrl -TimeoutSec 15
+        $release = Invoke-RestMethod -Uri $releaseUrl -TimeoutSec 30
         $msixBundle = $release.assets | Where-Object { $_.name -like "*.msixbundle" } | Select-Object -First 1
         
         if ($null -eq $msixBundle) {
@@ -807,25 +899,62 @@ function Install-Winget {
             return $false
         }
         
-        Write-LogMessage "Download completed successfully" -Level "SUCCESS"
+        $fileSize = (Get-Item $downloadPath).Length
+        Write-LogMessage "Download completed successfully ($([math]::Round($fileSize/1MB, 2)) MB)" -Level "SUCCESS"
         
-        # Install the bundle
+        # Install the bundle with retry logic
         Write-LogMessage "Installing winget package..." -Level "INFO"
-        Add-AppxPackage -Path $downloadPath -ErrorAction Stop
+        
+        $installSuccess = $false
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+                Add-AppxPackage -Path $downloadPath -ForceApplicationShutdown -ErrorAction Stop
+                Write-LogMessage "Winget package installation completed (attempt $attempt)" -Level "SUCCESS"
+                $installSuccess = $true
+                break
+            }
+            catch {
+                Write-LogMessage "Installation attempt $attempt failed: $_" -Level "WARNING"
+                if ($attempt -lt 3) {
+                    Start-Sleep -Seconds 5
+                }
+            }
+        }
         
         # Clean up download
         Remove-Item $downloadPath -Force -ErrorAction SilentlyContinue
         Write-LogMessage "Cleaned up downloaded package" -Level "INFO"
         
-        # Verify installation
-        Start-Sleep -Seconds 3  # Give time for installation to complete
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            Write-LogMessage "Winget installed successfully!" -Level "SUCCESS"
-            return $true
-        } else {
-            Write-LogMessage "Winget command not found after installation" -Level "ERROR"
+        if (-not $installSuccess) {
+            Write-LogMessage "Failed to install winget after all attempts" -Level "ERROR"
             return $false
         }
+        
+        # Extended verification with multiple attempts
+        Write-LogMessage "Verifying winget installation (extended verification)..." -Level "INFO"
+        
+        for ($attempt = 1; $attempt -le 10; $attempt++) {
+            Start-Sleep -Seconds 5
+            
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                try {
+                    $version = winget --version 2>$null
+                    if ($version -and $version.Trim() -ne "") {
+                        Write-LogMessage "Winget installed successfully! Version: $version" -Level "SUCCESS"
+                        return $true
+                    }
+                }
+                catch {
+                    Write-LogMessage "Winget verification attempt $attempt failed" -Level "DEBUG"
+                }
+            }
+            
+            Write-LogMessage "Winget not ready yet, waiting... (attempt $attempt/10)" -Level "INFO"
+        }
+        
+        Write-LogMessage "Winget installation completed but command not immediately available" -Level "WARNING"
+        Write-LogMessage "This is common and usually resolves in new PowerShell sessions" -Level "INFO"
+        return $true  # Return true since installation commands succeeded
     }
     catch {
         Write-LogMessage "Failed to install winget: $_" -Level "ERROR"
@@ -942,6 +1071,8 @@ function Install-Application {
         [Parameter(Mandatory=$true)]
         [string]$AppName,
         [Parameter(Mandatory=$false)]
+        [string]$AppKey = "",
+        [Parameter(Mandatory=$false)]
         [string]$WingetId = "",
         [Parameter(Mandatory=$false)]
         [hashtable]$DirectDownload = $null,
@@ -953,12 +1084,13 @@ function Install-Application {
     Write-LogMessage "Installing application: $AppName" -Level "INFO"
     
     # Track in recovery system
-    Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "InProgress"
+    $trackingKey = if ($AppKey -and $AppKey -ne "") { $AppKey } else { $AppName }
+    Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "InProgress"
     
     # Check for cancellation
     if ($CancellationToken -and $CancellationToken -ne [System.Threading.CancellationToken]::None -and $CancellationToken.IsCancellationRequested) {
         Write-LogMessage "Installation cancelled" -Level "WARNING"
-        Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Cancelled"
+        Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Cancelled"
         return $false
     }
     
@@ -967,7 +1099,7 @@ function Install-Application {
         $isInstalled = Test-ApplicationInstalled -AppName $AppName -CheckCommand
         if ($isInstalled) {
             Write-LogMessage "$AppName is already installed, skipping installation" -Level "INFO"
-            Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Skipped" -AdditionalData @{
+            Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Skipped" -AdditionalData @{
                 Reason = "Already installed"
             }
             return $true
@@ -982,69 +1114,166 @@ function Install-Application {
         Write-LogMessage "Windows build $buildNumber is below minimum for winget (16299). Using direct download." -Level "INFO"
     }
     
-    # Try winget first if compatible and available
-    if (-not $script:UseDirectDownloadOnly -and $wingetCompatible -and (Get-Command winget -ErrorAction SilentlyContinue)) {
-        # Map app name to winget ID if not provided
-        if (-not $WingetId) {
-            $WingetId = switch ($AppName) {
-                "Visual Studio Code" { "Microsoft.VisualStudioCode" }
-                "Git" { "Git.Git" }
-                "Python" { "Python.Python.3" }
-                "PyCharm" { "JetBrains.PyCharm.Community" }
-                "GitHub Desktop" { "GitHub.GitHubDesktop" }
-                "Postman" { "Postman.Postman" }
-                "Node.js" { "OpenJS.NodeJS.LTS" }
-                "Windows Terminal" { "Microsoft.WindowsTerminal" }
-                "Google Chrome" { "Google.Chrome" }
-                "Mozilla Firefox" { "Mozilla.Firefox" }
-                "Brave Browser" { "Brave.Browser" }
-                "Spotify" { "Spotify.Spotify" }
-                "Discord" { "Discord.Discord" }
-                "Steam" { "Valve.Steam" }
-                "VLC" { "VideoLAN.VLC" }
-                "7-Zip" { "7zip.7zip" }
-                "Notepad++" { "Notepad++.Notepad++" }
-                "Microsoft PowerToys" { "Microsoft.PowerToys" }
-                default { $null }
-            }
-        }
+    # Enhanced winget installation with proper dependency checks and extended time
+    if (-not $script:UseDirectDownloadOnly -and $wingetCompatible) {
         
-        if ($WingetId) {
-            Write-LogMessage "Installing $AppName via winget (ID: $WingetId)..." -Level "INFO"
+        # First, ensure winget is properly installed and working
+        Write-LogMessage "Verifying winget installation status..." -Level "INFO"
+        $wingetAvailable = $false
+        
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
             try {
-                $wingetOutput = winget install --id $WingetId --accept-source-agreements --accept-package-agreements --silent 2>&1
-                
-                if ($LASTEXITCODE -eq 0 -or $wingetOutput -match "Successfully installed") {
-                    Write-LogMessage "$AppName installed successfully via winget!" -Level "SUCCESS"
-                    Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Completed" -AdditionalData @{
-                        Method = "Winget"
-                        WingetId = $WingetId
-                        WindowsBuild = $buildNumber
-                    }
-                    
-                    # Refresh environment variables
-                    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-                    
-                    return $true
-                }
-                else {
-                    Write-LogMessage "Winget installation failed with exit code: $LASTEXITCODE" -Level "WARNING"
-                    Write-LogMessage "Winget output: $wingetOutput" -Level "DEBUG"
-                    Write-LogMessage "Windows build: $buildNumber (winget requires 16299+)" -Level "DEBUG"
-                    # Continue to direct download method
+                $version = winget --version 2>$null
+                if ($version -and $version.Trim() -ne "") {
+                    Write-LogMessage "Winget is available: $version" -Level "INFO"
+                    $wingetAvailable = $true
+                } else {
+                    Write-LogMessage "Winget command exists but version check failed" -Level "WARNING"
                 }
             }
             catch {
-                Write-LogMessage "Error using winget: $_" -Level "WARNING"
-                # Continue to direct download method
+                Write-LogMessage "Winget command exists but not working properly: $_" -Level "WARNING"
             }
+        }
+        
+        # If winget is not available, try to install it first with extended time
+        if (-not $wingetAvailable) {
+            Write-LogMessage "Winget not available, attempting installation before proceeding..." -Level "INFO"
+            
+            # Try to install winget with extended time allowance
+            $wingetInstalled = Install-Winget -CancellationToken $CancellationToken
+            
+            if ($wingetInstalled) {
+                Write-LogMessage "Winget installation completed, waiting for availability..." -Level "INFO"
+                
+                # Extended wait for winget to become available after installation
+                for ($attempt = 1; $attempt -le 8; $attempt++) {
+                    Start-Sleep -Seconds 8
+                    
+                    if (Get-Command winget -ErrorAction SilentlyContinue) {
+                        try {
+                            $version = winget --version 2>$null
+                            if ($version -and $version.Trim() -ne "") {
+                                Write-LogMessage "Winget is now available after installation: $version" -Level "SUCCESS"
+                                $wingetAvailable = $true
+                                break
+                            }
+                        }
+                        catch {
+                            Write-LogMessage "Winget still not working on attempt $attempt" -Level "DEBUG"
+                        }
+                    }
+                    
+                    Write-LogMessage "Waiting for winget to become available... (attempt $attempt/8)" -Level "INFO"
+                }
+                
+                if (-not $wingetAvailable) {
+                    Write-LogMessage "Winget installation completed but command not available after extended wait" -Level "WARNING"
+                    Write-LogMessage "Proceeding with direct download method" -Level "INFO"
+                }
+            } else {
+                Write-LogMessage "Winget installation failed, proceeding with direct download method" -Level "WARNING"
+            }
+        }
+        
+        # If winget is available, try to use it for installation
+        if ($wingetAvailable) {
+            # Map app name to winget ID if not provided
+            if (-not $WingetId) {
+                $WingetId = switch ($AppName) {
+                    "Visual Studio Code" { "Microsoft.VisualStudioCode" }
+                    "Git" { "Git.Git" }
+                    "Python" { "Python.Python.3" }
+                    "PyCharm" { "JetBrains.PyCharm.Community" }
+                    "GitHub Desktop" { "GitHub.GitHubDesktop" }
+                    "Postman" { "Postman.Postman" }
+                    "Node.js" { "OpenJS.NodeJS.LTS" }
+                    "Windows Terminal" { "Microsoft.WindowsTerminal" }
+                    "Google Chrome" { "Google.Chrome" }
+                    "Mozilla Firefox" { "Mozilla.Firefox" }
+                    "Brave Browser" { "Brave.Browser" }
+                    "Spotify" { "Spotify.Spotify" }
+                    "Discord" { "Discord.Discord" }
+                    "Steam" { "Valve.Steam" }
+                    "VLC" { "VideoLAN.VLC" }
+                    "7-Zip" { "7zip.7zip" }
+                    "Notepad++" { "Notepad++.Notepad++" }
+                    "Microsoft PowerToys" { "Microsoft.PowerToys" }
+                    default { $null }
+                }
+            }
+            
+            if ($WingetId) {
+                Write-LogMessage "Installing $AppName via winget (ID: $WingetId)..." -Level "INFO"
+                
+                # Enhanced winget installation with retry logic
+                $wingetSuccess = $false
+                for ($attempt = 1; $attempt -le 2; $attempt++) {
+                    try {
+                        Write-LogMessage "Winget installation attempt $attempt/2 for $AppName..." -Level "INFO"
+                        $wingetOutput = winget install --id $WingetId --accept-source-agreements --accept-package-agreements --silent 2>&1
+                        
+                        if ($LASTEXITCODE -eq 0 -or $wingetOutput -match "Successfully installed") {
+                            Write-LogMessage "$AppName installed successfully via winget!" -Level "SUCCESS"
+                            Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Completed" -AdditionalData @{
+                                Method = "Winget"
+                                WingetId = $WingetId
+                                WindowsBuild = $buildNumber
+                                Attempt = $attempt
+                            }
+                            
+                            # Refresh environment variables
+                            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+                            
+                            $wingetSuccess = $true
+                            break
+                        }
+                        else {
+                            Write-LogMessage "Winget installation attempt $attempt failed with exit code: $LASTEXITCODE" -Level "WARNING"
+                            Write-LogMessage "Winget output: $wingetOutput" -Level "DEBUG"
+                            
+                            if ($attempt -lt 2) {
+                                Write-LogMessage "Waiting 5 seconds before retry..." -Level "INFO"
+                                Start-Sleep -Seconds 5
+                            }
+                        }
+                    }
+                    catch {
+                        Write-LogMessage "Error using winget on attempt $attempt: $_" -Level "WARNING"
+                        if ($attempt -lt 2) {
+                            Start-Sleep -Seconds 5
+                        }
+                    }
+                }
+                
+                if ($wingetSuccess) {
+                    return $true
+                } else {
+                    Write-LogMessage "All winget installation attempts failed for $AppName" -Level "WARNING"
+                    Write-LogMessage "Windows build: $buildNumber (winget requires 16299+)" -Level "DEBUG"
+                    Write-LogMessage "Proceeding with direct download method..." -Level "INFO"
+                }
+            } else {
+                Write-LogMessage "No winget ID mapping found for $AppName, using direct download" -Level "INFO"
+            }
+        } else {
+            Write-LogMessage "Winget not available for $AppName installation, using direct download" -Level "INFO"
+        }
+    } else {
+        if ($script:UseDirectDownloadOnly) {
+            Write-LogMessage "Direct download mode enabled, skipping winget for $AppName" -Level "INFO"
+        } elseif (-not $wingetCompatible) {
+            Write-LogMessage "Windows build $buildNumber incompatible with winget, using direct download for $AppName" -Level "INFO"
         }
     }
     
     # If no direct download info was provided, try to get it from configuration
     if ($null -eq $DirectDownload) {
+        # Use AppKey if provided, otherwise fall back to AppName
+        $keyToUse = if ($AppKey -and $AppKey -ne "") { $AppKey } else { $AppName }
+        
         # Get download info from JSON configuration with dynamic URL resolution
-        $DirectDownload = Get-AppDownloadInfo -AppKey $AppKey
+        $DirectDownload = Get-AppDownloadInfo -AppKey $keyToUse
         
         if ($DirectDownload -and $DirectDownload.ResolvedUrl) {
             Write-LogMessage "Using dynamically resolved URL for $AppName : $($DirectDownload.ResolvedUrl)" -Level "INFO"
@@ -1067,7 +1296,7 @@ function Install-Application {
     
     if ($null -eq $DirectDownload) {
         Write-LogMessage "No download information available for $AppName" -Level "ERROR"
-        Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Failed" -AdditionalData @{
+        Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Failed" -AdditionalData @{
             Error = "No download information available"
             Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         }
@@ -1108,7 +1337,7 @@ function Install-Application {
         }
         catch {
             Write-LogMessage "Download failed: $_" -Level "ERROR"
-            Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Failed" -AdditionalData @{
+            Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Failed" -AdditionalData @{
                 Error = "Download failed: $_"
                 Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
             }
@@ -1118,7 +1347,7 @@ function Install-Application {
         # Check for cancellation
         if ($CancellationToken -and $CancellationToken -ne [System.Threading.CancellationToken]::None -and $CancellationToken.IsCancellationRequested) {
             Write-LogMessage "Installation cancelled" -Level "WARNING"
-            Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Cancelled"
+            Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Cancelled"
             return $false
         }
         
@@ -1182,14 +1411,14 @@ function Install-Application {
         # Check for timeout or cancellation
         if ($process.PSObject.Properties.Name -contains "Cancelled" -and $process.Cancelled) {
             Write-LogMessage "Installation was cancelled by user" -Level "WARNING"
-            Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Cancelled" -AdditionalData @{
+            Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Cancelled" -AdditionalData @{
                 Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
             }
             return $false
         }
         elseif ($process.PSObject.Properties.Name -contains "TimedOut" -and $process.TimedOut) {
             Write-LogMessage "Installation timed out after $script:InstallerTimeoutMinutes minutes" -Level "ERROR"
-            Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Failed" -AdditionalData @{
+            Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Failed" -AdditionalData @{
                 Error = "Installation timed out"
                 TimeoutMinutes = $script:InstallerTimeoutMinutes
                 Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -1204,13 +1433,13 @@ function Install-Application {
             
             if ($verificationResult) {
                 Write-LogMessage "Installation verified for $AppName" -Level "SUCCESS"
-                Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Completed" -AdditionalData @{
+                Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Completed" -AdditionalData @{
                     Method = "Direct"
                     Url = $DirectDownload.Url
                 }
             } else {
                 Write-LogMessage "Installation completed but verification failed for $AppName" -Level "WARNING"
-                Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "CompletedWithWarning" -AdditionalData @{
+                Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "CompletedWithWarning" -AdditionalData @{
                     Method = "Direct"
                     Url = $DirectDownload.Url
                     Warning = "Verification failed"
@@ -1228,7 +1457,7 @@ function Install-Application {
             return $true
         } else {
             Write-LogMessage "Installation failed with exit code: $($process.ExitCode)" -Level "ERROR"
-            Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Failed" -AdditionalData @{
+            Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Failed" -AdditionalData @{
                 Error = "Installation failed with exit code: $($process.ExitCode)"
                 Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
             }
@@ -1237,7 +1466,7 @@ function Install-Application {
     }
     catch {
         Write-LogMessage "Failed to install $AppName : $_" -Level "ERROR"
-        Save-OperationState -OperationType "InstallApp" -ItemKey $AppName -Status "Failed" -AdditionalData @{
+        Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Failed" -AdditionalData @{
             Error = $_.Exception.Message
             Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         }

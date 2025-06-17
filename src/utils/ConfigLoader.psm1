@@ -35,13 +35,30 @@ function Get-ConfigurationData {
         }
         
         if (-not $configPath) {
-            Write-Warning "Configuration file not found for $ConfigType. Searched paths: $($possiblePaths -join ', ')"
+            $errorMessage = "Configuration file not found for $ConfigType. Searched paths: $($possiblePaths -join ', ')"
+            Write-Warning $errorMessage
+            try {
+                Write-LogMessage $errorMessage -Level "ERROR"
+            } catch {
+                # Logging not available, continue with warning only
+            }
             return @{}
         }
         
         $jsonContent = Get-Content -Path $configPath -Raw -ErrorAction Stop
         $configData = $jsonContent | ConvertFrom-JsonToHashtable -ErrorAction Stop
         
+        # Validate that we have actual data
+        if ($configData.Keys.Count -eq 0) {
+            throw "Configuration file $configPath is empty or has no valid categories"
+        }
+        
+        $totalItems = ($configData.Values | ForEach-Object { if ($_ -is [array]) { $_.Count } else { 0 } } | Measure-Object -Sum).Sum
+        try {
+            Write-LogMessage "Successfully loaded $ConfigType configuration: $($configData.Keys.Count) categories, $totalItems items total" -Level "INFO"
+        } catch {
+            # Logging not available, continue with verbose only
+        }
         Write-Verbose "Successfully loaded $ConfigType configuration with $($configData.Keys.Count) categories"
         return $configData
     }

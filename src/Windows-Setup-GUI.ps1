@@ -23,17 +23,57 @@ try {
 # Import required modules
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# Validate script structure first
+$requiredPaths = @(
+    (Join-Path $ScriptPath "utils"),
+    (Join-Path $ScriptPath "modules"),
+    (Join-Path $ScriptPath "config")
+)
+
+$requiredModules = @(
+    "utils/Logging.psm1",
+    "utils/ConfigLoader.psm1", 
+    "utils/JsonUtils.psm1",
+    "utils/WingetUtils.psm1",
+    "utils/ProfileManager.psm1",
+    "utils/RecoveryUtils.psm1",
+    "modules/Installers.psm1",
+    "modules/SystemOptimizations.psm1"
+)
+
+# Check directory structure
+foreach ($path in $requiredPaths) {
+    if (-not (Test-Path $path)) {
+        Write-Host "CRITICAL ERROR: Required directory missing: $path" -ForegroundColor Red
+        Write-Host "Please ensure you're running this script from the correct location" -ForegroundColor Yellow
+        Read-Host "Press Enter to exit"
+        exit 1
+    }
+}
+
+# Check required modules
+foreach ($module in $requiredModules) {
+    $modulePath = Join-Path $ScriptPath $module
+    if (-not (Test-Path $modulePath)) {
+        Write-Host "CRITICAL ERROR: Required module missing: $modulePath" -ForegroundColor Red
+        Read-Host "Press Enter to exit"
+        exit 1
+    }
+}
+
 try {
     Import-Module (Join-Path $ScriptPath "utils/Logging.psm1") -Force -ErrorAction Stop
-    Import-Module (Join-Path $ScriptPath "utils/ConfigLoader.psm1") -Force -ErrorAction Stop
     Import-Module (Join-Path $ScriptPath "utils/JsonUtils.psm1") -Force -ErrorAction Stop
+    Import-Module (Join-Path $ScriptPath "utils/ConfigLoader.psm1") -Force -ErrorAction Stop
     Import-Module (Join-Path $ScriptPath "utils/WingetUtils.psm1") -Force -ErrorAction Stop
     Import-Module (Join-Path $ScriptPath "utils/ProfileManager.psm1") -Force -ErrorAction Stop
+    Import-Module (Join-Path $ScriptPath "utils/RecoveryUtils.psm1") -Force -ErrorAction Stop
     Import-Module (Join-Path $ScriptPath "modules/Installers.psm1") -Force -ErrorAction Stop
     Import-Module (Join-Path $ScriptPath "modules/SystemOptimizations.psm1") -Force -ErrorAction Stop
     Write-Host "All modules loaded successfully" -ForegroundColor Green
 } catch {
     Write-Host "CRITICAL ERROR: Failed to load required modules: $_" -ForegroundColor Red
+    Write-Host "Module load error details: $($_.Exception.Message)" -ForegroundColor Yellow
     Read-Host "Press Enter to exit"
     exit 1
 }
@@ -75,40 +115,64 @@ Write-Host "Detected: $($script:WindowsVersion) (Build: $($script:BuildNumber))"
 Write-Host "Loading configuration files..." -ForegroundColor Gray
 
 try {
+    # Load configuration data
     $script:Apps = Get-ConfigurationData -ConfigType "Apps"
     $script:Bloatware = Get-ConfigurationData -ConfigType "Bloatware" 
     $script:Services = Get-ConfigurationData -ConfigType "Services"
     $script:Tweaks = Get-ConfigurationData -ConfigType "Tweaks"
-    Write-Host "Configuration loaded successfully" -ForegroundColor Green
-} catch {
-    Write-Host "Error loading configuration: $_" -ForegroundColor Red
-    Write-LogMessage "Failed to load configuration: $_" -Level "ERROR"
     
-    # Fallback configuration
-    Write-Host "Using fallback configuration..." -ForegroundColor Yellow
-    $script:Apps = @{
-        "Essential" = @(
-            @{Name="Visual Studio Code"; Key="vscode"; Default=$true; Win10=$true; Win11=$true}
-            @{Name="Git"; Key="git"; Default=$true; Win10=$true; Win11=$true}
-            @{Name="Google Chrome"; Key="chrome"; Default=$true; Win10=$true; Win11=$true}
-        )
+    # Check if any configuration returned empty
+    if ($script:Apps.Keys.Count -eq 0 -or $script:Bloatware.Keys.Count -eq 0 -or 
+        $script:Services.Keys.Count -eq 0 -or $script:Tweaks.Keys.Count -eq 0) {
+        throw "One or more configuration files failed to load or are empty"
     }
-    $script:Bloatware = @{
-        "Common Bloatware" = @(
-            @{Name="Microsoft Office Hub"; Key="ms-officehub"; Default=$true; Win10=$true; Win11=$true}
-            @{Name="Candy Crush Games"; Key="candy-crush"; Default=$true; Win10=$true; Win11=$true}
-        )
+    
+    # Validate that we actually loaded data
+    $appsCount = ($script:Apps.Values | ForEach-Object { if ($_ -and $_.Count) { $_.Count } else { 0 } } | Measure-Object -Sum).Sum
+    $bloatwareCount = ($script:Bloatware.Values | ForEach-Object { if ($_ -and $_.Count) { $_.Count } else { 0 } } | Measure-Object -Sum).Sum
+    $servicesCount = ($script:Services.Values | ForEach-Object { if ($_ -and $_.Count) { $_.Count } else { 0 } } | Measure-Object -Sum).Sum
+    $tweaksCount = ($script:Tweaks.Values | ForEach-Object { if ($_ -and $_.Count) { $_.Count } else { 0 } } | Measure-Object -Sum).Sum
+    
+    if ($appsCount -eq 0 -or $bloatwareCount -eq 0 -or $servicesCount -eq 0 -or $tweaksCount -eq 0) {
+        throw "Configuration loaded but contains empty data (Apps: $appsCount, Bloatware: $bloatwareCount, Services: $servicesCount, Tweaks: $tweaksCount)"
     }
-    $script:Services = @{
-        "Privacy and Performance" = @(
-            @{Name="Connected User Experiences and Telemetry"; Key="diagtrack"; Default=$true; Win10=$true; Win11=$true}
-        )
+    
+    Write-Host "Configuration loaded successfully: Apps: $appsCount, Bloatware: $bloatwareCount, Services: $servicesCount, Tweaks: $tweaksCount" -ForegroundColor Green
+} catch {
+    Write-Host "CRITICAL ERROR loading configuration: $_" -ForegroundColor Red
+    
+    # Try to log error if logging is available
+    try {
+        Write-LogMessage "Failed to load configuration: $_" -Level "ERROR"
+    } catch {
+        # Logging not available, continue
     }
-    $script:Tweaks = @{
-        "Basic Tweaks" = @(
-            @{Name="Show file extensions"; Key="show-extensions"; Default=$true; Win10=$true; Win11=$true}
-        )
+    
+    # More detailed error reporting
+    Write-Host "Attempting to diagnose configuration issues..." -ForegroundColor Yellow
+    
+    # Check if JSON files exist
+    $configFiles = @("apps.json", "bloatware.json", "services.json", "tweaks.json")
+    $expectedConfigPath = Join-Path $ScriptPath "config"
+    foreach ($file in $configFiles) {
+        $filePath = Join-Path $expectedConfigPath $file
+        if (Test-Path $filePath) {
+            Write-Host "✓ Found: $file" -ForegroundColor Green
+            try {
+                $content = Get-Content $filePath -Raw
+                $json = $content | ConvertFrom-Json
+                Write-Host "  ✓ Valid JSON structure" -ForegroundColor Green
+            } catch {
+                Write-Host "  ✗ Invalid JSON: $_" -ForegroundColor Red
+            }
+        } else {
+            Write-Host "✗ Missing: $file at $filePath" -ForegroundColor Red
+        }
     }
+    
+    Write-Host "CANNOT CONTINUE: Configuration files are required for proper operation." -ForegroundColor Red
+    Read-Host "Press Enter to exit"
+    exit 1
 }
 
 # Helper functions
