@@ -752,7 +752,18 @@ $runButton.Add_Click({
                     Update-StatusLabel "Installing $installerName... ($currentStep of $($selectedItems.Count))" "Blue"
                     
                     try {
-                        Install-Application -AppName $installerName -AppKey $appKey -WingetId $wingetId
+                        # Get DirectDownload info from configuration
+                        $appConfig = $null
+                        foreach ($category in $script:Apps.Keys) {
+                            $app = $script:Apps[$category] | Where-Object { $_.Key -eq $appKey }
+                            if ($app) {
+                                $appConfig = $app
+                                break
+                            }
+                        }
+                        
+                        $directDownload = if ($appConfig -and $appConfig.DirectDownload) { $appConfig.DirectDownload } else { $null }
+                        Install-Application -AppName $installerName -AppKey $appKey -WingetId $wingetId -DirectDownload $directDownload
                         Write-LogMessage "Successfully installed $installerName" -Level "SUCCESS"
                     } catch {
                         Write-LogMessage "Failed to install $installerName`: $_" -Level "ERROR"

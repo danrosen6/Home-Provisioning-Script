@@ -103,12 +103,217 @@ function Start-ProcessWithTimeout {
     }
 }
 
-# Import the centralized logging system
-$LoggingModule = Join-Path (Split-Path $PSScriptRoot) "utils\Logging.psm1"
+# Import required modules
+$utilsPath = Join-Path (Split-Path $PSScriptRoot) "utils"
+$LoggingModule = Join-Path $utilsPath "Logging.psm1"
+$ConfigModule = Join-Path $utilsPath "ConfigLoader.psm1"
+
 if (Test-Path $LoggingModule) {
     Import-Module $LoggingModule -Force -Global
     Write-Verbose "Imported centralized logging module"
-} else {
+}
+
+if (Test-Path $ConfigModule) {
+    Import-Module $ConfigModule -Force -Global
+    Write-Verbose "Imported configuration loader module"
+}
+
+# Function to get app configuration data from JSON config
+function Get-AppConfigurationData {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AppKey
+    )
+    
+    try {
+        # Try to get from global Apps variable first (from main script)
+        if ($script:Apps -and $script:Apps.Count -gt 0) {
+            foreach ($category in $script:Apps.Keys) {
+                $app = $script:Apps[$category] | Where-Object { $_.Key -eq $AppKey }
+                if ($app) {
+                    Write-LogMessage "Found app configuration for $AppKey in category $category" -Level "INFO"
+                    return $app
+                }
+            }
+        }
+        
+        # Fallback: Load configuration directly
+        $configData = Get-ConfigurationData -ConfigType "Apps"
+        if ($configData -and $configData.Count -gt 0) {
+            foreach ($category in $configData.Keys) {
+                $app = $configData[$category] | Where-Object { $_.Key -eq $AppKey }
+                if ($app) {
+                    Write-LogMessage "Found app configuration for $AppKey in category $category (direct load)" -Level "INFO"
+                    return $app
+                }
+            }
+        }
+        
+        Write-LogMessage "No configuration found for app key: $AppKey" -Level "WARNING"
+        return $null
+    }
+    catch {
+        Write-LogMessage "Error getting app configuration for $AppKey : $_" -Level "ERROR"
+        return $null
+    }
+}
+
+# Function to resolve dynamic URLs based on URL type
+function Resolve-DynamicUrl {
+    param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$DirectDownload,
+        [Parameter(Mandatory=$true)]
+        [string]$AppName
+    )
+    
+    try {
+        $urlType = $DirectDownload.UrlType
+        $baseUrl = $DirectDownload.Url
+        
+        switch ($urlType) {
+            "github-asset" {
+                Write-LogMessage "Resolving GitHub asset URL for $AppName" -Level "INFO"
+                if ($baseUrl -match "github\.com.*releases/latest") {
+                    $apiUrl = $baseUrl -replace "github\.com", "api.github.com/repos" -replace "/releases/latest", "/releases/latest"
+                    try {
+                        $release = Invoke-RestMethod -Uri $apiUrl -TimeoutSec 30
+                        $pattern = $DirectDownload.AssetPattern
+                        $asset = $release.assets | Where-Object { $_.name -like $pattern } | Select-Object -First 1
+                        if ($asset) {
+                            Write-LogMessage "Found GitHub asset: $($asset.name)" -Level "SUCCESS"
+                            return $asset.browser_download_url
+                        }
+                    } catch {
+                        Write-LogMessage "Failed to resolve GitHub URL: $_" -Level "WARNING"
+                    }
+                }
+            }
+            
+            "jetbrains-api" {
+                Write-LogMessage "Resolving JetBrains API URL for $AppName" -Level "INFO"
+                try {
+                    $releaseData = Invoke-RestMethod -Uri $baseUrl -TimeoutSec 30
+                    $downloadUrl = $releaseData.downloads.windows.link
+                    if ($downloadUrl) {
+                        Write-LogMessage "Found JetBrains download URL" -Level "SUCCESS"
+                        return $downloadUrl
+                    }
+                } catch {
+                    Write-LogMessage "Failed to resolve JetBrains URL: $_" -Level "WARNING"
+                }
+            }
+            
+            "dynamic-python" {
+                Write-LogMessage "Resolving Python download URL for $AppName" -Level "INFO"
+                try {
+                    $pythonPage = Invoke-WebRequest -Uri $baseUrl -TimeoutSec 30
+                    $downloadLink = $pythonPage.Links | Where-Object { $_.href -match "python-.*-amd64\.exe$" } | Select-Object -First 1
+                    if ($downloadLink) {
+                        $fullUrl = "https://www.python.org" + $downloadLink.href
+                        Write-LogMessage "Found Python download URL" -Level "SUCCESS"
+                        return $fullUrl
+                    }
+                } catch {
+                    Write-LogMessage "Failed to resolve Python URL: $_" -Level "WARNING"
+                }
+            }
+            
+            "dynamic-vlc" {
+                Write-LogMessage "Resolving VLC download URL for $AppName" -Level "INFO"
+                try {
+                    $vlcPage = Invoke-WebRequest -Uri $baseUrl -TimeoutSec 30
+                    $downloadLink = $vlcPage.Links | Where-Object { $_.href -match "vlc-.*-win64\.exe$" } | Select-Object -First 1
+                    if ($downloadLink) {
+                        Write-LogMessage "Found VLC download URL" -Level "SUCCESS"
+                        return $downloadLink.href
+                    }
+                } catch {
+                    Write-LogMessage "Failed to resolve VLC URL: $_" -Level "WARNING"
+                }
+            }
+            
+            "dynamic-7zip" {
+                Write-LogMessage "Resolving 7-Zip download URL for $AppName" -Level "INFO"
+                try {
+                    $zipPage = Invoke-WebRequest -Uri $baseUrl -TimeoutSec 30
+                    $downloadLink = $zipPage.Links | Where-Object { $_.href -match "7z.*-x64\.exe$" } | Select-Object -First 1
+                    if ($downloadLink) {
+                        $fullUrl = "https://www.7-zip.org/" + $downloadLink.href
+                        Write-LogMessage "Found 7-Zip download URL" -Level "SUCCESS"
+                        return $fullUrl
+                    }
+                } catch {
+                    Write-LogMessage "Failed to resolve 7-Zip URL: $_" -Level "WARNING"
+                }
+            }
+            
+            "redirect-page" {
+                Write-LogMessage "Following redirect for $AppName" -Level "INFO"
+                try {
+                    $response = Invoke-WebRequest -Uri $baseUrl -MaximumRedirection 5 -TimeoutSec 30
+                    if ($response.StatusCode -eq 200) {
+                        Write-LogMessage "Successfully followed redirect" -Level "SUCCESS"
+                        return $response.BaseResponse.ResponseUri.ToString()
+                    }
+                } catch {
+                    Write-LogMessage "Failed to follow redirect: $_" -Level "WARNING"
+                }
+            }
+            
+            default {
+                Write-LogMessage "No special URL type handling needed for $AppName" -Level "INFO"
+                return $baseUrl
+            }
+        }
+        
+        # Return fallback URL if resolution failed
+        Write-LogMessage "Using fallback URL for $AppName" -Level "INFO"
+        return $DirectDownload.FallbackUrl
+    }
+    catch {
+        Write-LogMessage "Error resolving dynamic URL for $AppName : $_" -Level "ERROR"
+        return $DirectDownload.FallbackUrl
+    }
+}
+
+# Function to check if an app needs user context installation
+function Test-NeedsUserContext {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AppName,
+        [Parameter(Mandatory=$false)]
+        [string]$AppKey = "",
+        [Parameter(Mandatory=$false)]
+        [hashtable]$DirectDownload = $null
+    )
+    
+    # Apps that are known to require user context installation
+    $userContextApps = @(
+        "Spotify",
+        "Discord",
+        "Steam"
+    )
+    
+    # Check by app name
+    if ($AppName -in $userContextApps) {
+        return $true
+    }
+    
+    # Check by app key
+    if ($AppKey -in @("spotify", "discord", "steam")) {
+        return $true
+    }
+    
+    # Check if DirectDownload info indicates user context requirement
+    if ($DirectDownload -and $DirectDownload.RequiresUserContext) {
+        return $true
+    }
+    
+    return $false
+}
+
+if (-not (Test-Path $LoggingModule)) {
     # Fallback Write-LogMessage function if centralized logging is not available
     function Write-LogMessage {
         param (
@@ -756,272 +961,41 @@ function Test-FileChecksum {
     }
 }
 
+
+
 function Install-Winget {
     [CmdletBinding()]
     param(
-        [System.Threading.CancellationToken]$CancellationToken
+        [System.Threading.CancellationToken]$CancellationToken,
+        [switch]$ForceGitHubMethod
     )
     
-    Write-LogMessage "Starting enhanced winget installation process..." -Level "INFO"
+    # Delegate to the comprehensive winget installation system in WingetUtils
+    Write-LogMessage "Delegating winget installation to WingetUtils..." -Level "INFO"
     
-    # Check for cancellation
-    if ($CancellationToken.IsCancellationRequested) {
-        Write-LogMessage "Winget installation cancelled" -Level "WARNING"
-        return $false
-    }
-    
-    # Import WingetUtils module for enhanced installation
-    $wingetUtilsPath = Join-Path (Split-Path $PSScriptRoot) "utils\WingetUtils.psm1"
-    if (Test-Path $wingetUtilsPath) {
-        Import-Module $wingetUtilsPath -Force -Global
-        Write-LogMessage "Imported enhanced WingetUtils module" -Level "INFO"
-        
-        # Use the enhanced installation environment
-        try {
-            Write-LogMessage "Initializing winget environment with improved dependency handling..." -Level "INFO"
-            $result = Initialize-WingetEnvironment -AllowManualInstall
-            
-            if ($result.Success) {
-                $method = if ($result.Method) { $result.Method } else { "Unknown" }
-                $version = if ($result.Version) { $result.Version } else { "Unknown" }
-                
-                Write-LogMessage "Winget installation successful via $method" -Level "SUCCESS"
-                Write-LogMessage "Winget version: $version" -Level "INFO"
-                
-                if ($result.Message) {
-                    Write-LogMessage $result.Message -Level "INFO"
-                }
-                
-                return $true
-            } else {
-                $reason = if ($result.Reason) { $result.Reason } else { "Unknown" }
-                Write-LogMessage "Winget installation failed: $reason" -Level "WARNING"
-                
-                if ($result.Message) {
-                    Write-LogMessage $result.Message -Level "INFO"
-                }
-                
-                # Don't return false immediately - fallback to legacy method
-                Write-LogMessage "Attempting legacy installation method as fallback..." -Level "INFO"
-            }
-        }
-        catch {
-            Write-LogMessage "Enhanced winget installation failed``: $_" -Level "WARNING"
-            Write-LogMessage "Falling back to legacy installation method..." -Level "INFO"
-        }
-    } else {
-        Write-LogMessage "WingetUtils module not found, using legacy installation method" -Level "WARNING"
-    }
-    
-    # Legacy installation method as fallback
-    Write-LogMessage "Using legacy winget installation method..." -Level "INFO"
-    
-    # Check Windows version compatibility first
-    $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
-    $osName = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
-    
-    Write-LogMessage "System: $osName (Build $buildNumber)" -Level "INFO"
-    
-    if ([int]$buildNumber -lt 16299) {
-        Write-LogMessage "Windows build $buildNumber is below minimum requirement for winget (16299 = Windows 10 1709)" -Level "ERROR"
-        Write-LogMessage "Winget is not supported on this Windows version" -Level "ERROR"
-        return $false
-    }
-    
-    # Check if winget is already installed and working
-    if (Get-Command winget -ErrorAction SilentlyContinue) {
-        try {
-            $version = winget --version 2>$null
-            if ($version -and $version.Trim() -ne "") {
-                Write-LogMessage "Winget is already installed and working: $version" -Level "INFO"
-                return $true
-            }
-        }
-        catch {
-            Write-LogMessage "Winget command exists but not working properly" -Level "WARNING"
-        }
-    }
-    
-    # Create src-specific download directory
-    $scriptPath = Split-Path -Parent $PSScriptRoot
-    $downloadDir = Join-Path $scriptPath "downloads"
-    if (-not (Test-Path $downloadDir)) {
-        New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
-        Write-LogMessage "Created download directory at: $downloadDir" -Level "INFO"
-    }
-    
-    # Check if App Installer is already present but winget not registered
-    $appInstaller = Get-AppxPackage -Name "Microsoft.DesktopAppInstaller" -ErrorAction SilentlyContinue
-    if ($appInstaller) {
-        Write-LogMessage "App Installer found: $($appInstaller.Version)" -Level "INFO"
-        Write-LogMessage "Attempting to register winget with extended wait time..." -Level "INFO"
-        
-        try {
-            Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
-            Write-LogMessage "Winget registration command completed" -Level "INFO"
-            
-            # Extended wait and verification
-            Write-LogMessage "Waiting for winget registration to complete (15 seconds)..." -Level "INFO"
-            Start-Sleep -Seconds 15
-            
-            # Multiple verification attempts
-            for ($attempt = 1; $attempt -le 5; $attempt++) {
-                if (Get-Command winget -ErrorAction SilentlyContinue) {
-                    try {
-                        $version = winget --version 2>$null
-                        if ($version -and $version.Trim() -ne "") {
-                            Write-LogMessage "Winget successfully registered: $version" -Level "SUCCESS"
-                            return $true
-                        }
-                    }
-                    catch {
-                        Write-LogMessage "Winget test failed on attempt $attempt" -Level "DEBUG"
-                    }
-                }
-                
-                if ($attempt -lt 5) {
-                    Write-LogMessage "Winget not ready yet, waiting 5 more seconds... (attempt $attempt/5)" -Level "INFO"
-                    Start-Sleep -Seconds 5
-                }
-            }
-            
-            Write-LogMessage "Winget registration completed but command not yet available" -Level "WARNING"
-            Write-LogMessage "This may require a new PowerShell session" -Level "INFO"
-        } catch {
-            Write-LogMessage "Failed to register winget``: $_" -Level "WARNING"
-        }
-    }
-    
-    # Try Microsoft Store installation with extended wait
-    Write-LogMessage "Attempting to install winget via Microsoft Store..." -Level "INFO"
     try {
-        $wingetUrl = "ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1"
-        Start-Process $wingetUrl
-        Write-LogMessage "Opened Microsoft Store for winget installation" -Level "INFO"
-        Write-LogMessage "Please complete the installation and the script will wait for verification..." -Level "INFO"
+        $result = Initialize-WingetEnvironment -ForceGitHubMethod:$ForceGitHubMethod -CancellationToken $CancellationToken
         
-        # Wait for user to complete Store installation with periodic checks
-        for ($check = 1; $check -le 12; $check++) {
-            Start-Sleep -Seconds 10
-            
-            if (Get-Command winget -ErrorAction SilentlyContinue) {
-                try {
-                    $version = winget --version 2>$null
-                    if ($version -and $version.Trim() -ne "") {
-                        Write-LogMessage "Winget detected after Store installation: $version" -Level "SUCCESS"
-                        return $true
-                    }
-                }
-                catch {
-                    # Continue checking
-                }
+        if ($result.Success) {
+            Write-LogMessage "Winget installation successful via $($result.Method)" -Level "SUCCESS"
+            if ($result.Version) {
+                Write-LogMessage "Winget version: $($result.Version)" -Level "INFO"
             }
-            
-            Write-LogMessage "Waiting for Store installation completion... (check $check/12)" -Level "INFO"
+            return $true
+        } else {
+            Write-LogMessage "Winget installation failed: $($result.Reason)" -Level "ERROR"
+            if ($result.Error) {
+                Write-LogMessage "Installation error details: $($result.Error)" -Level "ERROR"
+            }
+            return $false
         }
-        
-        Write-LogMessage "Store installation timeout - proceeding to direct download" -Level "WARNING"
     }
     catch {
-        Write-LogMessage "Failed to open Microsoft Store``: $_" -Level "WARNING"
-    }
-    
-    # Fallback to direct download with enhanced error handling
-    Write-LogMessage "Attempting direct download of winget..." -Level "INFO"
-    try {
-        # Create winget-specific directory
-        $wingetDir = Join-Path $downloadDir "winget"
-        if (-not (Test-Path $wingetDir)) {
-            New-Item -ItemType Directory -Path $wingetDir -Force | Out-Null
-            Write-LogMessage "Created winget directory at: $wingetDir" -Level "INFO"
-        }
-        
-        # Download the latest winget release
-        $releaseUrl = "https://api.github.com/repos/microsoft/winget-cli/releases/latest"
-        Write-LogMessage "Fetching latest winget release information..." -Level "INFO"
-        $release = Invoke-RestMethod -Uri $releaseUrl -TimeoutSec 30
-        $msixBundle = $release.assets | Where-Object { $_.name -like "*.msixbundle" } | Select-Object -First 1
-        
-        if ($null -eq $msixBundle) {
-            Write-LogMessage "Could not find winget MSIX bundle" -Level "ERROR"
-            return $false
-        }
-        
-        $downloadPath = Join-Path $wingetDir $msixBundle.name
-        Write-LogMessage "Downloading winget bundle to: $downloadPath" -Level "INFO"
-        
-        # Download with progress reporting
-        $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadFile($msixBundle.browser_download_url, $downloadPath)
-        
-        # Verify download
-        if (-not (Test-Path $downloadPath)) {
-            Write-LogMessage "Download failed - file not found at expected location" -Level "ERROR"
-            return $false
-        }
-        
-        $fileSize = (Get-Item $downloadPath).Length
-        Write-LogMessage "Download completed successfully ($([math]::Round($fileSize/1MB, 2)) MB)" -Level "SUCCESS"
-        
-        # Install the bundle with retry logic
-        Write-LogMessage "Installing winget package..." -Level "INFO"
-        
-        $installSuccess = $false
-        for ($attempt = 1; $attempt -le 3; $attempt++) {
-            try {
-                Add-AppxPackage -Path $downloadPath -ForceApplicationShutdown -ErrorAction Stop
-                Write-LogMessage "Winget package installation completed (attempt $attempt)" -Level "SUCCESS"
-                $installSuccess = $true
-                break
-            }
-            catch {
-                Write-LogMessage "Installation attempt $attempt failed``: $_" -Level "WARNING"
-                if ($attempt -lt 3) {
-                    Start-Sleep -Seconds 5
-                }
-            }
-        }
-        
-        # Clean up download
-        Remove-Item $downloadPath -Force -ErrorAction SilentlyContinue
-        Write-LogMessage "Cleaned up downloaded package" -Level "INFO"
-        
-        if (-not $installSuccess) {
-            Write-LogMessage "Failed to install winget after all attempts" -Level "ERROR"
-            return $false
-        }
-        
-        # Extended verification with multiple attempts
-        Write-LogMessage "Verifying winget installation (extended verification)..." -Level "INFO"
-        
-        for ($attempt = 1; $attempt -le 10; $attempt++) {
-            Start-Sleep -Seconds 5
-            
-            if (Get-Command winget -ErrorAction SilentlyContinue) {
-                try {
-                    $version = winget --version 2>$null
-                    if ($version -and $version.Trim() -ne "") {
-                        Write-LogMessage "Winget installed successfully! Version: $version" -Level "SUCCESS"
-                        return $true
-                    }
-                }
-                catch {
-                    Write-LogMessage "Winget verification attempt $attempt failed" -Level "DEBUG"
-                }
-            }
-            
-            Write-LogMessage "Winget not ready yet, waiting... (attempt $attempt/10)" -Level "INFO"
-        }
-        
-        Write-LogMessage "Winget installation completed but command not immediately available" -Level "WARNING"
-        Write-LogMessage "This is common and usually resolves in new PowerShell sessions" -Level "INFO"
-        return $true  # Return true since installation commands succeeded
-    }
-    catch {
-        Write-LogMessage "Failed to install winget``: $_" -Level "ERROR"
+        Write-LogMessage "Error during winget installation delegation: $_" -Level "ERROR"
         return $false
     }
 }
+
 
 function Update-Environment {
     Write-LogMessage "Updating environment variables..." -Level "INFO"
@@ -1157,7 +1131,19 @@ function Install-Application {
     
     # Skip if already installed and not forced
     if (-not $Force) {
-        $isInstalled = Test-ApplicationInstalled -AppName $AppName -WingetId $WingetId -CheckCommand
+        # Get verification paths from config if available
+        $verificationPaths = @()
+        if ($DirectDownload -and $DirectDownload.VerificationPaths) {
+            $verificationPaths = $DirectDownload.VerificationPaths
+        } else {
+            # Try to get from app configuration
+            $appConfig = Get-AppConfigurationData -AppKey $trackingKey
+            if ($appConfig -and $appConfig.DirectDownload -and $appConfig.DirectDownload.VerificationPaths) {
+                $verificationPaths = $appConfig.DirectDownload.VerificationPaths
+            }
+        }
+        
+        $isInstalled = Test-ApplicationInstalled -AppName $AppName -WingetId $WingetId -VerificationPaths $verificationPaths -CheckCommand
         if ($isInstalled) {
             Write-LogMessage "$AppName is already installed, skipping installation" -Level "INFO"
             Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Skipped" -AdditionalData @{
@@ -1201,7 +1187,7 @@ function Install-Application {
         if (-not $wingetAvailable) {
             Write-LogMessage "Winget not available, attempting installation before proceeding..." -Level "INFO"
             
-            # Try to install winget with extended time allowance
+            # Try to install winget with enhanced method
             $wingetInstalled = Install-Winget -CancellationToken $CancellationToken
             
             if ($wingetInstalled) {
@@ -1400,24 +1386,26 @@ function Install-Application {
         # Use AppKey if provided, otherwise fall back to AppName
         $keyToUse = if ($AppKey -and $AppKey -ne "") { $AppKey } else { $AppName }
         
-        # Get download info from JSON configuration with dynamic URL resolution
-        $DirectDownload = Get-AppDownloadInfo -AppKey $keyToUse
+        # Get download info from JSON configuration
+        $DirectDownload = Get-AppConfigurationData -AppKey $keyToUse
         
-        if ($DirectDownload -and $DirectDownload.ResolvedUrl) {
-            Write-LogMessage "Using dynamically resolved URL for $AppName : $($DirectDownload.ResolvedUrl)" -Level "INFO"
-            $DirectDownload.ActualUrl = $DirectDownload.ResolvedUrl
-        } elseif ($DirectDownload) {
-            $DirectDownload.ActualUrl = $DirectDownload.Url
-        }
-        
-        # Fallback to legacy method if JSON config fails
-        if ($null -eq $DirectDownload) {
+        if ($DirectDownload -and $DirectDownload.DirectDownload) {
+            Write-LogMessage "Found configuration for $AppName from JSON config" -Level "INFO"
+            $DirectDownload = $DirectDownload.DirectDownload
+            
+            # Resolve dynamic URLs based on type
+            $resolvedUrl = Resolve-DynamicUrl -DirectDownload $DirectDownload -AppName $AppName
+            $DirectDownload.ActualUrl = if ($resolvedUrl) { $resolvedUrl } else { $DirectDownload.Url }
+        } else {
+            # Fallback to legacy method if JSON config fails
             $latestUrl = Get-LatestVersionUrl -ApplicationName $AppName
             $DirectDownload = Get-AppDirectDownloadInfo -AppName $AppName
             
             if ($latestUrl -and $DirectDownload) {
                 Write-LogMessage "Using legacy dynamic URL resolution for $AppName" -Level "INFO"
                 $DirectDownload.ActualUrl = $latestUrl
+            } elseif ($DirectDownload) {
+                $DirectDownload.ActualUrl = $DirectDownload.Url
             }
         }
     }
@@ -1483,7 +1471,16 @@ function Install-Application {
         Write-LogMessage "Running installer..." -Level "INFO"
         
         if ($DirectDownload.Extension -eq ".exe") {
-            $arguments = if ($DirectDownload.Arguments) { $DirectDownload.Arguments } else { "/S" }
+            # Handle arguments array or string
+            $arguments = if ($DirectDownload.Arguments) {
+                if ($DirectDownload.Arguments -is [array]) {
+                    $DirectDownload.Arguments -join " "
+                } else {
+                    $DirectDownload.Arguments
+                }
+            } else {
+                "/S"
+            }
             
             # Handle applications that require silent config files
             if ($arguments -like "*CONFIG=*" -or $arguments -like "*config*") {
@@ -1554,7 +1551,16 @@ function Install-Application {
             }
         }
         elseif ($DirectDownload.Extension -eq ".msi") {
-            $arguments = if ($DirectDownload.Arguments) { $DirectDownload.Arguments } else { "/quiet", "/norestart" }
+            # Handle arguments array for MSI
+            $arguments = if ($DirectDownload.Arguments) {
+                if ($DirectDownload.Arguments -is [array]) {
+                    $DirectDownload.Arguments
+                } else {
+                    @($DirectDownload.Arguments)
+                }
+            } else {
+                @("/quiet", "/norestart")
+            }
             $allArgs = @("/i", $installerPath) + $arguments
             $process = Start-ProcessWithTimeout -FilePath "msiexec.exe" -ArgumentList $allArgs -TimeoutMinutes $script:InstallerTimeoutMinutes -NoNewWindow -CancellationToken $CancellationToken
         }
@@ -2266,6 +2272,8 @@ function Test-NeedsUserContext {
 Export-ModuleMember -Function @(
     'Test-FileChecksum',
     'Get-AppDirectDownloadInfo',
+    'Get-AppConfigurationData',
+    'Resolve-DynamicUrl',
     'Install-Application',
     'Install-Winget',
     'Test-ApplicationInstalled',

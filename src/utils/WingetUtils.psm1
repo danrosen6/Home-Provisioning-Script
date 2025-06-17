@@ -1,41 +1,115 @@
 # Enhanced Winget utilities for Windows Setup GUI
-# Improved installation methods and Windows 10 compatibility
+# Comprehensive winget installation and management system
+# Handles all winget-related operations including dependency management
+
+# Import logging if available
+if (-not (Get-Command Write-LogMessage -ErrorAction SilentlyContinue)) {
+    function Write-LogMessage {
+        param([string]$Message, [string]$Level = "INFO")
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $color = switch ($Level) {
+            "ERROR" { "Red" }
+            "WARNING" { "Yellow" }
+            "SUCCESS" { "Green" }
+            "DEBUG" { "Gray" }
+            default { "White" }
+        }
+        Write-Host "[$timestamp] [$Level] $Message" -ForegroundColor $color
+    }
+}
 
 function Test-WingetCompatibility {
     [CmdletBinding()]
     param()
     
     try {
-        $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
-        $osName = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
+        $osInfo = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+        if (-not $osInfo) {
+            Write-LogMessage "Could not detect Windows version" -Level "WARNING"
+            return @{ Compatible = $false; Reason = "Version detection failed" }
+        }
         
-        $isCompatible = ([int]$buildNumber -ge 16299)
-        $wingetAvailable = (Get-Command winget -ErrorAction SilentlyContinue) -ne $null
+        $buildNumber = [int]$osInfo.BuildNumber
+        $isWindows11 = $buildNumber -ge 22000
+        $isWindows10 = $buildNumber -ge 10240 -and $buildNumber -lt 22000
         
-        # Get Windows version name for better user information
-        $versionName = Get-WindowsVersionName -BuildNumber $buildNumber
+        Write-LogMessage "Detected Windows build: $buildNumber" -Level "INFO"
         
+        # Windows 11 - full compatibility
+        if ($isWindows11) {
+            return @{
+                Compatible = $true
+                Method = "PreInstalled"
+                Version = "Windows 11"
+                BuildNumber = $buildNumber
+                Reason = "Windows 11 includes winget by default"
+            }
+        }
+        
+        # Windows 10 version checks
+        if ($isWindows10) {
+            # Windows 10 22H2 (19045) and later - best compatibility
+            if ($buildNumber -ge 19045) {
+                return @{
+                    Compatible = $true
+                    Method = "PreInstalled"
+                    Version = "Windows 10 22H2+"
+                    BuildNumber = $buildNumber
+                    Reason = "Modern Windows 10 with winget support"
+                }
+            }
+            # Windows 10 2004 (19041) to 21H2 (19044) - good compatibility
+            elseif ($buildNumber -ge 19041) {
+                return @{
+                    Compatible = $true
+                    Method = "StoreOrDirect"
+                    Version = "Windows 10 2004-21H2"
+                    BuildNumber = $buildNumber
+                    Reason = "Compatible but may need manual installation"
+                }
+            }
+            # Windows 10 1909 (18363) to 1903 (18362) - requires manual installation
+            elseif ($buildNumber -ge 18362) {
+                return @{
+                    Compatible = $true
+                    Method = "ManualOnly"
+                    Version = "Windows 10 1903-1909"
+                    BuildNumber = $buildNumber
+                    Reason = "Requires manual installation with dependencies"
+                }
+            }
+            # Windows 10 1809 (17763) and earlier - limited compatibility
+            elseif ($buildNumber -ge 17763) {
+                return @{
+                    Compatible = $true
+                    Method = "ManualWithDeps"
+                    Version = "Windows 10 1809"
+                    BuildNumber = $buildNumber
+                    Reason = "Limited compatibility, manual installation required"
+                }
+            }
+            # Windows 10 versions before 1809 - not compatible
+            else {
+                return @{
+                    Compatible = $false
+                    Version = "Windows 10 Pre-1809"
+                    BuildNumber = $buildNumber
+                    Reason = "Windows 10 build $buildNumber is too old for winget"
+                }
+            }
+        }
+        
+        # Not Windows 10/11
         return @{
-            Compatible = $isCompatible
-            Available = $wingetAvailable
+            Compatible = $false
+            Version = "Unknown/Unsupported"
             BuildNumber = $buildNumber
-            OSName = $osName
-            VersionName = $versionName
-            MinimumBuild = 16299
-            MinimumVersion = "Windows 10 1709"
+            Reason = "Unsupported Windows version"
         }
     }
     catch {
-        return @{
-            Compatible = $false
-            Available = $false
-            BuildNumber = "Unknown"
-            OSName = "Unknown"
-            VersionName = "Unknown"
-            MinimumBuild = 16299
-            MinimumVersion = "Windows 10 1709"
-            Error = $_.Exception.Message
-        }
+        Write-LogMessage "Error checking Windows compatibility: $_" -Level "ERROR"
+        return @{ Compatible = $false; Reason = "Compatibility check failed" }
     }
 }
 
@@ -64,6 +138,196 @@ function Get-WindowsVersionName {
         return "Windows 10 1709"
     } else {
         return "Windows 10 (Pre-1709)"
+    }
+}
+
+function Install-WingetDependencies {
+    [CmdletBinding()]
+    param(
+        [string]$DownloadDir
+    )
+    
+    Write-LogMessage "Installing winget dependencies..." -Level "INFO"
+    
+    try {
+        # Create dependencies directory
+        $depsDir = Join-Path $DownloadDir "dependencies"
+        if (-not (Test-Path $depsDir)) {
+            New-Item -ItemType Directory -Path $depsDir -Force | Out-Null
+        }
+        
+        # Download and install VCLibs (required for most winget operations)
+        $vclibsUrl = "https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx"
+        $vclibsPath = Join-Path $depsDir "VCLibs.appx"
+        
+        Write-LogMessage "Downloading VCLibs dependency..." -Level "INFO"
+        try {
+            $webClient = New-Object System.Net.WebClient
+            $webClient.DownloadFile($vclibsUrl, $vclibsPath)
+            
+            Write-LogMessage "Installing VCLibs dependency..." -Level "INFO"
+            Add-AppxPackage -Path $vclibsPath -ErrorAction Stop
+            Write-LogMessage "VCLibs installed successfully" -Level "SUCCESS"
+        }
+        catch {
+            Write-LogMessage "VCLibs installation failed (may already be installed): $_" -Level "WARNING"
+        }
+        
+        # Download and install UI Xaml (newer dependency for latest winget versions)
+        try {
+            $uiXamlUrl = "https://www.nuget.org/api/v2/package/Microsoft.UI.Xaml/2.8.6"
+            $uiXamlPath = Join-Path $depsDir "UIXaml.zip"
+            
+            Write-LogMessage "Downloading UI Xaml framework..." -Level "INFO"
+            $webClient = New-Object System.Net.WebClient
+            $webClient.DownloadFile($uiXamlUrl, $uiXamlPath)
+            
+            # Extract and find the appropriate appx file
+            $extractDir = Join-Path $depsDir "UIXaml"
+            if (Test-Path $extractDir) {
+                Remove-Item $extractDir -Recurse -Force
+            }
+            Expand-Archive -Path $uiXamlPath -DestinationPath $extractDir -Force
+            
+            # Find x64 appx file
+            $appxFile = Get-ChildItem -Path $extractDir -Recurse -Filter "*.appx" | Where-Object { $_.Name -like "*x64*" } | Select-Object -First 1
+            
+            if ($appxFile) {
+                Write-LogMessage "Installing UI Xaml framework..." -Level "INFO"
+                Add-AppxPackage -Path $appxFile.FullName -ErrorAction Stop
+                Write-LogMessage "UI Xaml installed successfully" -Level "SUCCESS"
+            }
+        }
+        catch {
+            Write-LogMessage "UI Xaml installation failed (may not be required): $_" -Level "WARNING"
+        }
+        
+        # Clean up downloads
+        Remove-Item $depsDir -Recurse -Force -ErrorAction SilentlyContinue
+        
+        return $true
+    }
+    catch {
+        Write-LogMessage "Error installing winget dependencies: $_" -Level "ERROR"
+        return $false
+    }
+}
+
+function Resolve-WingetInstallationError {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [System.Management.Automation.ErrorRecord]$ErrorRecord,
+        [string]$DownloadDir
+    )
+    
+    $errorCode = if ($ErrorRecord.Exception.HResult) { "0x{0:X8}" -f $ErrorRecord.Exception.HResult } else { "Unknown" }
+    $errorMessage = $ErrorRecord.Exception.Message
+    
+    Write-LogMessage "Diagnosing winget installation error (Code: $errorCode)" -Level "INFO"
+    
+    switch ($ErrorRecord.Exception.HResult) {
+        0x80073CF3 {
+            Write-LogMessage "Dependency validation error - missing framework packages" -Level "WARNING"
+            Write-LogMessage "Attempting to install missing dependencies..." -Level "INFO"
+            
+            # Install dependencies and retry
+            $result = Install-WingetDependencies -DownloadDir $DownloadDir
+            if ($result) {
+                Write-LogMessage "Dependencies installed successfully, retry installation" -Level "SUCCESS"
+                return @{ CanRetry = $true; Action = "Retry with dependencies" }
+            } else {
+                Write-LogMessage "Failed to install dependencies" -Level "ERROR"
+                return @{ CanRetry = $false; Action = "Manual dependency installation required" }
+            }
+        }
+        
+        0x80073CFE {
+            Write-LogMessage "Package registration error - app installer conflict" -Level "WARNING"
+            Write-LogMessage "Attempting to re-register App Installer..." -Level "INFO"
+            
+            try {
+                Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
+                return @{ CanRetry = $true; Action = "Re-registered App Installer" }
+            }
+            catch {
+                return @{ CanRetry = $false; Action = "Manual App Installer re-registration required" }
+            }
+        }
+        
+        0x80073D01 {
+            Write-LogMessage "Installation space error - insufficient disk space" -Level "ERROR"
+            return @{ CanRetry = $false; Action = "Free up disk space and retry manually" }
+        }
+        
+        0x80073CF0 {
+            Write-LogMessage "Package signature error - certificate trust issue" -Level "WARNING"
+            Write-LogMessage "This may require manual certificate installation" -Level "INFO"
+            return @{ CanRetry = $false; Action = "Manual certificate trust configuration required" }
+        }
+        
+        default {
+            Write-LogMessage "Unknown installation error: $errorMessage" -Level "ERROR"
+            Write-LogMessage "Error code: $errorCode" -Level "DEBUG"
+            
+            # Check for common error patterns in message
+            if ($errorMessage -match "access.*denied|permission") {
+                return @{ CanRetry = $false; Action = "Run as administrator or check permissions" }
+            }
+            elseif ($errorMessage -match "network|internet|download") {
+                return @{ CanRetry = $true; Action = "Check internet connection and retry" }
+            }
+            elseif ($errorMessage -match "policy|group.*policy") {
+                return @{ CanRetry = $false; Action = "Check Group Policy restrictions for app installation" }
+            }
+            else {
+                return @{ CanRetry = $false; Action = "Manual troubleshooting required" }
+            }
+        }
+    }
+}
+
+function Test-PowerShellExecutionPolicy {
+    [CmdletBinding()]
+    param(
+        [switch]$AutoFix
+    )
+    
+    try {
+        $currentPolicy = Get-ExecutionPolicy -Scope CurrentUser
+        $systemPolicy = Get-ExecutionPolicy -Scope LocalMachine
+        
+        Write-LogMessage "PowerShell Execution Policy - CurrentUser: $currentPolicy, LocalMachine: $systemPolicy" -Level "INFO"
+        
+        # Check if policy allows script execution
+        $restrictivePolicies = @("Restricted", "AllSigned")
+        $needsFix = $currentPolicy -in $restrictivePolicies -and $systemPolicy -in $restrictivePolicies
+        
+        if ($needsFix) {
+            Write-LogMessage "Restrictive execution policy detected" -Level "WARNING"
+            
+            if ($AutoFix) {
+                Write-LogMessage "Attempting to set execution policy to RemoteSigned for current user..." -Level "INFO"
+                try {
+                    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+                    Write-LogMessage "Execution policy updated successfully" -Level "SUCCESS"
+                    return $true
+                }
+                catch {
+                    Write-LogMessage "Failed to update execution policy: $_" -Level "ERROR"
+                    return $false
+                }
+            } else {
+                Write-LogMessage "Run: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser" -Level "INFO"
+                return $false
+            }
+        }
+        
+        return $true
+    }
+    catch {
+        Write-LogMessage "Error checking execution policy: $_" -Level "ERROR"
+        return $false
     }
 }
 
@@ -118,15 +382,26 @@ function Initialize-WingetEnvironment {
     param(
         [Parameter(Mandatory=$false)]
         [switch]$Force,
-        [switch]$AllowManualInstall
+        [switch]$AllowManualInstall,
+        [switch]$ForceGitHubMethod,
+        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
     )
     
     try {
-        Write-Verbose "Checking winget compatibility..."
+        Write-LogMessage "Starting comprehensive winget installation process..." -Level "INFO"
+        
+        # Check for cancellation
+        if ($CancellationToken.IsCancellationRequested) {
+            Write-LogMessage "Winget installation cancelled" -Level "WARNING"
+            return @{ Success = $false; Reason = "Cancelled" }
+        }
+        
+        # Check Windows version compatibility
         $compatibility = Test-WingetCompatibility
+        Write-LogMessage "Windows compatibility: $($compatibility.Version) - $($compatibility.Reason)" -Level "INFO"
         
         if (-not $compatibility.Compatible) {
-            Write-Warning "Windows build $($compatibility.BuildNumber) is below minimum requirement for winget ($($compatibility.MinimumBuild))"
+            Write-LogMessage "Windows version not compatible with winget: $($compatibility.Reason)" -Level "ERROR"
             return @{
                 Success = $false
                 Reason = "IncompatibleWindows"
@@ -134,188 +409,250 @@ function Initialize-WingetEnvironment {
             }
         }
         
-        Write-Verbose "Windows is compatible with winget"
+        # Create download directory
+        $scriptPath = Split-Path -Parent $PSScriptRoot
+        $downloadDir = Join-Path $scriptPath "downloads"
+        if (-not (Test-Path $downloadDir)) {
+            New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
+            Write-LogMessage "Created download directory at: $downloadDir" -Level "INFO"
+        }
         
-        # Check current installation status with improved verification
-        $installation = Test-WingetInstallation
+        # Try different installation methods based on Windows version and user preference
+        $installationMethod = if ($ForceGitHubMethod) { "GitHub" } else { $compatibility.Method }
         
-        if ($installation.Available -and -not $Force) {
-            Write-Verbose "Winget is already available: $($installation.Version)"
+        Write-LogMessage "Using installation method: $installationMethod" -Level "INFO"
+        
+        # Method 1: Check if already installed but not registered
+        if (-not $ForceGitHubMethod) {
+            $appInstaller = Get-AppxPackage -Name "Microsoft.DesktopAppInstaller" -ErrorAction SilentlyContinue
+            if ($appInstaller) {
+                Write-LogMessage "App Installer found: $($appInstaller.Version)" -Level "INFO"
+                Write-LogMessage "Attempting to register winget..." -Level "INFO"
+                
+                try {
+                    Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
+                    Start-Sleep -Seconds 10
+                    
+                    # Test if winget is now available
+                    for ($attempt = 1; $attempt -le 5; $attempt++) {
+                        if (Get-Command winget -ErrorAction SilentlyContinue) {
+                            try {
+                                $version = winget --version 2>$null
+                                if ($version -and $version.Trim() -ne "") {
+                                    Write-LogMessage "Winget successfully registered: $version" -Level "SUCCESS"
+                                    return @{
+                                        Success = $true
+                                        Method = "Registration"
+                                        Version = $version
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+                        
+                        if ($attempt -lt 5) {
+                            Start-Sleep -Seconds 3
+                        }
+                    }
+                    
+                    Write-LogMessage "Winget registration completed but command not available" -Level "WARNING"
+                }
+                catch {
+                    Write-LogMessage "Failed to register winget: $_" -Level "WARNING"
+                }
+            }
+        }
+        
+        # Method 2: Try Microsoft Store installation (for compatible versions)
+        if (-not $ForceGitHubMethod -and $installationMethod -in @("PreInstalled", "StoreOrDirect")) {
+            Write-LogMessage "Attempting Microsoft Store installation..." -Level "INFO"
+            try {
+                $wingetUrl = "ms-windows-store://pdp/?ProductId=9NBLGGH4NNS1"
+                Start-Process $wingetUrl -ErrorAction Stop
+                Write-LogMessage "Opened Microsoft Store for winget installation" -Level "INFO"
+                Write-LogMessage "Please complete the installation manually..." -Level "INFO"
+                
+                # Wait for user to complete Store installation
+                for ($check = 1; $check -le 8; $check++) {
+                    Start-Sleep -Seconds 15
+                    
+                    if (Get-Command winget -ErrorAction SilentlyContinue) {
+                        try {
+                            $version = winget --version 2>$null
+                            if ($version -and $version.Trim() -ne "") {
+                                Write-LogMessage "Winget detected after Store installation: $version" -Level "SUCCESS"
+                                return @{
+                                    Success = $true
+                                    Method = "MicrosoftStore"
+                                    Version = $version
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                    
+                    Write-LogMessage "Waiting for Store installation completion... (check $check/8)" -Level "INFO"
+                }
+                
+                Write-LogMessage "Store installation timeout - proceeding to GitHub method" -Level "WARNING"
+            }
+            catch {
+                Write-LogMessage "Failed to open Microsoft Store: $_" -Level "WARNING"
+            }
+        }
+        
+        # Method 3: GitHub direct installation (enhanced method)
+        Write-LogMessage "Attempting GitHub direct installation..." -Level "INFO"
+        
+        # Install dependencies if required for older Windows versions
+        if ($installationMethod -in @("ManualOnly", "ManualWithDeps")) {
+            Write-LogMessage "Installing winget dependencies for $($compatibility.Version)..." -Level "INFO"
+            $depResult = Install-WingetDependencies -DownloadDir $downloadDir
+            if (-not $depResult) {
+                Write-LogMessage "Failed to install dependencies, continuing anyway..." -Level "WARNING"
+            }
+        }
+        
+        # Check execution policy first
+        $policyOk = Test-PowerShellExecutionPolicy -AutoFix
+        if (-not $policyOk) {
+            Write-LogMessage "PowerShell execution policy may prevent winget installation" -Level "WARNING"
+        }
+        
+        try {
+            # Create winget-specific directory
+            $wingetDir = Join-Path $downloadDir "winget"
+            if (-not (Test-Path $wingetDir)) {
+                New-Item -ItemType Directory -Path $wingetDir -Force | Out-Null
+                Write-LogMessage "Created winget directory at: $wingetDir" -Level "INFO"
+            }
+            
+            # Use GitHub API to get the latest winget release
+            Write-LogMessage "Fetching latest winget release from GitHub..." -Level "INFO"
+            $progressPreference = 'SilentlyContinue'  # Suppress progress bars
+            
+            try {
+                $releaseUrl = "https://api.github.com/repos/microsoft/winget-cli/releases/latest"
+                $release = Invoke-RestMethod -Uri $releaseUrl -TimeoutSec 30 -ErrorAction Stop
+                $msixBundle = $release.assets | Where-Object { $_.browser_download_url.EndsWith(".msixbundle") } | Select-Object -First 1
+                
+                if ($null -eq $msixBundle) {
+                    throw "Could not find winget MSIX bundle in latest release"
+                }
+                
+                $downloadUrl = $msixBundle.browser_download_url
+                $fileName = $msixBundle.name
+                Write-LogMessage "Found winget release: $fileName" -Level "SUCCESS"
+            }
+            catch {
+                Write-LogMessage "GitHub API failed, using fallback URL: $_" -Level "WARNING"
+                # Fallback to known working URL
+                $downloadUrl = "https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+                $fileName = "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"
+            }
+            
+            $downloadPath = Join-Path $wingetDir $fileName
+            Write-LogMessage "Downloading winget from: $downloadUrl" -Level "INFO"
+            
+            # Download with enhanced error handling
+            try {
+                $webClient = New-Object System.Net.WebClient
+                $webClient.DownloadFile($downloadUrl, $downloadPath)
+                
+                # Verify download
+                if (-not (Test-Path $downloadPath)) {
+                    throw "Download failed - file not found at expected location"
+                }
+                
+                $fileSize = (Get-Item $downloadPath).Length
+                if ($fileSize -lt 1MB) {
+                    throw "Download appears incomplete (file size: $([math]::Round($fileSize/1KB, 2)) KB)"
+                }
+                
+                Write-LogMessage "Download completed successfully ($([math]::Round($fileSize/1MB, 2)) MB)" -Level "SUCCESS"
+            }
+            catch {
+                Write-LogMessage "Download failed: $_" -Level "ERROR"
+                return @{ Success = $false; Reason = "DownloadFailed"; Error = $_.Exception.Message }
+            }
+            
+            # Install the MSIX bundle with enhanced error handling
+            Write-LogMessage "Installing winget package..." -Level "INFO"
+            
+            $installSuccess = $false
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+                try {
+                    Add-AppxPackage -Path $downloadPath -ForceApplicationShutdown -ErrorAction Stop
+                    Write-LogMessage "Winget package installation completed (attempt $attempt)" -Level "SUCCESS"
+                    $installSuccess = $true
+                    break
+                }
+                catch {
+                    $errorAnalysis = Resolve-WingetInstallationError -ErrorRecord $_ -DownloadDir $downloadDir
+                    Write-LogMessage "Installation attempt $attempt failed: $($errorAnalysis.Action)" -Level "WARNING"
+                    
+                    if ($errorAnalysis.CanRetry -and $attempt -lt 3) {
+                        Start-Sleep -Seconds 5
+                    } elseif (-not $errorAnalysis.CanRetry) {
+                        Write-LogMessage "Cannot retry installation: $($errorAnalysis.Action)" -Level "ERROR"
+                        break
+                    }
+                }
+            }
+            
+            # Clean up download
+            Remove-Item $downloadPath -Force -ErrorAction SilentlyContinue
+            Write-LogMessage "Cleaned up downloaded package" -Level "INFO"
+            
+            if (-not $installSuccess) {
+                Write-LogMessage "Failed to install winget after all attempts" -Level "ERROR"
+                return @{ Success = $false; Reason = "InstallationFailed" }
+            }
+            
+            # Extended verification with multiple attempts
+            Write-LogMessage "Verifying winget installation..." -Level "INFO"
+            
+            for ($attempt = 1; $attempt -le 10; $attempt++) {
+                Start-Sleep -Seconds 3
+                
+                if (Get-Command winget -ErrorAction SilentlyContinue) {
+                    try {
+                        $version = winget --version 2>$null
+                        if ($version -and $version.Trim() -ne "") {
+                            Write-LogMessage "Winget installed successfully! Version: $version" -Level "SUCCESS"
+                            return @{
+                                Success = $true
+                                Method = "GitHubDirect"
+                                Version = $version
+                                Installed = $true
+                            }
+                        }
+                    }
+                    catch {
+                        Write-LogMessage "Winget verification attempt $attempt failed" -Level "DEBUG"
+                    }
+                }
+                
+                Write-LogMessage "Winget not ready yet, waiting... (attempt $attempt/10)" -Level "INFO"
+            }
+            
+            Write-LogMessage "Winget installation completed but command not immediately available" -Level "WARNING"
+            Write-LogMessage "This is common and usually resolves in new PowerShell sessions" -Level "INFO"
             return @{
                 Success = $true
-                AlreadyAvailable = $true
-                Version = $installation.Version
-                Details = $installation
-            }
-        }
-        
-        # Enhanced registration attempt for existing installations
-        if ($installation.NeedsRegistration -or $installation.Installed) {
-            Write-Verbose "Winget needs registration or repair..."
-            
-            # Method 1: PowerShell module repair with extended time (Microsoft's recommended method)
-            try {
-                Write-Verbose "Attempting PowerShell module approach for winget registration..."
-                
-                # Check if NuGet provider is installed
-                if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
-                    Write-Verbose "Installing NuGet provider..."
-                    Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null
-                }
-                
-                # Check if module is already installed
-                if (-not (Get-Module -ListAvailable -Name Microsoft.WinGet.Client)) {
-                    Write-Verbose "Installing Microsoft.WinGet.Client module..."
-                    Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null
-                }
-                
-                Write-Verbose "Importing Microsoft.WinGet.Client module..."
-                Import-Module Microsoft.WinGet.Client -Force
-                
-                Write-Verbose "Repairing WinGet package manager..."
-                Repair-WinGetPackageManager -Latest -Force
-                
-                # Extended wait time for module-based repair
-                Write-Verbose "Waiting for module repair to complete (10 seconds)..."
-                Start-Sleep -Seconds 10
-                
-                # Multiple verification attempts for module repair
-                for ($attempt = 1; $attempt -le 5; $attempt++) {
-                    $moduleInstallation = Test-WingetInstallation
-                    if ($moduleInstallation.Available) {
-                        Write-Verbose "Winget successfully registered via PowerShell module"
-                        return @{
-                            Success = $true
-                            Registered = $true
-                            Method = "PowerShellModule"
-                            Version = $moduleInstallation.Version
-                            Details = $moduleInstallation
-                        }
-                    }
-                    
-                    if ($attempt -lt 5) {
-                        Write-Verbose "Module repair verification attempt $attempt failed, waiting 3 seconds..."
-                        Start-Sleep -Seconds 3
-                    }
-                }
-                
-                Write-Verbose "Module repair completed but winget not yet available"
-            } catch {
-                Write-Verbose "PowerShell module approach failed`: $_"
-            }
-            
-            # Method 2: Direct registration with extended verification
-            Write-Verbose "Attempting direct winget registration..."
-            $registered = Register-WingetPackage
-            if ($registered) {
-                # Extended wait for registration to take effect
-                Write-Verbose "Waiting for registration to complete (10 seconds)..."
-                Start-Sleep -Seconds 10
-                
-                # Multiple verification attempts
-                for ($attempt = 1; $attempt -le 5; $attempt++) {
-                    $newInstallation = Test-WingetInstallation
-                    if ($newInstallation.Available) {
-                        return @{
-                            Success = $true
-                            Registered = $true
-                            Method = "StandardRegistration"
-                            Version = $newInstallation.Version
-                            Details = $newInstallation
-                        }
-                    }
-                    
-                    if ($attempt -lt 5) {
-                        Write-Verbose "Registration verification attempt $attempt failed, waiting 3 seconds..."
-                        Start-Sleep -Seconds 3
-                    }
-                }
-            }
-        }
-        
-        # Try to install winget using the enhanced direct method with extended time
-        Write-Verbose "Attempting to install winget with improved dependency handling..."
-        $installed = Install-WingetDirect
-        
-        if ($installed) {
-            Write-Verbose "Winget installation command completed, performing extended verification..."
-            
-            # Extended initial wait
-            Start-Sleep -Seconds 10
-            
-            # Extended verification with more attempts and longer waits
-            for ($i = 0; $i -lt 12; $i++) {
-                $finalInstallation = Test-WingetInstallation
-                if ($finalInstallation.Available) {
-                    Write-Verbose "Winget is now available after installation (attempt $($i + 1))"
-                    return @{
-                        Success = $true
-                        Installed = $true
-                        Version = $finalInstallation.Version
-                        Details = $finalInstallation
-                        RetryCount = $i
-                        Method = "DirectInstallation"
-                    }
-                }
-                
-                if ($i -lt 11) {
-                    Write-Verbose "Winget not yet available, waiting... (attempt $($i + 1)/12)"
-                    # Progressive wait times - start short, get longer
-                    $waitTime = if ($i -lt 4) { 3 } elseif ($i -lt 8) { 5 } else { 8 }
-                    Start-Sleep -Seconds $waitTime
-                }
-            }
-            
-            # Installation succeeded but command not available after extended verification
-            Write-Verbose "Winget installation completed but command not available after extended verification attempts"
-            Write-Verbose "This may indicate the installation succeeded but needs a new PowerShell session"
-            
-            # Try alternative verification methods
-            if ($AllowManualInstall) {
-                Write-Verbose "Attempting Microsoft Store fallback method..."
-                $storeResult = Install-WingetViaMSStore
-                if ($storeResult) {
-                    return @{
-                        Success = $true
-                        Installed = $true
-                        Method = "MicrosoftStoreAssisted"
-                    }
-                }
-            }
-            
-            # Return partial success - installation likely worked but verification failed
-            return @{
-                Success = $true  # Changed to true since installation commands succeeded
+                Method = "GitHubDirect"
                 Installed = $true
                 Reason = "InstallationSucceededButNotImmediatelyAvailable"
-                Details = $finalInstallation
                 Message = "Winget installation completed. May become available in new PowerShell sessions."
-                Method = "DirectInstallation"
             }
         }
-        
-        # If automated methods fail and manual install is allowed
-        if ($AllowManualInstall) {
-            Write-Verbose "Automated installation failed. Trying Microsoft Store method..."
-            $storeInstalled = Install-WingetViaMSStore
-            
-            if ($storeInstalled) {
-                return @{
-                    Success = $true
-                    Installed = $true
-                    Method = "MicrosoftStore"
-                }
-            }
-        }
-        
-        return @{
-            Success = $false
-            Reason = "AllInstallationMethodsFailed"
-            Details = $installation
-            Message = "All winget installation methods failed. Applications will be installed via direct downloads."
+        catch {
+            Write-LogMessage "Failed to install winget via GitHub: $_" -Level "ERROR"
+            return @{ Success = $false; Reason = "GitHubInstallationFailed"; Error = $_.Exception.Message }
         }
     }
     catch {
+        Write-LogMessage "Error in winget installation process: $_" -Level "ERROR"
         return @{
             Success = $false
             Reason = "Exception"
@@ -902,6 +1239,9 @@ function Get-WingetOfflinePackage {
 Export-ModuleMember -Function @(
     "Test-WingetCompatibility",
     "Get-WindowsVersionName",
+    "Install-WingetDependencies",
+    "Resolve-WingetInstallationError",
+    "Test-PowerShellExecutionPolicy",
     "Test-WingetInstallation", 
     "Initialize-WingetEnvironment",
     "Register-WingetPackage",
