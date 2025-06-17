@@ -95,6 +95,7 @@ $script:SelectedApps = @()
 $script:SelectedBloatware = @()
 $script:SelectedServices = @()
 $script:SelectedTweaks = @()
+$script:OperationCancelled = $false
 
 # Detect Windows version
 $script:OSInfo = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
@@ -243,10 +244,12 @@ $headerPanel.Controls.Add($wingetStatusLabel)
 
 $form.Controls.Add($headerPanel)
 
-# Create tab control
+# Create tab control with optimizations - moved to bottom
 $tabControl = New-Object System.Windows.Forms.TabControl
 $tabControl.Dock = [System.Windows.Forms.DockStyle]::Fill
 $tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$tabControl.Alignment = [System.Windows.Forms.TabAlignment]::Bottom
+$tabControl.SuspendLayout()  # Suspend layout for performance
 
 # Apps tab
 $appsTab = New-Object System.Windows.Forms.TabPage
@@ -256,9 +259,10 @@ $appsTab.BackColor = [System.Drawing.Color]::White
 $appsPanel = New-Object System.Windows.Forms.Panel
 $appsPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
 $appsPanel.AutoScroll = $true
+$appsPanel.SuspendLayout()  # Suspend layout for performance
 
 # Add controls to Apps tab
-$yPos = 20
+$yPos = 35
 $appsTitle = New-Object System.Windows.Forms.Label
 $appsTitle.Text = "Select Applications to Install"
 $appsTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
@@ -330,11 +334,14 @@ foreach ($category in $script:Apps.Keys | Sort-Object) {
 
 # Apps Select All event handler
 $appsSelectAll.Add_CheckedChanged({
+    $appsPanel.SuspendLayout()
     foreach ($checkbox in $script:AppCheckboxes) {
         $checkbox.Checked = $appsSelectAll.Checked
     }
+    $appsPanel.ResumeLayout()
 })
 
+$appsPanel.ResumeLayout()  # Resume layout after adding all controls
 $appsTab.Controls.Add($appsPanel)
 $tabControl.TabPages.Add($appsTab)
 
@@ -346,9 +353,10 @@ $bloatwareTab.BackColor = [System.Drawing.Color]::White
 $bloatwarePanel = New-Object System.Windows.Forms.Panel
 $bloatwarePanel.Dock = [System.Windows.Forms.DockStyle]::Fill
 $bloatwarePanel.AutoScroll = $true
+$bloatwarePanel.SuspendLayout()  # Suspend layout for performance
 
 # Add controls to Bloatware tab
-$yPos = 20
+$yPos = 35
 $bloatwareTitle = New-Object System.Windows.Forms.Label
 $bloatwareTitle.Text = "Select Bloatware to Remove"
 $bloatwareTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
@@ -417,11 +425,14 @@ foreach ($category in $script:Bloatware.Keys | Sort-Object) {
 }
 
 $bloatwareSelectAll.Add_CheckedChanged({
+    $bloatwarePanel.SuspendLayout()
     foreach ($checkbox in $script:BloatwareCheckboxes) {
         $checkbox.Checked = $bloatwareSelectAll.Checked
     }
+    $bloatwarePanel.ResumeLayout()
 })
 
+$bloatwarePanel.ResumeLayout()  # Resume layout after adding all controls
 $bloatwareTab.Controls.Add($bloatwarePanel)
 $tabControl.TabPages.Add($bloatwareTab)
 
@@ -433,9 +444,10 @@ $servicesTab.BackColor = [System.Drawing.Color]::White
 $servicesPanel = New-Object System.Windows.Forms.Panel
 $servicesPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
 $servicesPanel.AutoScroll = $true
+$servicesPanel.SuspendLayout()  # Suspend layout for performance
 
 # Add controls to Services tab
-$yPos = 20
+$yPos = 35
 $servicesTitle = New-Object System.Windows.Forms.Label
 $servicesTitle.Text = "Select Services to Disable"
 $servicesTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
@@ -504,11 +516,14 @@ foreach ($category in $script:Services.Keys | Sort-Object) {
 }
 
 $servicesSelectAll.Add_CheckedChanged({
+    $servicesPanel.SuspendLayout()
     foreach ($checkbox in $script:ServiceCheckboxes) {
         $checkbox.Checked = $servicesSelectAll.Checked
     }
+    $servicesPanel.ResumeLayout()
 })
 
+$servicesPanel.ResumeLayout()  # Resume layout after adding all controls
 $servicesTab.Controls.Add($servicesPanel)
 $tabControl.TabPages.Add($servicesTab)
 
@@ -520,9 +535,10 @@ $tweaksTab.BackColor = [System.Drawing.Color]::White
 $tweaksPanel = New-Object System.Windows.Forms.Panel
 $tweaksPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
 $tweaksPanel.AutoScroll = $true
+$tweaksPanel.SuspendLayout()  # Suspend layout for performance
 
 # Add controls to Tweaks tab
-$yPos = 20
+$yPos = 35
 $tweaksTitle = New-Object System.Windows.Forms.Label
 $tweaksTitle.Text = "Select System Tweaks to Apply"
 $tweaksTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
@@ -591,25 +607,29 @@ foreach ($category in $script:Tweaks.Keys | Sort-Object) {
 }
 
 $tweaksSelectAll.Add_CheckedChanged({
+    $tweaksPanel.SuspendLayout()
     foreach ($checkbox in $script:TweakCheckboxes) {
         $checkbox.Checked = $tweaksSelectAll.Checked
     }
+    $tweaksPanel.ResumeLayout()
 })
 
+$tweaksPanel.ResumeLayout()  # Resume layout after adding all controls
 $tweaksTab.Controls.Add($tweaksPanel)
 $tabControl.TabPages.Add($tweaksTab)
 
+$tabControl.ResumeLayout()  # Resume layout after all tabs added
 $form.Controls.Add($tabControl)
 
 # Create bottom panel for buttons and status
 $bottomPanel = New-Object System.Windows.Forms.Panel
-$bottomPanel.Height = 100
+$bottomPanel.Height = 120
 $bottomPanel.Dock = [System.Windows.Forms.DockStyle]::Bottom
 $bottomPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
 
 # Main action buttons
 $runButton = New-Object System.Windows.Forms.Button
-$runButton.Text = "Run Selected Operations"
+$runButton.Text = "Run Current Tab"
 $runButton.Size = New-Object System.Drawing.Size(180, 35)
 $runButton.Location = New-Object System.Drawing.Point(20, 20)
 $runButton.BackColor = [System.Drawing.Color]::FromArgb(0, 123, 255)
@@ -620,7 +640,7 @@ $runButton.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.
 $closeButton = New-Object System.Windows.Forms.Button
 $closeButton.Text = "Close"
 $closeButton.Size = New-Object System.Drawing.Size(80, 35)
-$closeButton.Location = New-Object System.Drawing.Point(860, 20)
+$closeButton.Location = New-Object System.Drawing.Point(220, 20)
 $closeButton.BackColor = [System.Drawing.Color]::FromArgb(220, 53, 69)
 $closeButton.ForeColor = [System.Drawing.Color]::White
 $closeButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -628,16 +648,16 @@ $closeButton.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 
 # Status label
 $statusLabel = New-Object System.Windows.Forms.Label
-$statusLabel.Text = "Ready - Select options above and click 'Run Selected Operations'"
+$statusLabel.Text = "Ready - Select options in current tab and click 'Run Current Tab'"
 $statusLabel.Location = New-Object System.Drawing.Point(20, 65)
 $statusLabel.AutoSize = $true
 $statusLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(108, 117, 125)
 
-# Progress bar
+# Progress bar - positioned to not overlap with close button
 $progressBar = New-Object System.Windows.Forms.ProgressBar
 $progressBar.Size = New-Object System.Drawing.Size(400, 20)
-$progressBar.Location = New-Object System.Drawing.Point(550, 45)
+$progressBar.Location = New-Object System.Drawing.Point(320, 30)
 $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
 $progressBar.Visible = $false
 
@@ -666,103 +686,161 @@ function Get-SelectedItems {
 
 $runButton.Add_Click({
     try {
+        $script:OperationCancelled = $false
         $runButton.Enabled = $false
+        $closeButton.Text = "Cancel"
         $progressBar.Visible = $true
         
-        # Get all selected items
-        $selectedApps = Get-SelectedItems -Checkboxes $script:AppCheckboxes
-        $selectedBloatware = Get-SelectedItems -Checkboxes $script:BloatwareCheckboxes
-        $selectedServices = Get-SelectedItems -Checkboxes $script:ServiceCheckboxes
-        $selectedTweaks = Get-SelectedItems -Checkboxes $script:TweakCheckboxes
+        # Get current active tab
+        $activeTab = $tabControl.SelectedTab
+        $activeTabName = $activeTab.Text
         
-        $totalOperations = $selectedApps.Count + $selectedBloatware.Count + $selectedServices.Count + $selectedTweaks.Count
+        $selectedItems = @()
+        $operationType = ""
         
-        if ($totalOperations -eq 0) {
-            Update-StatusLabel "No items selected. Please select items to process." "Orange"
+        # Determine which tab is active and get selected items
+        switch ($activeTabName) {
+            "Applications" {
+                $selectedItems = Get-SelectedItems -Checkboxes $script:AppCheckboxes
+                $operationType = "Apps"
+            }
+            "Bloatware" {
+                $selectedItems = Get-SelectedItems -Checkboxes $script:BloatwareCheckboxes
+                $operationType = "Bloatware"
+            }
+            "Services" {
+                $selectedItems = Get-SelectedItems -Checkboxes $script:ServiceCheckboxes
+                $operationType = "Services"
+            }
+            "Tweaks" {
+                $selectedItems = Get-SelectedItems -Checkboxes $script:TweakCheckboxes
+                $operationType = "Tweaks"
+            }
+        }
+        
+        if ($selectedItems.Count -eq 0) {
+            Update-StatusLabel "No items selected in $activeTabName tab. Please select items to process." "Orange"
+            $runButton.Enabled = $true
+            $closeButton.Text = "Close"
+            $progressBar.Visible = $false
             return
         }
         
-        Update-StatusLabel "Starting operations... ($totalOperations items total)" "Blue"
-        $progressBar.Maximum = $totalOperations
+        Update-StatusLabel "Starting $operationType operations... ($($selectedItems.Count) items)" "Blue"
+        $progressBar.Maximum = $selectedItems.Count
         $progressBar.Value = 0
         
         $currentStep = 0
         
-        # Install applications
-        if ($selectedApps.Count -gt 0) {
-            Update-StatusLabel "Setting up winget environment..." "Blue"
-            $wingetResult = Initialize-WingetEnvironment
-            
-            foreach ($appKey in $selectedApps) {
-                $currentStep++
-                $progressBar.Value = $currentStep
+        # Execute operations based on tab type
+        switch ($operationType) {
+            "Apps" {
+                Update-StatusLabel "Setting up winget environment..." "Blue"
+                $wingetResult = Initialize-WingetEnvironment
                 
-                $installerName = Get-InstallerName -AppKey $appKey
-                Update-StatusLabel "Installing $installerName... ($currentStep of $totalOperations)" "Blue"
-                
-                try {
-                    Install-Application -AppName $installerName -AppKey $appKey
-                    Write-LogMessage "Successfully installed $installerName" -Level "SUCCESS"
-                } catch {
-                    Write-LogMessage "Failed to install $installerName`: $_" -Level "ERROR"
+                foreach ($appKey in $selectedItems) {
+                    if ($script:OperationCancelled) {
+                        Update-StatusLabel "Operations cancelled by user" "Orange"
+                        break
+                    }
+                    
+                    $currentStep++
+                    $progressBar.Value = $currentStep
+                    
+                    $installerName = Get-InstallerName -AppKey $appKey
+                    Update-StatusLabel "Installing $installerName... ($currentStep of $($selectedItems.Count))" "Blue"
+                    
+                    try {
+                        Install-Application -AppName $installerName -AppKey $appKey
+                        Write-LogMessage "Successfully installed $installerName" -Level "SUCCESS"
+                    } catch {
+                        Write-LogMessage "Failed to install $installerName`: $_" -Level "ERROR"
+                    }
+                    
+                    # Update UI every 5 operations or on final operation for better performance
+                    if ($currentStep % 5 -eq 0 -or $currentStep -eq $selectedItems.Count) {
+                        [System.Windows.Forms.Application]::DoEvents()
+                    }
                 }
-                [System.Windows.Forms.Application]::DoEvents()
+            }
+            "Bloatware" {
+                foreach ($bloatKey in $selectedItems) {
+                    if ($script:OperationCancelled) {
+                        Update-StatusLabel "Operations cancelled by user" "Orange"
+                        break
+                    }
+                    
+                    $currentStep++
+                    $progressBar.Value = $currentStep
+                    Update-StatusLabel "Removing bloatware $bloatKey... ($currentStep of $($selectedItems.Count))" "Blue"
+                    
+                    try {
+                        Remove-Bloatware -BloatwareKey $bloatKey
+                        Write-LogMessage "Successfully removed bloatware $bloatKey" -Level "SUCCESS"
+                    } catch {
+                        Write-LogMessage "Failed to remove bloatware $bloatKey`: $_" -Level "ERROR"
+                    }
+                    
+                    # Update UI every 5 operations or on final operation for better performance
+                    if ($currentStep % 5 -eq 0 -or $currentStep -eq $selectedItems.Count) {
+                        [System.Windows.Forms.Application]::DoEvents()
+                    }
+                }
+            }
+            "Services" {
+                foreach ($serviceKey in $selectedItems) {
+                    if ($script:OperationCancelled) {
+                        Update-StatusLabel "Operations cancelled by user" "Orange"
+                        break
+                    }
+                    
+                    $currentStep++
+                    $progressBar.Value = $currentStep
+                    Update-StatusLabel "Disabling service $serviceKey... ($currentStep of $($selectedItems.Count))" "Blue"
+                    
+                    try {
+                        Set-SystemOptimization -OptimizationKey $serviceKey
+                        Write-LogMessage "Successfully disabled service $serviceKey" -Level "SUCCESS"
+                    } catch {
+                        Write-LogMessage "Failed to disable service $serviceKey`: $_" -Level "ERROR"
+                    }
+                    
+                    # Update UI every 5 operations or on final operation for better performance
+                    if ($currentStep % 5 -eq 0 -or $currentStep -eq $selectedItems.Count) {
+                        [System.Windows.Forms.Application]::DoEvents()
+                    }
+                }
+            }
+            "Tweaks" {
+                foreach ($tweakKey in $selectedItems) {
+                    if ($script:OperationCancelled) {
+                        Update-StatusLabel "Operations cancelled by user" "Orange"
+                        break
+                    }
+                    
+                    $currentStep++
+                    $progressBar.Value = $currentStep
+                    Update-StatusLabel "Applying tweak $tweakKey... ($currentStep of $($selectedItems.Count))" "Blue"
+                    
+                    try {
+                        Set-SystemOptimization -OptimizationKey $tweakKey
+                        Write-LogMessage "Successfully applied tweak $tweakKey" -Level "SUCCESS"
+                    } catch {
+                        Write-LogMessage "Failed to apply tweak $tweakKey`: $_" -Level "ERROR"
+                    }
+                    
+                    # Update UI every 5 operations or on final operation for better performance
+                    if ($currentStep % 5 -eq 0 -or $currentStep -eq $selectedItems.Count) {
+                        [System.Windows.Forms.Application]::DoEvents()
+                    }
+                }
             }
         }
         
-        # Remove bloatware
-        if ($selectedBloatware.Count -gt 0) {
-            foreach ($bloatKey in $selectedBloatware) {
-                $currentStep++
-                $progressBar.Value = $currentStep
-                Update-StatusLabel "Removing bloatware $bloatKey... ($currentStep of $totalOperations)" "Blue"
-                
-                try {
-                    Remove-Bloatware -BloatwareKey $bloatKey
-                    Write-LogMessage "Successfully removed bloatware $bloatKey" -Level "SUCCESS"
-                } catch {
-                    Write-LogMessage "Failed to remove bloatware $bloatKey`: $_" -Level "ERROR"
-                }
-                [System.Windows.Forms.Application]::DoEvents()
-            }
+        if (-not $script:OperationCancelled) {
+            Update-StatusLabel "$operationType operations completed! Check logs for details." "Green"
+            [System.Windows.Forms.MessageBox]::Show("$operationType operations have been completed!", "Operations Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
         }
-        
-        # Disable services
-        if ($selectedServices.Count -gt 0) {
-            foreach ($serviceKey in $selectedServices) {
-                $currentStep++
-                $progressBar.Value = $currentStep
-                Update-StatusLabel "Disabling service $serviceKey... ($currentStep of $totalOperations)" "Blue"
-                
-                try {
-                    Set-SystemOptimization -OptimizationKey $serviceKey
-                    Write-LogMessage "Successfully disabled service $serviceKey" -Level "SUCCESS"
-                } catch {
-                    Write-LogMessage "Failed to disable service $serviceKey`: $_" -Level "ERROR"
-                }
-                [System.Windows.Forms.Application]::DoEvents()
-            }
-        }
-        
-        # Apply tweaks
-        if ($selectedTweaks.Count -gt 0) {
-            foreach ($tweakKey in $selectedTweaks) {
-                $currentStep++
-                $progressBar.Value = $currentStep
-                Update-StatusLabel "Applying tweak $tweakKey... ($currentStep of $totalOperations)" "Blue"
-                
-                try {
-                    Set-SystemOptimization -OptimizationKey $tweakKey
-                    Write-LogMessage "Successfully applied tweak $tweakKey" -Level "SUCCESS"
-                } catch {
-                    Write-LogMessage "Failed to apply tweak $tweakKey`: $_" -Level "ERROR"
-                }
-                [System.Windows.Forms.Application]::DoEvents()
-            }
-        }
-        
-        Update-StatusLabel "All operations completed! Check logs for details." "Green"
-        [System.Windows.Forms.MessageBox]::Show("All selected operations have been completed!", "Operations Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
         
     } catch {
         Update-StatusLabel "Error during operations`: $_" "Red"
@@ -770,12 +848,21 @@ $runButton.Add_Click({
         [System.Windows.Forms.MessageBox]::Show("An error occurred`: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
     } finally {
         $runButton.Enabled = $true
+        $closeButton.Text = "Close"
         $progressBar.Visible = $false
+        $script:OperationCancelled = $false
     }
 })
 
 $closeButton.Add_Click({
-    $form.Close()
+    if ($closeButton.Text -eq "Cancel") {
+        # Cancel ongoing operations
+        $script:OperationCancelled = $true
+        Update-StatusLabel "Cancelling operations..." "Orange"
+    } else {
+        # Close the form
+        $form.Close()
+    }
 })
 
 # Show the form
