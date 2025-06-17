@@ -510,7 +510,8 @@ function Install-WingetDirect {
             Write-LogMessage "Verification attempt $i/$maxAttempts..." -Level "INFO"
         }
         
-        Write-LogMessage "Winget command not found after installation - may require new session" -Level "WARNING"
+        Write-LogMessage "Winget command not found after installation - this is normal and does NOT require restart" -Level "WARNING"
+        Write-LogMessage "Winget may become available in new PowerShell sessions or after PATH refresh" -Level "INFO"
         return $true  # Installation likely succeeded, just needs new session
     }
     catch {

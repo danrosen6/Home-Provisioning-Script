@@ -37,7 +37,12 @@
         "VerificationPaths": [
           "%ProgramFiles%\\Git\\cmd\\git.exe",
           "%ProgramFiles(x86)%\\Git\\cmd\\git.exe"
-        ]
+        ],
+        "PostInstall": {
+          "EnvironmentVariables": [
+            {"Name": "GIT_SSH", "Value": "%ProgramFiles%\\Git\\usr\\bin\\ssh.exe", "Target": "User"}
+          ]
+        }
       }
     },
     {
@@ -190,16 +195,64 @@
       "Name": "Windows Terminal",
       "Key": "terminal",
       "Default": true,
-      "Win10": false,
+      "Win10": true,
       "Win11": true,
       "WingetId": "Microsoft.WindowsTerminal",
       "DirectDownload": {
-        "Url": "https://github.com/microsoft/terminal/releases/latest/download/Microsoft.WindowsTerminal_Win10.msixbundle",
+        "Url": "https://api.github.com/repos/microsoft/terminal/releases/latest",
+        "UrlType": "github-asset",
+        "AssetPattern": "Microsoft.WindowsTerminal_*_8wekyb3d8bbwe.msixbundle",
+        "FallbackUrl": "https://github.com/microsoft/terminal/releases/latest/download/Microsoft.WindowsTerminal_Win10.msixbundle",
         "Extension": ".msixbundle",
         "Arguments": "",
         "VerificationPaths": [
           "%LocalAppData%\\Microsoft\\WindowsApps\\wt.exe"
         ]
+      }
+    },
+    {
+      "Name": "Docker Desktop",
+      "Key": "docker",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Docker.DockerDesktop",
+      "DirectDownload": {
+        "Url": "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe",
+        "Extension": ".exe",
+        "Arguments": "install --quiet",
+        "VerificationPaths": [
+          "%ProgramFiles%\\Docker\\Docker\\Docker Desktop.exe"
+        ],
+        "RequiredFeatures": ["Hyper-V", "WSL2"],
+        "PostInstall": {
+          "RestartRequired": true,
+          "Message": "Docker Desktop requires system restart to complete installation"
+        }
+      }
+    },
+    {
+      "Name": "Windows Subsystem for Linux",
+      "Key": "wsl",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Microsoft.WSL",
+      "DirectDownload": {
+        "Url": "powershell-command",
+        "UrlType": "feature-install",
+        "Commands": [
+          "dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart",
+          "dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart"
+        ],
+        "PostInstall": {
+          "RestartRequired": true,
+          "AdditionalSteps": [
+            "Download WSL2 kernel update",
+            "Set WSL2 as default version",
+            "Install Ubuntu from Microsoft Store"
+          ]
+        }
       }
     }
   ],

@@ -1,0 +1,43 @@
+-windows 10 must be updated before running script
+-improve performance (gui keeps crashing)
+-removes news and interests
+--- bloatware remove or services disable
+
+- run this prompt 
+
+ideally we check and make winget is installed. if its not installed we install it first. then with each
+application selected we check and see if its isntalled, if its not installed we then install using winget. if
+winget doesnt work we fallback to a direct install method. are we doing this with the src code? i ntoiced there
+are sissues with how were downloading spotify
+
+- fix verifcation fo already installed applications
+- make sure installers go to the downloads folder
+- system restore point
+- fix winget installation
+- ensure we install winget first beofre attempting direct installers
+- fix ms-widget uininstall on windows 11
+- move direct instlal info to json files
+
+
+to do
+- fix winget install on windows 10
+-- microsfot store method is not working
+- ensure we wait to isntall winget beofre running direct installers
+- fix ms-widget uininstall on windows 11
+-- freezes
+-- is this soemthing we want to unisntall? 
+- have direct install links stored in json
+- verify installtions
+- check for problmatic unicode
+
+
+- update readme
+- clean up gui
+- recoveryUtils
+-- is this something we want?
+-- would it be easier to have function to renable tweaks and services we disabled
+- research how to create an executable and release under github releases
+-- cancel button is broken
+
+-- wingit
+restart after install
