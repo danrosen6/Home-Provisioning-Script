@@ -38,7 +38,8 @@
       "Win11": true,
       "ServiceName": "SysMain",
       "FormerName": "Superfetch",
-      "Description": "Preloads frequently used applications. Significant performance improvement on SSDs when disabled. May reduce performance on HDDs."
+      "Description": "Preloads frequently used applications. Significant performance improvement on SSDs when disabled. May reduce performance on HDDs.",
+      "Warning": "WARNING: Disabling SysMain may reduce performance on traditional hard drives (HDDs). Only recommended for SSD users."
     },
     {
       "Name": "Windows Search",
@@ -47,7 +48,8 @@
       "Win10": true,
       "Win11": true,
       "ServiceName": "WSearch",
-      "Description": "Indexes files for search. Major performance boost when disabled but breaks Start menu search functionality."
+      "Description": "Indexes files for search. Major performance boost when disabled but breaks Start menu search functionality.",
+      "Warning": "CRITICAL: Disabling Windows Search will completely break Start menu search functionality and Windows Explorer search. This significantly impacts system usability."
     },
     {
       "Name": "Offline Files",
@@ -76,7 +78,8 @@
       "Win10": true,
       "Win11": true,
       "ServiceName": "RemoteRegistry",
-      "Description": "Allows remote registry access. Major security improvement when disabled."
+      "Description": "Allows remote registry access. Major security improvement when disabled.",
+      "Warning": "WARNING: Disabling Remote Registry may break enterprise management tools and remote administration capabilities in business environments."
     },
     {
       "Name": "Remote Access Auto Connection Manager",
@@ -150,7 +153,8 @@
       "Win10": false,
       "Win11": true,
       "ServiceName": "lfsvc",
-      "Description": "Provides location services to applications. Major privacy improvement when disabled."
+      "Description": "Provides location services to applications. Major privacy improvement when disabled.",
+      "Warning": "WARNING: Disabling Geolocation Service will break location-based features in all applications, including Maps, Weather, and many third-party apps."
     },
     {
       "Name": "Touch Keyboard and Handwriting Panel",

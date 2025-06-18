@@ -34,7 +34,8 @@
       "RegistryKey": "ShowSuperHidden",
       "RegistryValue": 1,
       "RegistryType": "DWORD",
-      "Description": "Shows protected system files. Advanced users only."
+      "Description": "Shows protected system files. Advanced users only.",
+      "Warning": "CRITICAL: Showing system files exposes critical Windows files that can break your system if modified or deleted. Only enable if you are an advanced user who understands the risks."
     },
     {
       "Name": "Disable quick access",
@@ -72,7 +73,8 @@
       "RegistryKey": "OneDriveSetup",
       "RegistryValue": "",
       "RegistryType": "DELETE",
-      "Description": "Prevents OneDrive from starting automatically at boot."
+      "Description": "Prevents OneDrive from starting automatically at boot.",
+      "Warning": "WARNING: Disabling OneDrive auto-start may interrupt file synchronization and backup processes. Files may not sync automatically to the cloud."
     },
     {
       "Name": "Reduce telemetry",
@@ -121,7 +123,8 @@
       "RegistryKey": "GlobalUserDisabled",
       "RegistryValue": 1,
       "RegistryType": "DWORD",
-      "Description": "Prevents apps from running in background to save resources."
+      "Description": "Prevents apps from running in background to save resources.",
+      "Warning": "WARNING: Disabling background apps will break notifications, live tiles, and automatic updates for Microsoft Store apps. Many modern applications depend on background execution."
     },
     {
       "Name": "Disable advertising ID",
@@ -319,7 +322,8 @@
       "RegistryKey": "NoLockScreen",
       "RegistryValue": 1,
       "RegistryType": "DWORD",
-      "Description": "Skips lock screen and goes directly to login screen."
+      "Description": "Skips lock screen and goes directly to login screen.",
+      "Warning": "WARNING: Disabling the lock screen may violate corporate security policies and reduce system security in shared environments."
     }
   ],
   "System Performance": [
@@ -333,7 +337,8 @@
       "RegistryKey": "AllowDevelopmentWithoutDevLicense",
       "RegistryValue": 1,
       "RegistryType": "DWORD",
-      "Description": "Enables sideloading of apps and developer features."
+      "Description": "Enables sideloading of apps and developer features.",
+      "Warning": "CRITICAL: Developer mode reduces system security by allowing unsigned apps and sideloading. Only enable if you are actively developing applications."
     },
     {
       "Name": "Disable Teams auto-start",
@@ -369,7 +374,8 @@
       "RegistryKey": "HiberbootEnabled",
       "RegistryValue": 0,
       "RegistryType": "DWORD",
-      "Description": "Disables hybrid shutdown for more reliable power cycles."
+      "Description": "Disables hybrid shutdown for more reliable power cycles.",
+      "Warning": "CAUTION: Disabling fast startup may affect dual-boot configurations and some hardware wake features. Can improve compatibility with Linux dual-boot setups."
     }
   ]
 }

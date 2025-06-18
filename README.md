@@ -218,6 +218,15 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 </details>
 
 <details>
+<summary><strong>Legacy Browsers</strong></summary>
+
+**Internet Explorer** *(Windows 10 only, Optional)*
+- ✅ Pros: Removes outdated browser, improves security, forces modern alternatives
+- ⚠️ Cons: CRITICAL: May break legacy applications, internal websites, and Edge's IE Mode. Can cause compatibility issues with enterprise systems.
+
+</details>
+
+<details>
 <summary><strong>Entertainment & Gaming</strong></summary>
 
 **Xbox Gaming App**

@@ -25,7 +25,8 @@
       "Win10": true,
       "Win11": true,
       "PackageName": "Microsoft.Office.OneNote",
-      "Description": "Universal Windows Platform version of OneNote."
+      "Description": "Universal Windows Platform version of OneNote.",
+      "Warning": "WARNING: Removing OneNote may affect note synchronization and access to existing notebooks stored in OneDrive."
     },
     {
       "Name": "Microsoft People",
@@ -34,7 +35,8 @@
       "Win10": true,
       "Win11": true,
       "PackageName": "Microsoft.People",
-      "Description": "Contact management and syncing application."
+      "Description": "Contact management and syncing application.",
+      "Warning": "WARNING: Removing People app will break contact synchronization with Microsoft services and may cause data sync issues."
     },
     {
       "Name": "Microsoft To-Do",
@@ -81,7 +83,8 @@
       "Win10": true,
       "Win11": true,
       "PackageName": "Microsoft.YourPhone",
-      "Description": "Phone integration and syncing application."
+      "Description": "Phone integration and syncing application.",
+      "Warning": "WARNING: Removing Phone Link will break Android phone integration, notifications, and cross-device functionality."
     },
     {
       "Name": "Windows Camera",
@@ -99,7 +102,8 @@
       "Win10": true,
       "Win11": true,
       "PackageName": "microsoft.windowscommunicationsapps",
-      "Description": "Built-in email and calendar applications."
+      "Description": "Built-in email and calendar applications.",
+      "Warning": "WARNING: Removing Mail and Calendar will break default Windows email and calendar synchronization. Existing mail data may become inaccessible."
     },
     {
       "Name": "Windows Sound Recorder",
@@ -459,6 +463,34 @@
       "Win11": true,
       "PackageName": "PicsArt-Inc.PicsArt",
       "Description": "Photo editing and creative application."
+    }
+  ],
+  "Legacy Browsers": [
+    {
+      "Name": "Internet Explorer 11",
+      "Key": "internet-explorer",
+      "Default": false,
+      "Win10": true,
+      "Win11": false,
+      "PackageName": "Internet-Explorer-Optional-amd64",
+      "Description": "Disable Internet Explorer while preserving IE Mode in Microsoft Edge.",
+      "Warning": "CAUTION: May break legacy applications and IE Mode in Microsoft Edge. Only disable if you don't need IE compatibility.",
+      "Method": "WindowsFeature",
+      "RequiresRestart": true,
+      "Reversible": true
+    }
+  ],
+  "Legacy Browsers": [
+    {
+      "Name": "Internet Explorer",
+      "Key": "internet-explorer",
+      "Default": false,
+      "Win10": true,
+      "Win11": false,
+      "PackageName": "Internet-Explorer-Optional-amd64",
+      "Description": "Legacy web browser. WARNING: Some legacy applications and websites may require IE. This disables IE as a standalone browser but may affect IE Mode in Edge.",
+      "Method": "WindowsFeature",
+      "Warning": "CAUTION: Disabling Internet Explorer may break legacy applications, internal websites, or Edge's IE Mode compatibility. Only disable if you're certain you don't need IE functionality. This can be reversed through Windows Features."
     }
   ]
 }

@@ -788,6 +788,27 @@ function Set-SystemOptimization {
                 "DisableWindowsFirewall" {
                     Restore-RegistryValue -Path "HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile" -Name "EnableFirewall"
                 }
+                "internet-explorer" {
+                    # Re-enable Internet Explorer
+                    try {
+                        Write-LogMessage "Attempting to re-enable Internet Explorer..." -Level "INFO"
+                        Enable-WindowsOptionalFeature -FeatureName Internet-Explorer-Optional-amd64 -Online -NoRestart -ErrorAction Stop
+                        Write-LogMessage "Internet Explorer re-enabled successfully" -Level "SUCCESS"
+                    } catch {
+                        Write-LogMessage "Failed to re-enable Internet Explorer via PowerShell: $_" -Level "WARNING"
+                        # Try DISM as fallback
+                        try {
+                            & dism /online /Enable-Feature /FeatureName:Internet-Explorer-Optional-amd64 /NoRestart /Quiet
+                            if ($LASTEXITCODE -eq 0) {
+                                Write-LogMessage "Internet Explorer re-enabled via DISM" -Level "SUCCESS"
+                            } else {
+                                Write-LogMessage "DISM re-enable also failed" -Level "ERROR"
+                            }
+                        } catch {
+                            Write-LogMessage "Both PowerShell and DISM re-enable methods failed" -Level "ERROR"
+                        }
+                    }
+                }
             }
             Write-LogMessage "Successfully rolled back optimization: ${OptimizationKey}" -Level "INFO"
         }
@@ -866,6 +887,7 @@ function Remove-Bloatware {
         "whatsapp" = "*.WhatsApp*"
         "amazon-prime" = "*.AmazonPrimeVideo*"
         "skype-app" = "Microsoft.SkypeApp"
+        "internet-explorer" = "Internet-Explorer-Optional-amd64"
     }
     
     Write-LogMessage "Starting bloatware removal..." -Level "INFO"
@@ -1045,6 +1067,94 @@ function Remove-Bloatware {
                     $removedCount++
                 } catch {
                     Write-LogMessage "Failed to apply Widgets/Weather/News removal tweaks: $_" -Level "WARNING"
+                }
+            }
+            
+            # Special handling for Internet Explorer (Windows 10 only)
+            if ($BloatwareKey -eq "internet-explorer") {
+                Write-LogMessage "Applying Internet Explorer disable (Windows Feature)..." -Level "INFO"
+                try {
+                    # Check Windows version - IE should only be handled on Windows 10
+                    $windowsVersion = [System.Environment]::OSVersion.Version
+                    $isWindows10 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -lt 22000
+                    $isWindows11 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -ge 22000
+                    
+                    if ($isWindows11) {
+                        Write-LogMessage "Internet Explorer is not available on Windows 11 - skipping" -Level "WARNING"
+                        Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Skipped" -AdditionalData @{
+                            Reason = "Not available on Windows 11"
+                            WindowsVersion = $windowsVersion.Build
+                        }
+                        return $true
+                    }
+                    
+                    # Show important warning to user
+                    $warningMessage = @"
+IMPORTANT WARNING: Disabling Internet Explorer
+
+This will disable Internet Explorer 11 as a standalone browser, but it may:
+
+• Break Internet Explorer Mode in Microsoft Edge
+• Affect legacy business applications that require IE
+• Impact some Windows system components
+• Require system restart to take effect
+
+IE Mode in Microsoft Edge will NOT work after this change.
+
+This action is REVERSIBLE through Windows Features.
+
+Do you want to continue with disabling Internet Explorer?
+"@
+                    
+                    $result = Show-TimeoutMessageBox -Message $warningMessage -Title "Internet Explorer Disable Warning" -TimeoutSeconds 45 -DefaultResponse "No"
+                    
+                    if ($result -eq [System.Windows.Forms.DialogResult]::No) {
+                        Write-LogMessage "User cancelled Internet Explorer disable due to compatibility concerns" -Level "WARNING"
+                        Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Skipped" -AdditionalData @{
+                            Reason = "User cancelled due to compatibility concerns"
+                        }
+                        return $false
+                    }
+                    
+                    Write-LogMessage "User confirmed Internet Explorer disable - proceeding..." -Level "INFO"
+                    
+                    # Method 1: Disable via DISM (most reliable)
+                    Write-LogMessage "Disabling Internet Explorer via DISM..." -Level "INFO"
+                    try {
+                        $dismResult = & dism /online /Disable-Feature /FeatureName:Internet-Explorer-Optional-amd64 /NoRestart /Quiet
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-LogMessage "Successfully disabled Internet Explorer via DISM" -Level "SUCCESS"
+                            $removedCount++
+                        } else {
+                            Write-LogMessage "DISM command failed with exit code: $LASTEXITCODE" -Level "WARNING"
+                            # Fall back to PowerShell method
+                            throw "DISM method failed, trying PowerShell method"
+                        }
+                    } catch {
+                        Write-LogMessage "DISM method failed: $($_). Trying PowerShell method..." -Level "WARNING"
+                        
+                        # Method 2: PowerShell fallback
+                        try {
+                            Write-LogMessage "Disabling Internet Explorer via PowerShell..." -Level "INFO"
+                            Disable-WindowsOptionalFeature -FeatureName Internet-Explorer-Optional-amd64 -Online -NoRestart -ErrorAction Stop
+                            Write-LogMessage "Successfully disabled Internet Explorer via PowerShell" -Level "SUCCESS"
+                            $removedCount++
+                        } catch {
+                            Write-LogMessage "PowerShell method also failed: $_" -Level "ERROR"
+                            throw $_
+                        }
+                    }
+                    
+                    # Add restart requirement
+                    $script:RestartRequired = $true
+                    Add-RestartRegistryChange -ChangeDescription "Disable Internet Explorer 11"
+                    
+                    Write-LogMessage "Internet Explorer has been disabled. System restart required for changes to take effect." -Level "SUCCESS"
+                    Write-LogMessage "WARNING: IE Mode in Microsoft Edge will no longer function." -Level "WARNING"
+                    
+                } catch {
+                    Write-LogMessage "Failed to disable Internet Explorer: $_" -Level "ERROR"
+                    Write-LogMessage "You can manually disable IE through: Control Panel > Programs > Turn Windows features on or off > Uncheck Internet Explorer 11" -Level "INFO"
                 }
             }
             
