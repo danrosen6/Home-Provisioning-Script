@@ -51,7 +51,7 @@ function Start-ProcessWithTimeout {
                     $process.Kill()
                     $process.WaitForExit(5000)
                 } catch {
-                    Write-LogMessage "Error killing cancelled process``: $_" -Level "ERROR"
+                    Write-LogMessage "Error killing cancelled process: $_" -Level "ERROR"
                 }
                 
                 return [PSCustomObject]@{
@@ -69,7 +69,7 @@ function Start-ProcessWithTimeout {
         $completed = $process.HasExited
         
         if ($completed) {
-            $exitCode = if ($process.ExitCode -ne $null -and $process.ExitCode -ne "") { $process.ExitCode } else { "Unknown" }
+            $exitCode = if ($process.ExitCode -ne $null) { $process.ExitCode } else { "Unknown" }
             Write-LogMessage "Process completed with exit code: $exitCode" -Level "INFO"
             return $process
         } else {
@@ -80,7 +80,7 @@ function Start-ProcessWithTimeout {
                 $process.Kill()
                 $process.WaitForExit(5000) # Wait up to 5 seconds for cleanup
             } catch {
-                Write-LogMessage "Error killing timed-out process``: $_" -Level "ERROR"
+                Write-LogMessage "Error killing timed-out process: $_" -Level "ERROR"
             }
             
             # Return a process-like object with timeout exit code
@@ -93,7 +93,7 @@ function Start-ProcessWithTimeout {
         }
     }
     catch {
-        Write-LogMessage "Error starting process``: $_" -Level "ERROR"
+        Write-LogMessage "Error starting process: $_" -Level "ERROR"
         return [PSCustomObject]@{
             ExitCode = -2
             HasExited = $true
@@ -158,6 +158,68 @@ function Get-AppConfigurationData {
     }
 }
 
+# Function to download file with timeout
+function Invoke-DownloadWithTimeout {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Url,
+        [Parameter(Mandatory=$true)]
+        [string]$OutputPath,
+        [Parameter(Mandatory=$false)]
+        [int]$TimeoutMinutes = 10,
+        [Parameter(Mandatory=$false)]
+        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
+    )
+    
+    try {
+        Write-LogMessage "Downloading from $Url with ${TimeoutMinutes}m timeout..." -Level "INFO"
+        
+        # Use WebClient with timeout
+        $webClient = New-Object System.Net.WebClient
+        $webClient.Timeout = $TimeoutMinutes * 60 * 1000  # Convert to milliseconds
+        
+        # Download with cancellation support
+        $downloadTask = $webClient.DownloadFileTaskAsync($Url, $OutputPath)
+        
+        # Wait with timeout and cancellation
+        $timeoutMs = $TimeoutMinutes * 60 * 1000
+        $completed = $downloadTask.Wait($timeoutMs, $CancellationToken)
+        
+        if (-not $completed) {
+            $webClient.CancelAsync()
+            if ($CancellationToken.IsCancellationRequested) {
+                throw "Download cancelled by user"
+            } else {
+                throw "Download timed out after $TimeoutMinutes minutes"
+            }
+        }
+        
+        if ($downloadTask.Exception) {
+            throw $downloadTask.Exception.InnerException
+        }
+        
+        # Verify download
+        if (-not (Test-Path $OutputPath)) {
+            throw "Download completed but file not found at $OutputPath"
+        }
+        
+        $fileSize = (Get-Item $OutputPath).Length
+        Write-LogMessage "Download completed successfully ($([math]::Round($fileSize/1MB, 2)) MB)" -Level "SUCCESS"
+        return $true
+        
+    } catch {
+        Write-LogMessage "Download failed: $_" -Level "ERROR"
+        if (Test-Path $OutputPath) {
+            Remove-Item $OutputPath -Force -ErrorAction SilentlyContinue
+        }
+        return $false
+    } finally {
+        if ($webClient) {
+            $webClient.Dispose()
+        }
+    }
+}
+
 # Function to resolve dynamic URLs based on URL type
 function Resolve-DynamicUrl {
     param(
@@ -188,6 +250,12 @@ function Resolve-DynamicUrl {
                         Write-LogMessage "Failed to resolve GitHub URL: $_" -Level "WARNING"
                     }
                 }
+                
+                # Return fallback URL if GitHub resolution failed
+                if ($DirectDownload.FallbackUrl) {
+                    Write-LogMessage "Using fallback URL for $AppName" -Level "INFO"
+                    return $DirectDownload.FallbackUrl
+                }
             }
             
             "jetbrains-api" {
@@ -201,6 +269,12 @@ function Resolve-DynamicUrl {
                     }
                 } catch {
                     Write-LogMessage "Failed to resolve JetBrains URL: $_" -Level "WARNING"
+                }
+                
+                # Return fallback URL if JetBrains resolution failed
+                if ($DirectDownload.FallbackUrl) {
+                    Write-LogMessage "Using fallback URL for $AppName" -Level "INFO"
+                    return $DirectDownload.FallbackUrl
                 }
             }
             
@@ -1146,10 +1220,35 @@ function Install-Application {
         [hashtable]$DirectDownload = $null,
         [Parameter(Mandatory=$false)]
         [switch]$Force,
-        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
+        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None,
+        [Parameter(Mandatory=$false)]
+        [int]$TimeoutMinutes = 15,
+        [Parameter(Mandatory=$false)]
+        [int]$DownloadTimeoutMinutes = 10
     )
     
-    Write-LogMessage "Installing application: $AppName" -Level "INFO"
+    Write-LogMessage "Installing application: $AppName (Timeout: ${TimeoutMinutes}m, Download: ${DownloadTimeoutMinutes}m)" -Level "INFO"
+    
+    # Setup timeout tracking
+    $startTime = Get-Date
+    $totalTimeoutMs = $TimeoutMinutes * 60 * 1000
+    $downloadTimeoutMs = $DownloadTimeoutMinutes * 60 * 1000
+    
+    # Helper function to check timeouts
+    function Test-InstallTimeout {
+        param([string]$Operation = "Installation")
+        $elapsed = (Get-Date) - $startTime
+        if ($elapsed.TotalMilliseconds -gt $totalTimeoutMs) {
+            Write-LogMessage "$Operation timed out after $TimeoutMinutes minutes" -Level "ERROR"
+            Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Failed" -AdditionalData @{
+                Error = "Timeout after $TimeoutMinutes minutes"
+                Operation = $Operation
+                ElapsedMinutes = [math]::Round($elapsed.TotalMinutes, 1)
+            }
+            return $true
+        }
+        return $false
+    }
     
     # Track in recovery system
     $trackingKey = if ($AppKey -and $AppKey -ne "") { $AppKey } else { $AppName }
@@ -1310,6 +1409,11 @@ function Install-Application {
                 $needsUserContext = $false
                 
                 for ($attempt = 1; $attempt -le 2; $attempt++) {
+                    # Check timeout before attempting installation
+                    if (Test-InstallTimeout "Winget installation attempt $attempt") {
+                        return
+                    }
+                    
                     try {
                         Write-LogMessage "Winget installation attempt $attempt/2 for $AppName..." -Level "INFO"
                         
@@ -1776,7 +1880,7 @@ function Install-Application {
             
             return $true
         } else {
-            $exitCode = if ($process.ExitCode -ne $null -and $process.ExitCode -ne "") { $process.ExitCode } else { "Unknown" }
+            $exitCode = if ($process.ExitCode -ne $null) { $process.ExitCode } else { "Unknown" }
             Write-LogMessage "Installation failed with exit code: $exitCode" -Level "ERROR"
             Save-OperationState -OperationType "InstallApp" -ItemKey $trackingKey -Status "Failed" -AdditionalData @{
                 Error = "Installation failed with exit code: $exitCode"
@@ -1997,7 +2101,7 @@ function Install-Python {
                 return $false
             }
         } else {
-            $exitCode = if ($process.ExitCode -ne $null -and $process.ExitCode -ne "") { $process.ExitCode } else { "Unknown" }
+            $exitCode = if ($process.ExitCode -ne $null) { $process.ExitCode } else { "Unknown" }
             Write-LogMessage "Python installer failed with exit code: $exitCode" -Level "ERROR"
             return $false
         }

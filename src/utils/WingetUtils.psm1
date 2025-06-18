@@ -347,15 +347,19 @@ function Test-WingetInstallation {
             }
         }
         
-        # Try to get version
-        $version = winget --version 2>$null
-        if ($version) {
-            return @{
-                Installed = $true
-                Available = $true
-                Version = $version.Trim()
-                NeedsRegistration = $false
+        # Try to get version with proper error handling
+        try {
+            $version = winget --version 2>&1
+            if ($LASTEXITCODE -eq 0 -and $version -and $version.Trim() -ne "") {
+                return @{
+                    Installed = $true
+                    Available = $true
+                    Version = $version.Trim()
+                    NeedsRegistration = $false
+                }
             }
+        } catch {
+            # Command failed completely
         }
         
         # Command exists but version failed - might need registration
@@ -384,24 +388,52 @@ function Initialize-WingetEnvironment {
         [switch]$Force,
         [switch]$AllowManualInstall,
         [switch]$ForceGitHubMethod,
-        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
+        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None,
+        [Parameter(Mandatory=$false)]
+        [scriptblock]$ProgressCallback = $null,
+        [Parameter(Mandatory=$false)]
+        [int]$TimeoutMinutes = 10
     )
     
+    # Helper function to report progress
+    function Report-Progress {
+        param([string]$Status, [int]$PercentComplete = -1)
+        if ($ProgressCallback) {
+            try {
+                & $ProgressCallback $Status $PercentComplete
+            } catch {
+                Write-LogMessage "Progress callback error: $_" -Level "DEBUG"
+            }
+        }
+        Write-LogMessage $Status -Level "INFO"
+    }
+    
+    # Setup timeout mechanism
+    $startTime = Get-Date
+    $timeoutMs = $TimeoutMinutes * 60 * 1000
+    
     try {
-        Write-LogMessage "Starting comprehensive winget installation process..." -Level "INFO"
+        Report-Progress "Starting comprehensive winget installation process..." 0
         
-        # Check for cancellation
+        # Check for cancellation and timeout
         if ($CancellationToken.IsCancellationRequested) {
-            Write-LogMessage "Winget installation cancelled" -Level "WARNING"
+            Report-Progress "Winget installation cancelled" -1
             return @{ Success = $false; Reason = "Cancelled" }
         }
         
+        $elapsed = (Get-Date) - $startTime
+        if ($elapsed.TotalMilliseconds -gt $timeoutMs) {
+            Report-Progress "Winget installation timed out after $TimeoutMinutes minutes" -1
+            return @{ Success = $false; Reason = "Timeout"; TimeoutMinutes = $TimeoutMinutes }
+        }
+        
         # Check Windows version compatibility
+        Report-Progress "Checking Windows compatibility..." 10
         $compatibility = Test-WingetCompatibility
         Write-LogMessage "Windows compatibility: $($compatibility.Version) - $($compatibility.Reason)" -Level "INFO"
         
         if (-not $compatibility.Compatible) {
-            Write-LogMessage "Windows version not compatible with winget: $($compatibility.Reason)" -Level "ERROR"
+            Report-Progress "Windows version not compatible with winget: $($compatibility.Reason)" -1
             return @{
                 Success = $false
                 Reason = "IncompatibleWindows"
@@ -410,6 +442,7 @@ function Initialize-WingetEnvironment {
         }
         
         # Create download directory
+        Report-Progress "Setting up download directory..." 15
         $scriptPath = Split-Path -Parent $PSScriptRoot
         $downloadDir = Join-Path $scriptPath "downloads"
         if (-not (Test-Path $downloadDir)) {
@@ -424,10 +457,11 @@ function Initialize-WingetEnvironment {
         
         # Method 1: Check if already installed but not registered
         if (-not $ForceGitHubMethod) {
+            Report-Progress "Checking for existing App Installer..." 20
             $appInstaller = Get-AppxPackage -Name "Microsoft.DesktopAppInstaller" -ErrorAction SilentlyContinue
             if ($appInstaller) {
                 Write-LogMessage "App Installer found: $($appInstaller.Version)" -Level "INFO"
-                Write-LogMessage "Attempting to register winget..." -Level "INFO"
+                Report-Progress "Attempting to register winget..." 25
                 
                 try {
                     Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
@@ -437,8 +471,8 @@ function Initialize-WingetEnvironment {
                     for ($attempt = 1; $attempt -le 5; $attempt++) {
                         if (Get-Command winget -ErrorAction SilentlyContinue) {
                             try {
-                                $version = winget --version 2>$null
-                                if ($version -and $version.Trim() -ne "") {
+                                $version = winget --version 2>&1
+                                if ($LASTEXITCODE -eq 0 -and $version -and $version.Trim() -ne "") {
                                     Write-LogMessage "Winget successfully registered: $version" -Level "SUCCESS"
                                     return @{
                                         Success = $true
@@ -464,11 +498,11 @@ function Initialize-WingetEnvironment {
         }
         
         # Method 2: GitHub direct installation (enhanced method) - prioritized for reliability
-        Write-LogMessage "Attempting GitHub direct installation..." -Level "INFO"
+        Report-Progress "Starting GitHub direct installation..." 40
         
         # Install dependencies if required for older Windows versions
         if ($installationMethod -in @("ManualOnly", "ManualWithDeps")) {
-            Write-LogMessage "Installing winget dependencies for $($compatibility.Version)..." -Level "INFO"
+            Report-Progress "Installing winget dependencies for $($compatibility.Version)..." 45
             $depResult = Install-WingetDependencies -DownloadDir $downloadDir
             if (-not $depResult) {
                 Write-LogMessage "Failed to install dependencies, continuing anyway..." -Level "WARNING"
@@ -490,7 +524,7 @@ function Initialize-WingetEnvironment {
             }
             
             # Use GitHub API to get the latest winget release
-            Write-LogMessage "Fetching latest winget release from GitHub..." -Level "INFO"
+            Report-Progress "Fetching latest winget release from GitHub..." 50
             $progressPreference = 'SilentlyContinue'  # Suppress progress bars
             
             try {
@@ -514,7 +548,7 @@ function Initialize-WingetEnvironment {
             }
             
             $downloadPath = Join-Path $wingetDir $fileName
-            Write-LogMessage "Downloading winget from: $downloadUrl" -Level "INFO"
+            Report-Progress "Downloading winget installer..." 60
             
             # Download with enhanced error handling
             try {
@@ -539,7 +573,7 @@ function Initialize-WingetEnvironment {
             }
             
             # Install the MSIX bundle with enhanced error handling
-            Write-LogMessage "Installing winget package..." -Level "INFO"
+            Report-Progress "Installing winget package..." 75
             
             $installSuccess = $false
             for ($attempt = 1; $attempt -le 3; $attempt++) {
@@ -572,16 +606,23 @@ function Initialize-WingetEnvironment {
             }
             
             # Extended verification with multiple attempts
-            Write-LogMessage "Verifying winget installation..." -Level "INFO"
+            Report-Progress "Verifying winget installation..." 85
             
             for ($attempt = 1; $attempt -le 10; $attempt++) {
                 Start-Sleep -Seconds 3
                 
+                # Check timeout during verification
+                $elapsed = (Get-Date) - $startTime
+                if ($elapsed.TotalMilliseconds -gt $timeoutMs) {
+                    Report-Progress "Winget installation timed out during verification" -1
+                    return @{ Success = $false; Reason = "TimeoutDuringVerification"; TimeoutMinutes = $TimeoutMinutes }
+                }
+                
                 if (Get-Command winget -ErrorAction SilentlyContinue) {
                     try {
-                        $version = winget --version 2>$null
-                        if ($version -and $version.Trim() -ne "") {
-                            Write-LogMessage "Winget installed successfully! Version: $version" -Level "SUCCESS"
+                        $version = winget --version 2>&1
+                        if ($LASTEXITCODE -eq 0 -and $version -and $version.Trim() -ne "") {
+                            Report-Progress "Winget installed successfully! Version: $version" 100
                             return @{
                                 Success = $true
                                 Method = "GitHubDirect"
@@ -625,8 +666,8 @@ function Initialize-WingetEnvironment {
                     
                     if (Get-Command winget -ErrorAction SilentlyContinue) {
                         try {
-                            $version = winget --version 2>$null
-                            if ($version -and $version.Trim() -ne "") {
+                            $version = winget --version 2>&1
+                            if ($LASTEXITCODE -eq 0 -and $version -and $version.Trim() -ne "") {
                                 Write-LogMessage "Winget detected after Store installation: $version" -Level "SUCCESS"
                                 return @{
                                     Success = $true
@@ -691,7 +732,7 @@ function Register-WingetPackage {
         return $verification.Available
     }
     catch {
-        Write-Warning "Failed to register winget`: $_"
+        Write-Warning "Failed to register winget: $_"
         return $false
     }
 }
@@ -708,7 +749,7 @@ function Install-WingetPackage {
         return Install-WingetDirect
     }
     catch {
-        Write-Warning "Failed to install winget`: $_"
+        Write-Warning "Failed to install winget: $_"
         return $false
     }
 }
@@ -743,8 +784,8 @@ function Install-WingetDirect {
         # Check if winget is already installed and working
         if (Get-Command winget -ErrorAction SilentlyContinue) {
             try {
-                $version = winget --version 2>$null
-                if ($version -and $version.Trim() -ne "") {
+                $version = winget --version 2>&1
+                if ($LASTEXITCODE -eq 0 -and $version -and $version.Trim() -ne "") {
                     Write-LogMessage "Winget is already installed and working: $version" -Level "INFO"
                     return $true
                 }
@@ -838,7 +879,7 @@ function Install-WingetDirect {
                         }
                     }
                     catch {
-                        Write-LogMessage "Installation attempt $attempt failed for $($dep.Name)``: $_" -Level "WARNING"
+                        Write-LogMessage "Installation attempt $attempt failed for $($dep.Name): $_" -Level "WARNING"
                         if ($attempt -lt 3) {
                             Start-Sleep -Seconds 5
                         }
@@ -851,7 +892,7 @@ function Install-WingetDirect {
                 }
             }
             catch {
-                Write-LogMessage "Failed to download dependency $($dep.Name)``: $_" -Level "ERROR"
+                Write-LogMessage "Failed to download dependency $($dep.Name): $_" -Level "ERROR"
                 if ($dep.Required) { $requiredDependenciesFailed++ }
             }
         }
@@ -886,8 +927,8 @@ function Install-WingetDirect {
                 for ($attempt = 1; $attempt -le 5; $attempt++) {
                     try {
                         if (Get-Command winget -ErrorAction SilentlyContinue) {
-                            $version = winget --version 2>$null
-                            if ($version -and $version.Trim() -ne "") {
+                            $version = winget --version 2>&1
+                            if ($LASTEXITCODE -eq 0 -and $version -and $version.Trim() -ne "") {
                                 Write-LogMessage "Winget successfully registered and working: $version" -Level "SUCCESS"
                                 Remove-Item $downloadDir -Recurse -Force -ErrorAction SilentlyContinue
                                 return $true
@@ -895,7 +936,7 @@ function Install-WingetDirect {
                         }
                     }
                     catch {
-                        Write-LogMessage "Winget test attempt $attempt failed``: $_" -Level "DEBUG"
+                        Write-LogMessage "Winget test attempt $attempt failed: $_" -Level "DEBUG"
                     }
                     
                     if ($attempt -lt 5) {
@@ -906,7 +947,7 @@ function Install-WingetDirect {
                 
                 Write-LogMessage "Registration completed but winget not yet functional" -Level "WARNING"
             } catch {
-                Write-LogMessage "Failed to register winget``: $_" -Level "WARNING"
+                Write-LogMessage "Failed to register winget: $_" -Level "WARNING"
             }
         } else {
             Write-LogMessage "App Installer not found, need to install winget from scratch" -Level "INFO"
@@ -961,7 +1002,7 @@ function Install-WingetDirect {
                     break
                 }
                 catch {
-                    Write-LogMessage "Installation attempt $attempt failed``: $_" -Level "WARNING"
+                    Write-LogMessage "Installation attempt $attempt failed: $_" -Level "WARNING"
                     
                     # Check if it's a dependency version issue
                     if ($_.Exception.Message -like "*dependency*" -or $_.Exception.Message -like "*VCLibs*" -or $_.Exception.Message -like "*UI.Xaml*") {
@@ -991,7 +1032,7 @@ function Install-WingetDirect {
             }
             
         } catch {
-            Write-LogMessage "Failed to download winget``: $_" -Level "ERROR"
+            Write-LogMessage "Failed to download winget: $_" -Level "ERROR"
             Remove-Item $downloadDir -Recurse -Force -ErrorAction SilentlyContinue
             return $false
         }
@@ -1022,8 +1063,8 @@ function Install-WingetDirect {
             
             try {
                 if (Get-Command winget -ErrorAction SilentlyContinue) {
-                    $version = winget --version 2>$null
-                    if ($version -and $version.Trim() -ne "") {
+                    $version = winget --version 2>&1
+                    if ($LASTEXITCODE -eq 0 -and $version -and $version.Trim() -ne "") {
                         Write-LogMessage "Winget installed successfully! Version: $version" -Level "SUCCESS"
                         Write-LogMessage "Winget is now ready for use" -Level "SUCCESS"
                         return $true
@@ -1031,7 +1072,7 @@ function Install-WingetDirect {
                 }
             }
             catch {
-                Write-LogMessage "Verification attempt $i error``: $_" -Level "DEBUG"
+                Write-LogMessage "Verification attempt $i error: $_" -Level "DEBUG"
             }
             
             if ($i -lt $maxAttempts) {
@@ -1049,7 +1090,7 @@ function Install-WingetDirect {
         return $installSuccess
     }
     catch {
-        Write-LogMessage "Failed to install winget``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to install winget: $_" -Level "ERROR"
         return $false
     }
 }
@@ -1087,9 +1128,11 @@ function Install-WingetViaMSStore {
             $elapsed += $checkInterval
             
             if (Get-Command winget -ErrorAction SilentlyContinue) {
-                $version = winget --version 2>$null
-                Write-LogMessage "Winget detected after Store installation! Version: $version" -Level "SUCCESS"
-                return $true
+                $version = winget --version 2>&1
+                if ($LASTEXITCODE -eq 0 -and $version -and $version.Trim() -ne "") {
+                    Write-LogMessage "Winget detected after Store installation! Version: $version" -Level "SUCCESS"
+                    return $true
+                }
             }
             
             # Update progress
@@ -1102,7 +1145,7 @@ function Install-WingetViaMSStore {
         return $false
     }
     catch {
-        Write-LogMessage "Store installation method failed``: $_" -Level "ERROR"
+        Write-LogMessage "Store installation method failed: $_" -Level "ERROR"
         return $false
     }
 }
@@ -1141,7 +1184,7 @@ function Install-WingetOffline {
                 Write-LogMessage "Successfully installed: $($dep.Name)" -Level "SUCCESS"
             }
             catch {
-                Write-LogMessage "Failed to install dependency $($dep.Name)``: $_" -Level "WARNING"
+                Write-LogMessage "Failed to install dependency $($dep.Name): $_" -Level "WARNING"
             }
         }
         
@@ -1165,16 +1208,18 @@ function Install-WingetOffline {
         # Verify installation
         Start-Sleep -Seconds 3
         if (Get-Command winget -ErrorAction SilentlyContinue) {
-            $version = winget --version 2>$null
-            Write-LogMessage "Winget installed successfully! Version: $version" -Level "SUCCESS"
-            return $true
+            $version = winget --version 2>&1
+            if ($LASTEXITCODE -eq 0 -and $version -and $version.Trim() -ne "") {
+                Write-LogMessage "Winget installed successfully! Version: $version" -Level "SUCCESS"
+                return $true
+            }
         }
         
         Write-LogMessage "Installation completed but winget command not immediately available" -Level "WARNING"
         return $true
     }
     catch {
-        Write-LogMessage "Offline installation failed``: $_" -Level "ERROR"
+        Write-LogMessage "Offline installation failed: $_" -Level "ERROR"
         return $false
     }
 }
@@ -1233,7 +1278,7 @@ function Get-WingetOfflinePackage {
         return $true
     }
     catch {
-        Write-Warning "Failed to create offline package`: $_"
+        Write-Warning "Failed to create offline package: $_"
         return $false
     }
 }

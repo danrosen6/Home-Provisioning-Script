@@ -9,7 +9,7 @@ try {
     Add-Type -AssemblyName System.Drawing -ErrorAction Stop
     Write-Host "Loaded Windows Forms assemblies successfully" -ForegroundColor Green
 } catch {
-    Write-Host "Failed to load Windows Forms assemblies`: $_" -ForegroundColor Red
+    Write-Host "Failed to load Windows Forms assemblies: $_" -ForegroundColor Red
     exit 1
 }
 
@@ -17,7 +17,7 @@ try {
     [System.Windows.Forms.Application]::EnableVisualStyles()
     Write-Host "Enabled visual styles successfully" -ForegroundColor Green
 } catch {
-    Write-Host "Failed to enable visual styles`: $_" -ForegroundColor Red
+    Write-Host "Failed to enable visual styles: $_" -ForegroundColor Red
 }
 
 # Import required modules
@@ -140,10 +140,10 @@ try {
     Write-Host "Configuration loaded successfully: Apps: $appsCount, Bloatware: $bloatwareCount, Services: $servicesCount, Tweaks: $tweaksCount" -ForegroundColor Green
 }
 catch {
-    Write-Host "CRITICAL ERROR loading configuration`: $_" -ForegroundColor Red
+    Write-Host "CRITICAL ERROR loading configuration: $_" -ForegroundColor Red
     
     try {
-        Write-LogMessage "Failed to load configuration`: $_" -Level "ERROR"
+        Write-LogMessage "Failed to load configuration: $_" -Level "ERROR"
     }
     catch {
         # Logging not available, continue
@@ -163,7 +163,7 @@ catch {
                 Write-Host "  Valid JSON structure" -ForegroundColor Green
             }
             catch {
-                Write-Host "  Invalid JSON`: $_" -ForegroundColor Red
+                Write-Host "  Invalid JSON: $_" -ForegroundColor Red
             }
         }
         else {
@@ -668,7 +668,11 @@ $form.Controls.Add($bottomPanel)
 function Update-StatusLabel {
     param([string]$Message, [string]$Color = "Gray")
     $statusLabel.Text = $Message
-    $statusLabel.ForeColor = [System.Drawing.Color]::FromName($Color)
+    try {
+        $statusLabel.ForeColor = [System.Drawing.Color]::FromName($Color)
+    } catch {
+        $statusLabel.ForeColor = [System.Drawing.Color]::Gray
+    }
     [System.Windows.Forms.Application]::DoEvents()
 }
 
@@ -739,8 +743,8 @@ $runButton.Add_Click({
                 $wingetNeedsSetup = $true
                 if (Get-Command winget -ErrorAction SilentlyContinue) {
                     try {
-                        $testVersion = winget --version 2>$null
-                        if ($testVersion -and $testVersion.Trim() -ne "") {
+                        $testVersion = winget --version 2>&1
+                        if ($LASTEXITCODE -eq 0 -and $testVersion -and $testVersion.Trim() -ne "") {
                             Write-LogMessage "Winget already available: $testVersion" -Level "INFO"
                             $wingetNeedsSetup = $false
                         }
@@ -752,7 +756,18 @@ $runButton.Add_Click({
                 
                 if ($wingetNeedsSetup) {
                     Update-StatusLabel "Setting up winget environment..." "Blue"
-                    $wingetResult = Initialize-WingetEnvironment
+                    
+                    # Create progress callback for winget initialization
+                    $wingetProgressCallback = {
+                        param([string]$Status, [int]$PercentComplete)
+                        Update-StatusLabel $Status "Blue"
+                        if ($PercentComplete -ge 0) {
+                            $progressBar.Value = [math]::Min($PercentComplete, 100)
+                        }
+                        [System.Windows.Forms.Application]::DoEvents()
+                    }
+                    
+                    $wingetResult = Initialize-WingetEnvironment -ProgressCallback $wingetProgressCallback -TimeoutMinutes 15
                 } else {
                     Update-StatusLabel "Winget ready, starting installations..." "Blue"
                 }
@@ -782,10 +797,10 @@ $runButton.Add_Click({
                         }
                         
                         $directDownload = if ($appConfig -and $appConfig.DirectDownload) { $appConfig.DirectDownload } else { $null }
-                        Install-Application -AppName $installerName -AppKey $appKey -WingetId $wingetId -DirectDownload $directDownload
+                        Install-Application -AppName $installerName -AppKey $appKey -WingetId $wingetId -DirectDownload $directDownload -TimeoutMinutes 15 -DownloadTimeoutMinutes 10
                         Write-LogMessage "Successfully installed $installerName" -Level "SUCCESS"
                     } catch {
-                        Write-LogMessage "Failed to install $installerName`: $_" -Level "ERROR"
+                        Write-LogMessage "Failed to install $installerName: $_" -Level "ERROR"
                     }
                     
                     # Update UI every 5 operations or on final operation for better performance
@@ -874,9 +889,9 @@ $runButton.Add_Click({
         }
         
     } catch {
-        Update-StatusLabel "Error during operations`: $_" "Red"
-        Write-LogMessage "GUI operation error`: $_" -Level "ERROR"
-        [System.Windows.Forms.MessageBox]::Show("An error occurred`: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        Update-StatusLabel "Error during operations: $_" "Red"
+        Write-LogMessage "GUI operation error: $_" -Level "ERROR"
+        [System.Windows.Forms.MessageBox]::Show("An error occurred: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
     } finally {
         $runButton.Enabled = $true
         $closeButton.Text = "Close"
