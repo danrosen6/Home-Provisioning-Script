@@ -175,27 +175,26 @@ function Install-WingetDependencies {
         
         # Download and install UI Xaml (newer dependency for latest winget versions)
         try {
-            $uiXamlUrl = "https://www.nuget.org/api/v2/package/Microsoft.UI.Xaml/2.8.6"
-            $uiXamlPath = Join-Path $depsDir "UIXaml.zip"
+            # Use direct download from GitHub releases for more reliability
+            $uiXamlUrl = "https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx"
+            $uiXamlPath = Join-Path $depsDir "Microsoft.UI.Xaml.2.8.x64.appx"
             
             Write-LogMessage "Downloading UI Xaml framework..." -Level "INFO"
             $webClient = New-Object System.Net.WebClient
             $webClient.DownloadFile($uiXamlUrl, $uiXamlPath)
             
-            # Extract and find the appropriate appx file
-            $extractDir = Join-Path $depsDir "UIXaml"
-            if (Test-Path $extractDir) {
-                Remove-Item $extractDir -Recurse -Force
-            }
-            Expand-Archive -Path $uiXamlPath -DestinationPath $extractDir -Force
-            
-            # Find x64 appx file
-            $appxFile = Get-ChildItem -Path $extractDir -Recurse -Filter "*.appx" | Where-Object { $_.Name -like "*x64*" } | Select-Object -First 1
-            
-            if ($appxFile) {
-                Write-LogMessage "Installing UI Xaml framework..." -Level "INFO"
-                Add-AppxPackage -Path $appxFile.FullName -ErrorAction Stop
-                Write-LogMessage "UI Xaml installed successfully" -Level "SUCCESS"
+            # Verify download
+            if (Test-Path $uiXamlPath) {
+                $fileSize = (Get-Item $uiXamlPath).Length
+                if ($fileSize -gt 1024) {
+                    Write-LogMessage "Installing UI Xaml framework..." -Level "INFO"
+                    Add-AppxPackage -Path $uiXamlPath -ErrorAction Stop
+                    Write-LogMessage "UI Xaml installed successfully" -Level "SUCCESS"
+                } else {
+                    Write-LogMessage "UI Xaml download appears incomplete (size: $fileSize bytes)" -Level "WARNING"
+                }
+            } else {
+                Write-LogMessage "UI Xaml download failed - file not found" -Level "WARNING"
             }
         }
         catch {
@@ -833,6 +832,8 @@ function Install-WingetDirect {
                 Write-LogMessage "Dependency already installed: $($dep.Name) (Version: $($existingPackage.Version))" -Level "INFO"
                 $dependenciesInstalled++
                 continue
+            } else {
+                Write-LogMessage "Dependency not found, will install: $($dep.Name)" -Level "INFO"
             }
             
             # Download dependency
@@ -900,7 +901,14 @@ function Install-WingetDirect {
         # Check if we have enough dependencies to proceed
         if ($requiredDependenciesFailed -gt 0) {
             Write-LogMessage "Failed to install $requiredDependenciesFailed required dependencies" -Level "ERROR"
-            Write-LogMessage "Winget installation may fail, but attempting to continue..." -Level "WARNING"
+            
+            # For newer Windows 10 builds, dependencies are critical for winget installation
+            if ($buildNumber -ge 19041) {
+                Write-LogMessage "Critical dependencies missing for Windows 10 build $buildNumber - winget installation will likely fail" -Level "ERROR"
+                Write-LogMessage "Attempting installation anyway, but expect dependency validation errors..." -Level "WARNING"
+            } else {
+                Write-LogMessage "Winget installation may fail, but attempting to continue..." -Level "WARNING"
+            }
         } else {
             Write-LogMessage "All dependencies installed successfully" -Level "SUCCESS"
         }

@@ -5,6 +5,8 @@ $script:UseDirectDownloadOnly = $false
 $script:MaxRetries = 3
 $script:RetryDelay = 5 # seconds
 $script:InstallerTimeoutMinutes = 5 # Timeout for installer processes
+$script:WingetInstallationAttempted = $false # Track if we've already tried to install winget
+$script:WingetAvailable = $false # Track if winget is available
 
 # Function to run processes with timeout to prevent hanging
 function Start-ProcessWithTimeout {
@@ -1298,7 +1300,7 @@ function Install-Application {
         
         # First, check if winget is already working properly  
         Write-LogMessage "Verifying winget installation status..." -Level "INFO"
-        $wingetAvailable = $false
+        $wingetAvailable = $script:WingetAvailable
         
         if (Get-Command winget -ErrorAction SilentlyContinue) {
             try {
@@ -1321,6 +1323,7 @@ function Install-Application {
                     if ($versionResult.Success -and $versionResult.Version -and $versionResult.Version.Trim() -ne "") {
                         Write-LogMessage "Winget is available: $($versionResult.Version)" -Level "INFO"
                         $wingetAvailable = $true
+                        $script:WingetAvailable = $true
                     } else {
                         Write-LogMessage "Winget version check failed (Exit: $($versionResult.ExitCode))" -Level "WARNING"
                     }
@@ -1334,9 +1337,10 @@ function Install-Application {
             }
         }
         
-        # Only install winget if it's not already working
-        if (-not $wingetAvailable) {
+        # Only install winget if it's not already working and we haven't already tried
+        if (-not $wingetAvailable -and -not $script:WingetInstallationAttempted) {
             Write-LogMessage "Winget not available, attempting installation before proceeding..." -Level "INFO"
+            $script:WingetInstallationAttempted = $true
             
             # Try to install winget with enhanced method
             $wingetInstalled = Install-Winget -CancellationToken $CancellationToken
@@ -1354,6 +1358,7 @@ function Install-Application {
                             if ($version -and $version.Trim() -ne "") {
                                 Write-LogMessage "Winget is now available after installation: $version" -Level "SUCCESS"
                                 $wingetAvailable = $true
+                                $script:WingetAvailable = $true
                                 break
                             }
                         }
@@ -1372,6 +1377,8 @@ function Install-Application {
             } else {
                 Write-LogMessage "Winget installation failed, proceeding with direct download method" -Level "WARNING"
             }
+        } elseif (-not $wingetAvailable -and $script:WingetInstallationAttempted) {
+            Write-LogMessage "Winget installation already attempted and failed, using direct download method" -Level "INFO"
         }
         
         # If winget is available, try to use it for installation
