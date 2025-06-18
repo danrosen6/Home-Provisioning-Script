@@ -97,6 +97,82 @@ $script:SelectedServices = @()
 $script:SelectedTweaks = @()
 $script:OperationCancelled = $false
 
+# Warning colors and functions
+$script:WarningColors = @{
+    "CRITICAL" = [System.Drawing.Color]::FromArgb(220, 53, 69)    # Red
+    "WARNING"  = [System.Drawing.Color]::FromArgb(255, 193, 7)    # Orange/Yellow  
+    "CAUTION"  = [System.Drawing.Color]::FromArgb(23, 162, 184)   # Blue
+    "SAFE"     = [System.Drawing.Color]::FromArgb(40, 167, 69)    # Green
+}
+
+$script:WarningIcons = @{
+    "CRITICAL" = "🔴"
+    "WARNING"  = "🟡"
+    "CAUTION"  = "🔵"
+    "SAFE"     = ""
+}
+
+function Get-WarningLevel {
+    param($WarningText)
+    
+    if (-not $WarningText) {
+        return "SAFE"
+    }
+    
+    if ($WarningText -match "^CRITICAL:") {
+        return "CRITICAL"
+    } elseif ($WarningText -match "^WARNING:") {
+        return "WARNING"
+    } elseif ($WarningText -match "^CAUTION:") {
+        return "CAUTION"
+    } else {
+        # Fallback detection based on content
+        if ($WarningText -match "break|damage|critical|cannot be reinstalled|system files") {
+            return "CRITICAL"
+        } elseif ($WarningText -match "may|might|could|data loss|sync") {
+            return "WARNING"
+        } else {
+            return "CAUTION"
+        }
+    }
+}
+
+function Format-CheckboxWithWarning {
+    param($checkbox, $item)
+    
+    $warningLevel = Get-WarningLevel -WarningText $item.Warning
+    $warningIcon = $script:WarningIcons[$warningLevel]
+    $warningColor = $script:WarningColors[$warningLevel]
+    
+    if ($warningIcon) {
+        $checkbox.Text = "$warningIcon $($item.Name)"
+    } else {
+        $checkbox.Text = $item.Name
+    }
+    
+    $checkbox.ForeColor = $warningColor
+    
+    # Add tooltip with warning text
+    if ($item.Warning) {
+        $tooltip = New-Object System.Windows.Forms.ToolTip
+        $tooltip.SetToolTip($checkbox, $item.Warning)
+    }
+}
+
+function Add-WarningLegend {
+    param($panel, $yPosition)
+    
+    $legendLabel = New-Object System.Windows.Forms.Label
+    $legendLabel.Text = "Risk Levels: 🔴 CRITICAL (may break system)  🟡 WARNING (may affect functionality)  🔵 CAUTION (compatibility issues)  ✅ SAFE"
+    $legendLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Italic)
+    $legendLabel.ForeColor = [System.Drawing.Color]::FromArgb(108, 117, 125)
+    $legendLabel.Location = New-Object System.Drawing.Point(20, $yPosition)
+    $legendLabel.AutoSize = $true
+    $panel.Controls.Add($legendLabel)
+    
+    return ($yPosition + 25)
+}
+
 # Detect Windows version
 $script:OSInfo = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
 if ($script:OSInfo) {
@@ -280,6 +356,9 @@ $appsSelectAll.AutoSize = $true
 $appsPanel.Controls.Add($appsSelectAll)
 $yPos += 35
 
+# Add warning legend
+$yPos = Add-WarningLegend -panel $appsPanel -yPosition $yPos
+
 # Store app checkboxes
 $script:AppCheckboxes = @()
 
@@ -308,11 +387,13 @@ foreach ($category in $script:Apps.Keys | Sort-Object) {
         }
         
         $checkbox = New-Object System.Windows.Forms.CheckBox
-        $checkbox.Text = $app.Name
         $checkbox.Tag = $app.Key
         $checkbox.Checked = $app.Default
         $checkbox.AutoSize = $true
         $checkbox.Location = New-Object System.Drawing.Point((40 + ($col * $colWidth)), $yPos)
+        
+        # Apply warning formatting (apps typically don't have warnings, so will be green/safe)
+        Format-CheckboxWithWarning -checkbox $checkbox -item $app
         
         $appsPanel.Controls.Add($checkbox)
         $script:AppCheckboxes += $checkbox
@@ -374,6 +455,9 @@ $bloatwareSelectAll.AutoSize = $true
 $bloatwarePanel.Controls.Add($bloatwareSelectAll)
 $yPos += 35
 
+# Add warning legend
+$yPos = Add-WarningLegend -panel $bloatwarePanel -yPosition $yPos
+
 $script:BloatwareCheckboxes = @()
 
 # Add bloatware categories and checkboxes
@@ -401,11 +485,13 @@ foreach ($category in $script:Bloatware.Keys | Sort-Object) {
         }
         
         $checkbox = New-Object System.Windows.Forms.CheckBox
-        $checkbox.Text = $item.Name
         $checkbox.Tag = $item.Key
         $checkbox.Checked = $item.Default
         $checkbox.AutoSize = $true
         $checkbox.Location = New-Object System.Drawing.Point((40 + ($col * $colWidth)), $yPos)
+        
+        # Apply warning formatting
+        Format-CheckboxWithWarning -checkbox $checkbox -item $item
         
         $bloatwarePanel.Controls.Add($checkbox)
         $script:BloatwareCheckboxes += $checkbox
@@ -465,6 +551,9 @@ $servicesSelectAll.AutoSize = $true
 $servicesPanel.Controls.Add($servicesSelectAll)
 $yPos += 35
 
+# Add warning legend
+$yPos = Add-WarningLegend -panel $servicesPanel -yPosition $yPos
+
 $script:ServiceCheckboxes = @()
 
 # Add service categories and checkboxes
@@ -492,11 +581,13 @@ foreach ($category in $script:Services.Keys | Sort-Object) {
         }
         
         $checkbox = New-Object System.Windows.Forms.CheckBox
-        $checkbox.Text = $service.Name
         $checkbox.Tag = $service.Key
         $checkbox.Checked = $service.Default
         $checkbox.AutoSize = $true
         $checkbox.Location = New-Object System.Drawing.Point((40 + ($col * $colWidth)), $yPos)
+        
+        # Apply warning formatting
+        Format-CheckboxWithWarning -checkbox $checkbox -item $service
         
         $servicesPanel.Controls.Add($checkbox)
         $script:ServiceCheckboxes += $checkbox
@@ -556,6 +647,9 @@ $tweaksSelectAll.AutoSize = $true
 $tweaksPanel.Controls.Add($tweaksSelectAll)
 $yPos += 35
 
+# Add warning legend
+$yPos = Add-WarningLegend -panel $tweaksPanel -yPosition $yPos
+
 $script:TweakCheckboxes = @()
 
 # Add tweak categories and checkboxes
@@ -583,11 +677,13 @@ foreach ($category in $script:Tweaks.Keys | Sort-Object) {
         }
         
         $checkbox = New-Object System.Windows.Forms.CheckBox
-        $checkbox.Text = $tweak.Name
         $checkbox.Tag = $tweak.Key
         $checkbox.Checked = $tweak.Default
         $checkbox.AutoSize = $true
         $checkbox.Location = New-Object System.Drawing.Point((40 + ($col * $colWidth)), $yPos)
+        
+        # Apply warning formatting
+        Format-CheckboxWithWarning -checkbox $checkbox -item $tweak
         
         $tweaksPanel.Controls.Add($checkbox)
         $script:TweakCheckboxes += $checkbox

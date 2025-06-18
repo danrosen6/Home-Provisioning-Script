@@ -1088,35 +1088,7 @@ function Remove-Bloatware {
                         return $true
                     }
                     
-                    # Show important warning to user
-                    $warningMessage = @"
-IMPORTANT WARNING: Disabling Internet Explorer
-
-This will disable Internet Explorer 11 as a standalone browser, but it may:
-
-• Break Internet Explorer Mode in Microsoft Edge
-• Affect legacy business applications that require IE
-• Impact some Windows system components
-• Require system restart to take effect
-
-IE Mode in Microsoft Edge will NOT work after this change.
-
-This action is REVERSIBLE through Windows Features.
-
-Do you want to continue with disabling Internet Explorer?
-"@
-                    
-                    $result = Show-TimeoutMessageBox -Message $warningMessage -Title "Internet Explorer Disable Warning" -TimeoutSeconds 45 -DefaultResponse "No"
-                    
-                    if ($result -eq [System.Windows.Forms.DialogResult]::No) {
-                        Write-LogMessage "User cancelled Internet Explorer disable due to compatibility concerns" -Level "WARNING"
-                        Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Skipped" -AdditionalData @{
-                            Reason = "User cancelled due to compatibility concerns"
-                        }
-                        return $false
-                    }
-                    
-                    Write-LogMessage "User confirmed Internet Explorer disable - proceeding..." -Level "INFO"
+                    Write-LogMessage "Proceeding with Internet Explorer disable..." -Level "INFO"
                     
                     # Method 1: Disable via DISM (most reliable)
                     Write-LogMessage "Disabling Internet Explorer via DISM..." -Level "INFO"
