@@ -500,8 +500,8 @@ function Initialize-WingetEnvironment {
         # Method 2: GitHub direct installation (enhanced method) - prioritized for reliability
         Report-Progress "Starting GitHub direct installation..." 40
         
-        # Install dependencies if required for older Windows versions
-        if ($installationMethod -in @("ManualOnly", "ManualWithDeps")) {
+        # Install dependencies if required (Windows 10 may need dependencies even with PreInstalled method)
+        if ($installationMethod -in @("ManualOnly", "ManualWithDeps") -or $compatibility.Version -like "Windows 10*") {
             Report-Progress "Installing winget dependencies for $($compatibility.Version)..." 45
             $depResult = Install-WingetDependencies -DownloadDir $downloadDir
             if (-not $depResult) {

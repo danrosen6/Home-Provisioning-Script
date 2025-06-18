@@ -757,12 +757,16 @@ $runButton.Add_Click({
                 if ($wingetNeedsSetup) {
                     Update-StatusLabel "Setting up winget environment..." "Blue"
                     
+                    # Setup progress bar for winget initialization
+                    $progressBar.Maximum = 100
+                    $progressBar.Value = 0
+                    
                     # Create progress callback for winget initialization
                     $wingetProgressCallback = {
                         param([string]$Status, [int]$PercentComplete)
                         Update-StatusLabel $Status "Blue"
-                        if ($PercentComplete -ge 0) {
-                            $progressBar.Value = [math]::Min($PercentComplete, 100)
+                        if ($PercentComplete -ge 0 -and $PercentComplete -le 100) {
+                            $progressBar.Value = $PercentComplete
                         }
                         [System.Windows.Forms.Application]::DoEvents()
                     }
