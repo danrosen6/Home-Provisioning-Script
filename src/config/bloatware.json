@@ -479,18 +479,5 @@
       "RequiresRestart": true,
       "Reversible": true
     }
-  ],
-  "Legacy Browsers": [
-    {
-      "Name": "Internet Explorer",
-      "Key": "internet-explorer",
-      "Default": false,
-      "Win10": true,
-      "Win11": false,
-      "PackageName": "Internet-Explorer-Optional-amd64",
-      "Description": "Legacy web browser. WARNING: Some legacy applications and websites may require IE. This disables IE as a standalone browser but may affect IE Mode in Edge.",
-      "Method": "WindowsFeature",
-      "Warning": "CAUTION: Disabling Internet Explorer may break legacy applications, internal websites, or Edge's IE Mode compatibility. Only disable if you're certain you don't need IE functionality. This can be reversed through Windows Features."
-    }
   ]
 }

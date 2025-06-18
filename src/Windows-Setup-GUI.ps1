@@ -105,10 +105,10 @@ $script:WarningColors = @{
     "SAFE"     = [System.Drawing.Color]::FromArgb(40, 167, 69)    # Green
 }
 
-$script:WarningIcons = @{
-    "CRITICAL" = "🔴"
-    "WARNING"  = "🟡"
-    "CAUTION"  = "🔵"
+$script:WarningLabels = @{
+    "CRITICAL" = "(may break system)"
+    "WARNING"  = "(may affect functionality)"
+    "CAUTION"  = "(compatibility issues)"
     "SAFE"     = ""
 }
 
@@ -141,18 +141,27 @@ function Format-CheckboxWithWarning {
     param($checkbox, $item)
     
     $warningLevel = Get-WarningLevel -WarningText $item.Warning
-    $warningIcon = $script:WarningIcons[$warningLevel]
-    $warningColor = $script:WarningColors[$warningLevel]
+    $warningLabel = $script:WarningLabels[$warningLevel]
     
-    if ($warningIcon) {
-        $checkbox.Text = "$warningIcon $($item.Name)"
+    # Set text with warning level in parentheses
+    if ($warningLabel) {
+        $checkbox.Text = "$($item.Name) $warningLabel"
     } else {
         $checkbox.Text = $item.Name
     }
     
-    $checkbox.ForeColor = $warningColor
+    # Set color based on warning level but use black for text readability
+    $checkbox.ForeColor = [System.Drawing.Color]::Black
     
-    # Add tooltip with warning text
+    # Set background color for warning indication
+    switch ($warningLevel) {
+        "CRITICAL" { $checkbox.BackColor = [System.Drawing.Color]::FromArgb(255, 220, 220) } # Light red
+        "WARNING"  { $checkbox.BackColor = [System.Drawing.Color]::FromArgb(255, 243, 205) } # Light orange
+        "CAUTION"  { $checkbox.BackColor = [System.Drawing.Color]::FromArgb(217, 237, 247) } # Light blue
+        "SAFE"     { $checkbox.BackColor = [System.Drawing.Color]::White }                    # White/default
+    }
+    
+    # Add tooltip with full warning text
     if ($item.Warning) {
         $tooltip = New-Object System.Windows.Forms.ToolTip
         $tooltip.SetToolTip($checkbox, $item.Warning)
@@ -163,7 +172,7 @@ function Add-WarningLegend {
     param($panel, $yPosition)
     
     $legendLabel = New-Object System.Windows.Forms.Label
-    $legendLabel.Text = "Risk Levels: 🔴 CRITICAL (may break system)  🟡 WARNING (may affect functionality)  🔵 CAUTION (compatibility issues)  ✅ SAFE"
+    $legendLabel.Text = "Background Colors: Light Red = may break system  |  Light Orange = may affect functionality  |  Light Blue = compatibility issues  |  White = safe"
     $legendLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Italic)
     $legendLabel.ForeColor = [System.Drawing.Color]::FromArgb(108, 117, 125)
     $legendLabel.Location = New-Object System.Drawing.Point(20, $yPosition)
@@ -374,9 +383,9 @@ foreach ($category in $script:Apps.Keys | Sort-Object) {
     $appsPanel.Controls.Add($categoryLabel)
     $yPos += 30
     
-    # Apps in category (3 columns)
+    # Apps in category (2 columns for wider text)
     $col = 0
-    $colWidth = 280
+    $colWidth = 450
     $itemsInRow = 0
     
     foreach ($app in $script:Apps[$category]) {
@@ -389,7 +398,8 @@ foreach ($category in $script:Apps.Keys | Sort-Object) {
         $checkbox = New-Object System.Windows.Forms.CheckBox
         $checkbox.Tag = $app.Key
         $checkbox.Checked = $app.Default
-        $checkbox.AutoSize = $true
+        $checkbox.AutoSize = $false
+        $checkbox.Size = New-Object System.Drawing.Size(430, 25)
         $checkbox.Location = New-Object System.Drawing.Point((40 + ($col * $colWidth)), $yPos)
         
         # Apply warning formatting (apps typically don't have warnings, so will be green/safe)
@@ -400,15 +410,15 @@ foreach ($category in $script:Apps.Keys | Sort-Object) {
         
         $col++
         $itemsInRow++
-        if ($col -ge 3) {
+        if ($col -ge 2) {
             $col = 0
-            $yPos += 25
+            $yPos += 32
         }
     }
     
     # Move to next row if items were added and not at start of row
     if ($itemsInRow -gt 0 -and $col -ne 0) {
-        $yPos += 25
+        $yPos += 30
     }
     $yPos += 15  # Spacing between categories
 }
@@ -472,9 +482,9 @@ foreach ($category in $script:Bloatware.Keys | Sort-Object) {
     $bloatwarePanel.Controls.Add($categoryLabel)
     $yPos += 30
     
-    # Bloatware items in category (3 columns)
+    # Bloatware items in category (2 columns for wider text)
     $col = 0
-    $colWidth = 280
+    $colWidth = 450
     $itemsInRow = 0
     
     foreach ($item in $script:Bloatware[$category]) {
@@ -487,7 +497,8 @@ foreach ($category in $script:Bloatware.Keys | Sort-Object) {
         $checkbox = New-Object System.Windows.Forms.CheckBox
         $checkbox.Tag = $item.Key
         $checkbox.Checked = $item.Default
-        $checkbox.AutoSize = $true
+        $checkbox.AutoSize = $false
+        $checkbox.Size = New-Object System.Drawing.Size(430, 25)
         $checkbox.Location = New-Object System.Drawing.Point((40 + ($col * $colWidth)), $yPos)
         
         # Apply warning formatting
@@ -498,14 +509,14 @@ foreach ($category in $script:Bloatware.Keys | Sort-Object) {
         
         $col++
         $itemsInRow++
-        if ($col -ge 3) {
+        if ($col -ge 2) {
             $col = 0
-            $yPos += 25
+            $yPos += 32
         }
     }
     
     if ($itemsInRow -gt 0 -and $col -ne 0) {
-        $yPos += 25
+        $yPos += 30
     }
     $yPos += 15
 }
@@ -570,7 +581,7 @@ foreach ($category in $script:Services.Keys | Sort-Object) {
     
     # Service items in category (2 columns for longer descriptions)
     $col = 0
-    $colWidth = 400
+    $colWidth = 450
     $itemsInRow = 0
     
     foreach ($service in $script:Services[$category]) {
@@ -583,7 +594,8 @@ foreach ($category in $script:Services.Keys | Sort-Object) {
         $checkbox = New-Object System.Windows.Forms.CheckBox
         $checkbox.Tag = $service.Key
         $checkbox.Checked = $service.Default
-        $checkbox.AutoSize = $true
+        $checkbox.AutoSize = $false
+        $checkbox.Size = New-Object System.Drawing.Size(430, 25)
         $checkbox.Location = New-Object System.Drawing.Point((40 + ($col * $colWidth)), $yPos)
         
         # Apply warning formatting
@@ -596,12 +608,12 @@ foreach ($category in $script:Services.Keys | Sort-Object) {
         $itemsInRow++
         if ($col -ge 2) {
             $col = 0
-            $yPos += 25
+            $yPos += 32
         }
     }
     
     if ($itemsInRow -gt 0 -and $col -ne 0) {
-        $yPos += 25
+        $yPos += 30
     }
     $yPos += 15
 }
@@ -666,7 +678,7 @@ foreach ($category in $script:Tweaks.Keys | Sort-Object) {
     
     # Tweak items in category (2 columns)
     $col = 0
-    $colWidth = 400
+    $colWidth = 450
     $itemsInRow = 0
     
     foreach ($tweak in $script:Tweaks[$category]) {
@@ -679,7 +691,8 @@ foreach ($category in $script:Tweaks.Keys | Sort-Object) {
         $checkbox = New-Object System.Windows.Forms.CheckBox
         $checkbox.Tag = $tweak.Key
         $checkbox.Checked = $tweak.Default
-        $checkbox.AutoSize = $true
+        $checkbox.AutoSize = $false
+        $checkbox.Size = New-Object System.Drawing.Size(430, 25)
         $checkbox.Location = New-Object System.Drawing.Point((40 + ($col * $colWidth)), $yPos)
         
         # Apply warning formatting
@@ -692,12 +705,12 @@ foreach ($category in $script:Tweaks.Keys | Sort-Object) {
         $itemsInRow++
         if ($col -ge 2) {
             $col = 0
-            $yPos += 25
+            $yPos += 32
         }
     }
     
     if ($itemsInRow -gt 0 -and $col -ne 0) {
-        $yPos += 25
+        $yPos += 30
     }
     $yPos += 15
 }
