@@ -54,7 +54,7 @@ function Write-LogMessage {
     catch {
         # Only show this error once to avoid spam
         if (-not $script:LogErrorShown) {
-            Write-Host "Warning: Failed to write to log file ($($script:LogFile))`: $_" -ForegroundColor Yellow
+            Write-Host "Warning: Failed to write to log file ($($script:LogFile)): $_" -ForegroundColor Yellow
             $script:LogErrorShown = $true
         }
     }
@@ -85,7 +85,7 @@ function Initialize-Logging {
         Write-Host $testMessage -ForegroundColor Green
     }
     catch {
-        Write-Host "Failed to initialize logging`: $_" -ForegroundColor Red
+        Write-Host "Failed to initialize logging: $_" -ForegroundColor Red
         Write-Host "Attempted log directory: $logDir" -ForegroundColor Yellow
         Write-Host "PSScriptRoot: $PSScriptRoot" -ForegroundColor Yellow
     }
@@ -106,7 +106,7 @@ function Rotate-LogFile {
         $script:LogFile = Join-Path $logDir "setup_${timestamp}.log"
     }
     catch {
-        Write-Host "Failed to rotate log file`: $_"
+        Write-Host "Failed to rotate log file: $_"
     }
 }
 

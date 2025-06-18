@@ -45,7 +45,7 @@ function Get-AvailableProfiles {
         return $profiles | Sort-Object Modified -Descending
     }
     catch {
-        Write-Error "Failed to get available profiles`: $_"
+        Write-Error "Failed to get available profiles: $_"
         return @()
     }
 }
@@ -113,7 +113,7 @@ function Save-UserProfile {
         return $profilePath
     }
     catch {
-        Write-LogMessage "Failed to save profile '$ProfileName'``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to save profile '$ProfileName': $_" -Level "ERROR"
         throw $_
     }
 }
@@ -157,7 +157,7 @@ function Load-UserProfile {
         return $result
     }
     catch {
-        Write-LogMessage "Failed to load profile '$ProfileName'``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to load profile '$ProfileName': $_" -Level "ERROR"
         throw $_
     }
 }
@@ -193,7 +193,7 @@ function Remove-UserProfile {
         return $true
     }
     catch {
-        Write-LogMessage "Failed to delete profile '$ProfileName'``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to delete profile '$ProfileName': $_" -Level "ERROR"
         throw $_
     }
 }
@@ -227,7 +227,7 @@ function Export-UserProfile {
         return $true
     }
     catch {
-        Write-LogMessage "Failed to export profile '$ProfileName'``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to export profile '$ProfileName': $_" -Level "ERROR"
         throw $_
     }
 }
@@ -282,7 +282,7 @@ function Import-UserProfile {
         return $profileName
     }
     catch {
-        Write-LogMessage "Failed to import profile from '$ImportPath'``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to import profile from '$ImportPath': $_" -Level "ERROR"
         throw $_
     }
 }
@@ -359,7 +359,7 @@ function Create-DefaultProfiles {
                 if ($_.Exception.Message -like "*already exists*") {
                     Write-LogMessage "Default profile '$profileName' already exists (use -Overwrite to replace)" -Level "INFO"
                 } else {
-                    Write-LogMessage "Failed to create default profile '$profileName'``: $_" -Level "WARNING"
+                    Write-LogMessage "Failed to create default profile '$profileName': $_" -Level "WARNING"
                 }
             }
         }
@@ -368,7 +368,7 @@ function Create-DefaultProfiles {
         return $createdCount
     }
     catch {
-        Write-LogMessage "Failed to create default profiles``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to create default profiles: $_" -Level "ERROR"
         throw $_
     }
 }

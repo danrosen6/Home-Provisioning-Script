@@ -1015,7 +1015,7 @@ function Install-WingetDirect {
                             return $false
                         }
                     } else {
-                        Write-LogMessage "Installation failed with unexpected error``: $_" -Level "ERROR"
+                        Write-LogMessage "Installation failed with unexpected error: $_" -Level "ERROR"
                     }
                     
                     if ($attempt -lt 3) {

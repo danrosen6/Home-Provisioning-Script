@@ -63,7 +63,7 @@ function Get-ConfigurationData {
         return $configData
     }
     catch {
-        Write-Error "Failed to load $ConfigType configuration``: $_"
+        Write-Error "Failed to load $ConfigType configuration: $_"
         return @{}
     }
 }
@@ -88,7 +88,7 @@ function Get-WingetIdMapping {
         
         return $wingetIds
     } catch {
-        Write-LogMessage "Error building winget ID mapping from JSON``: $_" -Level "WARNING"
+        Write-LogMessage "Error building winget ID mapping from JSON: $_" -Level "WARNING"
         # Fallback to minimal hardcoded mapping
         return @{
             "vscode" = "Microsoft.VisualStudioCode"
@@ -119,7 +119,7 @@ function Get-InstallerNameMapping {
         
         return $installerNames
     } catch {
-        Write-LogMessage "Error building installer name mapping from JSON``: $_" -Level "WARNING"
+        Write-LogMessage "Error building installer name mapping from JSON: $_" -Level "WARNING"
         # Fallback to minimal hardcoded mapping
         return @{
             "vscode" = "Visual Studio Code"
@@ -198,7 +198,7 @@ function Get-AppDownloadInfo {
         return $null
     }
     catch {
-        Write-Error "Failed to get download info for '$AppKey'``: $_"
+        Write-Error "Failed to get download info for '$AppKey': $_"
         return $null
     }
 }
@@ -242,7 +242,7 @@ function Resolve-DynamicUrl {
         }
     }
     catch {
-        Write-LogMessage "Failed to resolve dynamic URL for $AppName ``: $_" -Level "WARNING"
+        Write-LogMessage "Failed to resolve dynamic URL for $AppName : $_" -Level "WARNING"
         return $UrlInfo.FallbackUrl
     }
 }
@@ -281,7 +281,7 @@ function Resolve-GitHubAssetUrl {
         }
     }
     catch {
-        Write-Verbose "GitHub API call failed`: $_"
+        Write-Verbose "GitHub API call failed: $_"
         return $FallbackUrl
     }
 }
@@ -307,7 +307,7 @@ function Resolve-JetBrainsUrl {
         return $FallbackUrl
     }
     catch {
-        Write-Verbose "JetBrains API call failed`: $_"
+        Write-Verbose "JetBrains API call failed: $_"
         return $FallbackUrl
     }
 }
@@ -340,7 +340,7 @@ function Resolve-PythonUrl {
         return $FallbackUrl
     }
     catch {
-        Write-Verbose "Python version lookup failed`: $_"
+        Write-Verbose "Python version lookup failed: $_"
         return $FallbackUrl
     }
 }
@@ -361,7 +361,7 @@ function Resolve-VLCUrl {
         return $FallbackUrl
     }
     catch {
-        Write-Verbose "VLC version lookup failed`: $_"
+        Write-Verbose "VLC version lookup failed: $_"
         return $FallbackUrl
     }
 }
@@ -383,7 +383,7 @@ function Resolve-7ZipUrl {
         return $FallbackUrl
     }
     catch {
-        Write-Verbose "7-Zip version lookup failed`: $_"
+        Write-Verbose "7-Zip version lookup failed: $_"
         return $FallbackUrl
     }
 }
@@ -406,7 +406,7 @@ function Resolve-RedirectUrl {
         return $FallbackUrl
     }
     catch {
-        Write-Verbose "Redirect resolution failed`: $_"
+        Write-Verbose "Redirect resolution failed: $_"
         return $FallbackUrl
     }
 }

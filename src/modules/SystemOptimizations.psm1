@@ -78,7 +78,7 @@ function Show-TimeoutMessageBox {
         }
     }
     catch {
-        Write-LogMessage "Error showing timeout MessageBox``: $_" -Level "ERROR"
+        Write-LogMessage "Error showing timeout MessageBox: $_" -Level "ERROR"
         # Return safe default (No) on error
         return [System.Windows.Forms.DialogResult]::No
     }
@@ -160,7 +160,7 @@ function Test-ServiceDependency {
         }
     }
     catch {
-        Write-LogMessage "Error checking dependencies for service $ServiceName ``: $_" -Level "ERROR"
+        Write-LogMessage "Error checking dependencies for service $ServiceName : $_" -Level "ERROR"
         return @{
             HasDependencies = $false
             DependentServices = @()
@@ -191,7 +191,7 @@ function Save-RegistryValue {
         return $false
     }
     catch {
-        Write-LogMessage "Failed to backup registry value``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to backup registry value: $_" -Level "ERROR"
         return $false
     }
 }
@@ -214,7 +214,7 @@ function Save-ServiceState {
         return $false
     }
     catch {
-        Write-LogMessage "Failed to backup service``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to backup service: $_" -Level "ERROR"
         return $false
     }
 }
@@ -238,7 +238,7 @@ function Restore-RegistryValue {
         return $false
     }
     catch {
-        Write-LogMessage "Failed to restore registry value``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to restore registry value: $_" -Level "ERROR"
         return $false
     }
 }
@@ -262,7 +262,7 @@ function Restore-ServiceState {
         return $false
     }
     catch {
-        Write-LogMessage "Failed to restore service``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to restore service: $_" -Level "ERROR"
         return $false
     }
 }
@@ -422,7 +422,7 @@ function Set-SystemOptimization {
                     }
                     Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0
                 } catch {
-                    Write-LogMessage "Could not disable widgets via policies (may require admin rights)``: $_" -Level "WARNING"
+                    Write-LogMessage "Could not disable widgets via policies (may require admin rights): $_" -Level "WARNING"
                 }
                 
                 Add-RestartRegistryChange -ChangeDescription "Disable Widgets icon and service"
@@ -546,7 +546,7 @@ function Set-SystemOptimization {
                     }
                     Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\BootControl" -Name "BootProgressAnimation" -Value 0
                 } catch {
-                    Write-LogMessage "Could not disable boot animation (requires admin rights)``: $_" -Level "WARNING"
+                    Write-LogMessage "Could not disable boot animation (requires admin rights): $_" -Level "WARNING"
                 }
             }
             # Additional service configurations
@@ -617,7 +617,7 @@ function Set-SystemOptimization {
                     Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors" -Name "DisableLocation" -Value 1 -Type DWord -Force
                     Write-LogMessage "Applied Group Policy location disable" -Level "INFO"
                 } catch {
-                    Write-LogMessage "Could not apply Group Policy location disable``: $_" -Level "WARNING"
+                    Write-LogMessage "Could not apply Group Policy location disable: $_" -Level "WARNING"
                 }
                 
                 # Capability Access Manager - Location
@@ -628,7 +628,7 @@ function Set-SystemOptimization {
                     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location" -Name "Value" -Value "Deny" -Type String -Force
                     Write-LogMessage "Set Capability Access Manager to deny location access" -Level "INFO"
                 } catch {
-                    Write-LogMessage "Could not set Capability Access Manager location setting``: $_" -Level "WARNING"
+                    Write-LogMessage "Could not set Capability Access Manager location setting: $_" -Level "WARNING"
                 }
                 
                 # User-level location privacy settings
@@ -639,7 +639,7 @@ function Set-SystemOptimization {
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DeviceAccess\Global\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}" -Name "Value" -Value "Deny" -Type String -Force
                     Write-LogMessage "Set user-level location access to deny" -Level "INFO"
                 } catch {
-                    Write-LogMessage "Could not set user-level location access``: $_" -Level "WARNING"
+                    Write-LogMessage "Could not set user-level location access: $_" -Level "WARNING"
                 }
                 
                 # Disable location scripting
@@ -650,7 +650,7 @@ function Set-SystemOptimization {
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DeviceAccess\Global\LooselyCoupled" -Name "Value" -Value "Deny" -Type String -Force
                     Write-LogMessage "Disabled location scripting access" -Level "INFO"
                 } catch {
-                    Write-LogMessage "Could not disable location scripting``: $_" -Level "WARNING"
+                    Write-LogMessage "Could not disable location scripting: $_" -Level "WARNING"
                 }
             }
             "tabletinputservice" {
@@ -724,7 +724,7 @@ function Set-SystemOptimization {
                     }
                     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Name "value" -Value 0 -Type DWord -Force
                 } catch {
-                    Write-LogMessage "Could not apply system-wide News and Interests disable``: $_" -Level "WARNING"
+                    Write-LogMessage "Could not apply system-wide News and Interests disable: $_" -Level "WARNING"
                 }
                 
                 Write-LogMessage "News and Interests disabled successfully" -Level "INFO"
@@ -760,7 +760,7 @@ function Set-SystemOptimization {
         return $true
     }
     catch {
-        Write-LogMessage "Failed to apply optimization ${OptimizationKey}``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to apply optimization ${OptimizationKey}: $_" -Level "ERROR"
         Save-OperationState -OperationType "SystemOptimization" -ItemKey $OptimizationKey -Status "Failed" -AdditionalData @{
             Error = $_.Exception.Message
             Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -792,7 +792,7 @@ function Set-SystemOptimization {
             Write-LogMessage "Successfully rolled back optimization: ${OptimizationKey}" -Level "INFO"
         }
         catch {
-            Write-LogMessage "Failed to roll back optimization ${OptimizationKey}``: $_" -Level "ERROR"
+            Write-LogMessage "Failed to roll back optimization ${OptimizationKey}: $_" -Level "ERROR"
         }
         
         return $false
@@ -998,7 +998,7 @@ function Remove-Bloatware {
                             Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Name "value" -Value 0 -Type DWord -Force
                             Write-LogMessage "Applied system-wide News and Interests disable" -Level "INFO"
                         } catch {
-                            Write-LogMessage "Could not apply system-wide News and Interests disable (may require higher privileges)``: $_" -Level "DEBUG"
+                            Write-LogMessage "Could not apply system-wide News and Interests disable (may require higher privileges): $_" -Level "DEBUG"
                         }
                         
                         # Method 3: Disable weather location services
@@ -1009,7 +1009,7 @@ function Remove-Bloatware {
                             Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds\DSB" -Name "ShowDynamicContent" -Value 0 -Type DWord -Force
                             Write-LogMessage "Disabled dynamic weather content" -Level "INFO"
                         } catch {
-                            Write-LogMessage "Could not disable dynamic weather content``: $_" -Level "DEBUG"
+                            Write-LogMessage "Could not disable dynamic weather content: $_" -Level "DEBUG"
                         }
                     }
                     
@@ -1038,13 +1038,13 @@ function Remove-Bloatware {
                         Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings" -Name "IsDeviceSearchHistoryEnabled" -Value 0 -Type DWord -Force
                         Write-LogMessage "Disabled web search in feeds" -Level "INFO"
                     } catch {
-                        Write-LogMessage "Could not disable web search in feeds``: $_" -Level "DEBUG"
+                        Write-LogMessage "Could not disable web search in feeds: $_" -Level "DEBUG"
                     }
                     
                     Write-LogMessage "Widgets/Weather/News removal tweaks applied successfully" -Level "SUCCESS"
                     $removedCount++
                 } catch {
-                    Write-LogMessage "Failed to apply Widgets/Weather/News removal tweaks``: $_" -Level "WARNING"
+                    Write-LogMessage "Failed to apply Widgets/Weather/News removal tweaks: $_" -Level "WARNING"
                 }
             }
             
@@ -1090,7 +1090,7 @@ function Remove-Bloatware {
                             Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AI" -Name "DisableAIDataAnalysis" -Value 1 -Type DWord -Force
                             Write-LogMessage "Disabled Windows 10 AI features" -Level "INFO"
                         } catch {
-                            Write-LogMessage "Could not disable AI features (may not be available)``: $_" -Level "DEBUG"
+                            Write-LogMessage "Could not disable AI features (may not be available): $_" -Level "DEBUG"
                         }
                         
                         # Windows 10 Copilot context menu disable
@@ -1101,14 +1101,14 @@ function Remove-Bloatware {
                             Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\Copilot" -Name "IsCopilotAvailable" -Value 0 -Type DWord -Force
                             Write-LogMessage "Disabled Windows 10 Copilot context integration" -Level "INFO"
                         } catch {
-                            Write-LogMessage "Could not disable Copilot context integration``: $_" -Level "DEBUG"
+                            Write-LogMessage "Could not disable Copilot context integration: $_" -Level "DEBUG"
                         }
                     }
                     
                     Write-LogMessage "Windows Copilot removal and registry tweaks applied successfully" -Level "SUCCESS"
                     $removedCount++
                 } catch {
-                    Write-LogMessage "Failed to apply Copilot removal tweaks``: $_" -Level "WARNING"
+                    Write-LogMessage "Failed to apply Copilot removal tweaks: $_" -Level "WARNING"
                 }
             }
             
@@ -1145,7 +1145,7 @@ function Remove-Bloatware {
                 Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
             }
         }
-        Write-LogMessage "Failed to remove bloatware``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to remove bloatware: $_" -Level "ERROR"
         return $false
     }
 }
@@ -1218,7 +1218,7 @@ function Optimize-System {
         return $true
     }
     catch {
-        Write-LogMessage "Failed to optimize system``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to optimize system: $_" -Level "ERROR"
         return $false
     }
 }
@@ -1268,7 +1268,7 @@ function Configure-Services {
         return $true
     }
     catch {
-        Write-LogMessage "Failed to configure services``: $_" -Level "ERROR"
+        Write-LogMessage "Failed to configure services: $_" -Level "ERROR"
         return $false
     }
 }

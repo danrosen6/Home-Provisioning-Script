@@ -72,7 +72,7 @@ try {
     Import-Module (Join-Path $ScriptPath "modules/SystemOptimizations.psm1") -Force -ErrorAction Stop
     Write-Host "All modules loaded successfully" -ForegroundColor Green
 } catch {
-    Write-Host "CRITICAL ERROR: Failed to load required modules`: $_" -ForegroundColor Red
+    Write-Host "CRITICAL ERROR: Failed to load required modules: $_" -ForegroundColor Red
     Write-Host "Module load error details: $($_.Exception.Message)" -ForegroundColor Yellow
     Read-Host "Press Enter to exit"
     exit 1
@@ -83,7 +83,7 @@ try {
     Initialize-Logging
     Write-Host "Logging initialized successfully" -ForegroundColor Green
 } catch {
-    Write-Host "WARNING: Failed to initialize logging`: $_" -ForegroundColor Yellow
+    Write-Host "WARNING: Failed to initialize logging: $_" -ForegroundColor Yellow
 }
 
 Write-Host "===========================================================" -ForegroundColor Cyan
@@ -800,7 +800,7 @@ $runButton.Add_Click({
                         Install-Application -AppName $installerName -AppKey $appKey -WingetId $wingetId -DirectDownload $directDownload -TimeoutMinutes 15 -DownloadTimeoutMinutes 10
                         Write-LogMessage "Successfully installed $installerName" -Level "SUCCESS"
                     } catch {
-                        Write-LogMessage "Failed to install $installerName: $_" -Level "ERROR"
+                        Write-LogMessage "Failed to install $installerName - $_" -Level "ERROR"
                     }
                     
                     # Update UI every 5 operations or on final operation for better performance
@@ -824,7 +824,7 @@ $runButton.Add_Click({
                         Remove-Bloatware -BloatwareKey $bloatKey
                         Write-LogMessage "Successfully removed bloatware $bloatKey" -Level "SUCCESS"
                     } catch {
-                        Write-LogMessage "Failed to remove bloatware $bloatKey`: $_" -Level "ERROR"
+                        Write-LogMessage "Failed to remove bloatware $bloatKey - $_" -Level "ERROR"
                     }
                     
                     # Update UI every 5 operations or on final operation for better performance
@@ -848,7 +848,7 @@ $runButton.Add_Click({
                         Set-SystemOptimization -OptimizationKey $serviceKey
                         Write-LogMessage "Successfully disabled service $serviceKey" -Level "SUCCESS"
                     } catch {
-                        Write-LogMessage "Failed to disable service $serviceKey`: $_" -Level "ERROR"
+                        Write-LogMessage "Failed to disable service $serviceKey - $_" -Level "ERROR"
                     }
                     
                     # Update UI every 5 operations or on final operation for better performance
@@ -872,7 +872,7 @@ $runButton.Add_Click({
                         Set-SystemOptimization -OptimizationKey $tweakKey
                         Write-LogMessage "Successfully applied tweak $tweakKey" -Level "SUCCESS"
                     } catch {
-                        Write-LogMessage "Failed to apply tweak $tweakKey`: $_" -Level "ERROR"
+                        Write-LogMessage "Failed to apply tweak $tweakKey - $_" -Level "ERROR"
                     }
                     
                     # Update UI every 5 operations or on final operation for better performance
