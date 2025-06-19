@@ -33,7 +33,7 @@
     {
       "Name": "SysMain (Superfetch)",
       "Key": "sysmain",
-      "Default": true,
+      "Default": false,
       "Win10": true,
       "Win11": true,
       "ServiceName": "SysMain",
