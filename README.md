@@ -1,4 +1,4 @@
-# Windows Setup Automation Script
+# Windows Setup Automation Script (Beta)
 
 A PowerShell-based GUI automation tool for setting up Windows 10/11 systems with applications, bloatware removal, service optimizations, and system tweaks.
 
@@ -41,7 +41,7 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 4. **Select items** in the main area using checkboxes
 5. **Click "Run Selected Tasks"** to execute
 
-## Applications Installed
+## Applications Installed (Expand to view)
 
 <details>
 <summary><strong>Development Tools</strong> (12 applications)</summary>
@@ -101,7 +101,7 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 
 ---
 
-## Bloatware Removed
+## Bloatware Removed (Expand to view)
 
 <details>
 <summary><strong>Microsoft Office & Productivity</strong></summary>
@@ -278,7 +278,7 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 
 ---
 
-## Services Disabled
+## Services Disabled (Expand to view)
 
 <details>
 <summary><strong>Telemetry & Privacy</strong></summary>
@@ -378,7 +378,7 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 
 ---
 
-## System Tweaks Applied
+## System Tweaks Applied (Expand to view)
 
 <details>
 <summary><strong>File Explorer</strong></summary>
