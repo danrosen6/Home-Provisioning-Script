@@ -997,8 +997,34 @@ $runButton.Add_Click({
         }
         
         if (-not $script:OperationCancelled) {
+            # Check if Explorer restart is required for UI changes
+            try {
+                if ($script:ExplorerRestartRequired) {
+                    Update-StatusLabel "Restarting Explorer to apply UI changes..." "Orange"
+                    Write-LogMessage "Explorer restart required for UI changes, restarting..." -Level "INFO"
+                    
+                    if (Restart-WindowsExplorer) {
+                        Write-LogMessage "Explorer restarted successfully" -Level "SUCCESS"
+                    } else {
+                        Write-LogMessage "Explorer restart failed, changes may require manual restart or logoff/logon" -Level "WARNING"
+                    }
+                }
+            } catch {
+                Write-LogMessage "Error during Explorer restart: $_" -Level "ERROR"
+            }
+            
             Update-StatusLabel "$operationType operations completed! Check logs for details." "Green"
-            [System.Windows.Forms.MessageBox]::Show("$operationType operations have been completed!", "Operations Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            
+            # Show appropriate completion message
+            if ($script:ExplorerRestartRequired -and $script:RestartRequired) {
+                [System.Windows.Forms.MessageBox]::Show("$operationType operations completed!`n`nExplorer has been restarted to apply UI changes.`nA system restart is also required for some changes to take full effect.", "Operations Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            } elseif ($script:ExplorerRestartRequired) {
+                [System.Windows.Forms.MessageBox]::Show("$operationType operations completed!`n`nExplorer has been restarted to apply UI changes.", "Operations Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            } elseif ($script:RestartRequired) {
+                [System.Windows.Forms.MessageBox]::Show("$operationType operations completed!`n`nA system restart is required for some changes to take full effect.", "Operations Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            } else {
+                [System.Windows.Forms.MessageBox]::Show("$operationType operations have been completed!", "Operations Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            }
         }
         
     } catch {

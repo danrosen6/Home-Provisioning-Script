@@ -5,6 +5,8 @@ $script:RegistryBackups = @{}
 $script:ServiceBackups = @{}
 $script:RegistryChangesRequiringRestart = @()
 $script:RestartRequired = $false
+$script:ExplorerRestartRequired = $false
+$script:IsAdministrator = $null
 
 # Timeout-based MessageBox function to prevent script hanging
 function Show-TimeoutMessageBox {
@@ -115,6 +117,134 @@ if (Test-Path $LoggingModule) {
         Write-Host $logMessage -ForegroundColor $color
     }
     Write-Warning "Centralized logging module not found, using fallback logging"
+}
+
+function Test-IsAdministrator {
+    if ($script:IsAdministrator -eq $null) {
+        $script:IsAdministrator = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+    return $script:IsAdministrator
+}
+
+function Add-ExplorerRestartChange {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$ChangeDescription
+    )
+    
+    # Mark that Explorer restart is required
+    $script:ExplorerRestartRequired = $true
+    
+    # Log the change
+    Write-LogMessage "Added Explorer restart change: $ChangeDescription" -Level "INFO"
+}
+
+function Restart-WindowsExplorer {
+    param (
+        [Parameter(Mandatory=$false)]
+        [switch]$Force = $false
+    )
+    
+    if (-not $Force -and -not $script:ExplorerRestartRequired) {
+        Write-LogMessage "No Explorer restart required" -Level "INFO"
+        return $true
+    }
+    
+    try {
+        Write-LogMessage "Restarting Windows Explorer to apply UI changes..." -Level "INFO"
+        
+        # Stop Explorer process
+        Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        
+        # Start Explorer process
+        Start-Process explorer -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
+        
+        Write-LogMessage "Windows Explorer restarted successfully" -Level "SUCCESS"
+        $script:ExplorerRestartRequired = $false
+        return $true
+    } catch {
+        Write-LogMessage "Could not restart explorer automatically: $_" -Level "WARNING"
+        Write-LogMessage "Please manually restart explorer.exe or log off/on to see UI changes" -Level "INFO"
+        return $false
+    }
+}
+
+function Set-ProtectedRegistryValue {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Path,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$Name,
+        
+        [Parameter(Mandatory=$true)]
+        [object]$Value,
+        
+        [Parameter(Mandatory=$false)]
+        [string]$Type = "DWord",
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$RequireAdmin = $false
+    )
+    
+    # Check admin requirements
+    if ($RequireAdmin -and -not (Test-IsAdministrator)) {
+        Write-LogMessage "Admin privileges required to modify $Path\$Name" -Level "WARNING"
+        return $false
+    }
+    
+    try {
+        # Try PowerShell method first
+        if (-not (Test-Path $Path)) {
+            New-Item -Path $Path -Force | Out-Null
+        }
+        Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force -ErrorAction Stop
+        
+        # Verify the change was successful
+        $verification = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
+        if ($verification -and $verification.$Name -eq $Value) {
+            Write-LogMessage "Successfully set $Path\$Name = $Value via PowerShell" -Level "SUCCESS"
+            return $true
+        } else {
+            throw "Value verification failed after PowerShell set operation"
+        }
+    } catch {
+        Write-LogMessage "PowerShell method failed for $Path\$Name : $_" -Level "WARNING"
+        
+        # Try cmd reg command for protected keys
+        if (Test-IsAdministrator) {
+            try {
+                $regPath = $Path -replace "HKCU:", "HKEY_CURRENT_USER" -replace "HKLM:", "HKEY_LOCAL_MACHINE"
+                $regType = switch ($Type) {
+                    "DWord" { "REG_DWORD" }
+                    "String" { "REG_SZ" }
+                    "Binary" { "REG_BINARY" }
+                    "ExpandString" { "REG_EXPAND_SZ" }
+                    default { "REG_DWORD" }
+                }
+                
+                & cmd /c "reg add `"$regPath`" /v `"$Name`" /t $regType /d `"$Value`" /f" 2>$null
+                
+                # Verify the change
+                $currentValue = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
+                if ($currentValue -and $currentValue.$Name -eq $Value) {
+                    Write-LogMessage "Successfully set $Path\$Name = $Value via cmd reg" -Level "SUCCESS"
+                    return $true
+                } else {
+                    Write-LogMessage "cmd reg command failed to set $Path\$Name" -Level "ERROR"
+                    return $false
+                }
+            } catch {
+                Write-LogMessage "cmd reg method also failed: $_" -Level "ERROR"
+                return $false
+            }
+        } else {
+            Write-LogMessage "Cannot use cmd reg method - not running as Administrator" -Level "WARNING"
+            return $false
+        }
+    }
 }
 
 function Add-RestartRegistryChange {
@@ -419,41 +549,32 @@ function Set-SystemOptimization {
                 Add-RestartRegistryChange -ChangeDescription "Restore classic right-click context menu"
             }
             "taskbar-left" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0 -Type "DWord") {
+                    Add-ExplorerRestartChange -ChangeDescription "Set taskbar alignment to left (classic style)"
                 }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0
-                Add-RestartRegistryChange -ChangeDescription "Set taskbar alignment to left (classic style)"
             }
             "disable-widgets" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
-                }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0
+                $success = $false
                 
-                # Also disable widgets via policies
-                try {
-                    if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh")) {
-                        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Force | Out-Null
-                    }
-                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0
-                    
-                    if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds")) {
-                        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Force | Out-Null
-                    }
-                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0
-                } catch {
-                    Write-LogMessage "Could not disable widgets via policies (may require admin rights): $_" -Level "WARNING"
+                # Disable widgets taskbar button
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -Type "DWord") {
+                    $success = $true
                 }
                 
-                Add-RestartRegistryChange -ChangeDescription "Disable Widgets icon and service"
+                # Also disable widgets via policies (requires admin)
+                if (Test-IsAdministrator) {
+                    Set-ProtectedRegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0 -Type "DWord" -RequireAdmin | Out-Null
+                    Set-ProtectedRegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -Type "DWord" -RequireAdmin | Out-Null
+                }
+                
+                if ($success) {
+                    Add-ExplorerRestartChange -ChangeDescription "Disable Widgets icon and service"
+                }
             }
             "disable-chat" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarMn" -Value 0 -Type "DWord") {
+                    Add-ExplorerRestartChange -ChangeDescription "Disable Chat icon on taskbar"
                 }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarMn" -Value 0
-                Add-RestartRegistryChange -ChangeDescription "Disable Chat icon on taskbar"
             }
             "disable-snap" {
                 if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
@@ -714,44 +835,54 @@ function Set-SystemOptimization {
             
             # Windows 10 specific optimizations
             "hide-taskview" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowTaskViewButton" -Value 0 -Type "DWord") {
+                    Add-ExplorerRestartChange -ChangeDescription "Hide Task View button from taskbar"
                 }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowTaskViewButton" -Value 0
             }
             "hide-cortana-button" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" -Force | Out-Null
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" -Name "ShowCortanaButton" -Value 0 -Type "DWord") {
+                    Add-ExplorerRestartChange -ChangeDescription "Hide Cortana button from taskbar"
                 }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" -Name "ShowCortanaButton" -Value 0
             }
             "configure-searchbox" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Force | Out-Null
-                }
                 # SearchboxTaskbarMode: 0 = Hidden, 1 = Show search icon, 2 = Show search box
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 1
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 1 -Type "DWord") {
+                    Add-ExplorerRestartChange -ChangeDescription "Configure search box to show icon only"
+                }
             }
             "disable-news-interests" {
                 Write-LogMessage "Disabling News and Interests on Windows 10..." -Level "INFO"
                 
-                # Method 1: Disable News and Interests via user preferences  
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Force | Out-Null
-                }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force
+                $success = $false
                 
-                # Method 2: System-wide News and Interests disable
-                try {
-                    if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests")) {
-                        New-Item -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Force | Out-Null
+                # Method 1: Protected registry key (requires admin)
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type "DWord") {
+                    $success = $true
+                    Add-ExplorerRestartChange -ChangeDescription "Disable News and Interests taskbar widget"
+                }
+                
+                # Method 2: Group Policy approach (requires admin)
+                if (Test-IsAdministrator) {
+                    if (Set-ProtectedRegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -Type "DWord" -RequireAdmin) {
+                        $success = $true
                     }
-                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Name "value" -Value 0 -Type DWord -Force
-                } catch {
-                    Write-LogMessage "Could not apply system-wide News and Interests disable: $_" -Level "WARNING"
                 }
                 
-                Write-LogMessage "News and Interests disabled successfully" -Level "INFO"
+                # Method 3: Alternative user registry settings
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "IsFeedsAvailable" -Value 0 -Type "DWord") {
+                    $success = $true
+                }
+                
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarOpenOnHover" -Value 0 -Type "DWord") {
+                    $success = $true
+                }
+                
+                if ($success) {
+                    Write-LogMessage "News and Interests disable operation completed successfully" -Level "SUCCESS"
+                } else {
+                    Write-LogMessage "All News and Interests disable methods failed" -Level "ERROR"
+                    Write-LogMessage "Manual workaround: Right-click taskbar -> News and interests -> Turn off" -Level "INFO"
+                }
             }
             "disable-auto-restart" {
                 if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU")) {
@@ -1405,4 +1536,4 @@ function Configure-Services {
 }
 
 # Export updated functions
-Export-ModuleMember -Function Set-SystemOptimization, Save-RegistryValue, Save-ServiceState, Restore-RegistryValue, Restore-ServiceState, Optimize-System, Remove-Bloatware, Configure-Services, Test-ServiceDependency, Add-RestartRegistryChange
+Export-ModuleMember -Function Set-SystemOptimization, Save-RegistryValue, Save-ServiceState, Restore-RegistryValue, Restore-ServiceState, Optimize-System, Remove-Bloatware, Configure-Services, Test-ServiceDependency, Add-RestartRegistryChange, Test-IsAdministrator, Add-ExplorerRestartChange, Restart-WindowsExplorer, Set-ProtectedRegistryValue
