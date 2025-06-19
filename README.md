@@ -13,10 +13,22 @@ This script provides a graphical interface for automating common Windows setup t
 ## Files Structure
 
 - `Windows-Setup-GUI.ps1` - Main GUI application with tabs for different operations
-- `modules/Installers.psm1` - Application installation and winget management
-- `modules/SystemOptimizations.psm1` - System tweaks, service configuration, and bloatware removal
-- `utils/Logging.psm1` - Centralized logging system with file rotation
-- `utils/RecoveryUtils.psm1` - Recovery and operation state tracking
+- `config/` - Configuration files directory
+  - `apps.json` - Application installation configurations
+  - `bloatware.json` - Bloatware removal configurations
+  - `services.json` - Service management configurations
+  - `tweaks.json` - System tweak configurations
+- `modules/` - PowerShell modules directory
+  - `Installers.psm1` - Application installation and winget management
+  - `SystemOptimizations.psm1` - System tweaks, service configuration, and bloatware removal
+- `utils/` - Utility modules directory
+  - `ConfigLoader.psm1` - Configuration file loading and validation
+  - `JsonUtils.psm1` - JSON handling utilities
+  - `Logging.psm1` - Centralized logging system with file rotation
+  - `ProfileManager.psm1` - User profile management utilities
+  - `RecoveryUtils.psm1` - Recovery and operation state tracking
+  - `WingetUtils.psm1` - Windows Package Manager utilities
+- `logs/` - Log files directory (created during execution)
 
 ## How to Run
 
@@ -32,18 +44,21 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 ## Applications Installed
 
 <details>
-<summary><strong>Development Tools</strong> (10 applications)</summary>
+<summary><strong>Development Tools</strong> (12 applications)</summary>
 
 - **Visual Studio Code** - Code editor with extensions support
 - **Git** - Version control system with Windows integration
-- **Python 3.13** - Programming language with pip and PATH setup
+- **Python** - Programming language with pip and PATH setup
 - **PyCharm Community** - Python IDE by JetBrains
 - **IntelliJ IDEA Community** - Java/Kotlin IDE
 - **WebStorm** - JavaScript/TypeScript IDE
 - **Android Studio** - Android development environment
 - **GitHub Desktop** - Git GUI client
 - **Postman** - API development and testing
-- **Node.js** - JavaScript runtime (Windows 11 only)
+- **Node.js** - JavaScript runtime
+- **Windows Terminal** - Modern command-line interface
+- **Docker Desktop** - Container virtualization platform
+- **Windows Subsystem for Linux** - Linux compatibility layer
 
 </details>
 
@@ -67,12 +82,11 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 </details>
 
 <details>
-<summary><strong>Utilities</strong> (4 applications)</summary>
+<summary><strong>Utilities</strong> (3 applications)</summary>
 
 - **7-Zip** - File compression/extraction
 - **Notepad++** - Advanced text editor
 - **Microsoft PowerToys** - Windows utilities (Windows 11 only)
-- **Windows Terminal** - Modern command-line interface
 
 </details>
 
@@ -129,7 +143,7 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Removes niche app, saves storage, declutters Start menu
 - ⚠️ Cons: Can't prepare models for 3D printing without third-party alternatives
 
-**Your Phone**
+**Phone Link (Your Phone)**
 - ✅ Pros: Stops phone data syncing, improves privacy, reduces background processes
 - ⚠️ Cons: Lose convenient phone-PC integration, no SMS/call handling on PC
 
@@ -204,13 +218,26 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 </details>
 
 <details>
+<summary><strong>Legacy Browsers</strong></summary>
+
+**Internet Explorer** *(Windows 10 only, Optional)*
+- ✅ Pros: Removes outdated browser, improves security, forces modern alternatives
+- ⚠️ Cons: CRITICAL: May break legacy applications, internal websites, and Edge's IE Mode. Can cause compatibility issues with enterprise systems.
+
+</details>
+
+<details>
 <summary><strong>Entertainment & Gaming</strong></summary>
 
 **Xbox Gaming App**
 - ✅ Pros: Disables Xbox integration, improves gaming performance, reduces background processes
 - ⚠️ Cons: Lose Xbox Game Pass access, no Xbox Live integration, can't record gameplay
 
-**Xbox Game Overlay, Gaming Overlay, Identity Provider, Speech to Text, TCUI**
+**Xbox Game Bar**
+- ✅ Pros: Eliminates gaming interruptions, improves performance, reduces RAM usage
+- ⚠️ Cons: No in-game screenshots, recordings, or performance monitoring
+
+**Xbox Gaming Overlay, Identity Provider, Speech to Text, TCUI**
 - ✅ Pros: Eliminates gaming interruptions, improves performance, reduces RAM usage
 - ⚠️ Cons: No in-game Xbox features, achievements, or social gaming capabilities
 
@@ -273,7 +300,7 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 <details>
 <summary><strong>Performance & Storage</strong></summary>
 
-**Superfetch/SysMain**
+**SysMain (Superfetch)**
 - ✅ Pros: Significant performance improvement on SSDs, reduces disk usage, faster boot times, less RAM consumption
 - ⚠️ Cons: Slower first-time app launches, reduced performance on HDDs, longer program loading on older systems
 
@@ -298,7 +325,7 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Major security improvement, prevents remote registry access, reduces attack surface
 - ⚠️ Cons: Breaks some enterprise management tools, remote administration more difficult
 
-**Remote Access (RemoteAccess)**
+**Remote Access Auto Connection Manager**
 - ✅ Pros: Enhanced security, prevents VPN vulnerabilities, reduces background processes
 - ⚠️ Cons: Built-in VPN functionality disabled, may break some networking features
 
@@ -323,7 +350,7 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Stops automatic map downloads, saves bandwidth, improves privacy
 - ⚠️ Cons: No offline maps, maps apps may load slower
 
-**Printer Extensions and Notifications (PrintNotify)**
+**Print Spooler Extensions and Notifications (PrintNotify)**
 - ✅ Pros: Reduces printer-related background activity, fewer notifications
 - ⚠️ Cons: Less detailed printer status information, some printer features may not work
 
@@ -364,6 +391,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Full system visibility, easier troubleshooting, access to configuration files
 - ⚠️ Cons: Can accidentally delete system files, more cluttered view, may overwhelm beginners
 
+**Show system files** *(Optional)*
+- ✅ Pros: Complete system transparency, advanced troubleshooting capabilities, access to all system files
+- ⚠️ Cons: High risk of accidental system damage, very cluttered view, advanced users only
+
 **Disable quick access** *(Optional)*
 - ✅ Pros: Improved privacy, prevents recent file tracking, cleaner File Explorer
 - ⚠️ Cons: Less convenient access to frequently used folders, need to navigate manually
@@ -397,6 +428,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Significant performance improvement, better battery life, reduced resource usage
 - ⚠️ Cons: Apps won't update in background, no live tiles, delayed notifications
 
+**Disable advertising ID**
+- ✅ Pros: Major privacy improvement, prevents personalized ad tracking, reduces data collection
+- ⚠️ Cons: Less relevant ads in apps and websites that use Microsoft advertising
+
 </details>
 
 <details>
@@ -425,6 +460,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 **Configure Start menu layout** *(Optional)*
 - ✅ Pros: Simplified Start menu, removes recommendations, cleaner appearance
 - ⚠️ Cons: Less personalized experience, fewer quick access options
+
+**Disable search highlights**
+- ✅ Pros: Cleaner search interface, prevents distracting content, improved focus
+- ⚠️ Cons: No dynamic search suggestions, less contextual search assistance
 
 </details>
 
@@ -464,6 +503,10 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 - ✅ Pros: Quieter boot process, professional environment friendly, faster perceived boot
 - ⚠️ Cons: No audio confirmation of successful boot, may miss audio hardware issues
 
+**Disable lock screen** *(Optional)*
+- ✅ Pros: Faster login process, skips unnecessary screen, direct access to login
+- ⚠️ Cons: No lock screen widgets, reduced security notifications, less visual appeal
+
 </details>
 
 <details>
@@ -476,6 +519,14 @@ PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
 **Disable Teams auto-start**
 - ✅ Pros: Faster boot time, saves resources, prevents unwanted Teams launches
 - ⚠️ Cons: Need to manually start Teams for meetings, may miss notifications initially
+
+**Disable Windows Update automatic restart**
+- ✅ Pros: Prevents interruption during work, user controls restart timing, no data loss
+- ⚠️ Cons: Updates may be delayed, security patches not applied immediately
+
+**Disable fast startup** *(Optional)*
+- ✅ Pros: More reliable power cycles, better for troubleshooting, complete shutdown
+- ⚠️ Cons: Slightly slower boot times, longer wait for full system startup
 
 </details>
 

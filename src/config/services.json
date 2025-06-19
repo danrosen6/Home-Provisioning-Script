@@ -1,0 +1,187 @@
+{
+  "Telemetry & Privacy": [
+    {
+      "Name": "Connected User Experiences and Telemetry",
+      "Key": "diagtrack",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "DiagTrack",
+      "Description": "Collects diagnostic and usage data for Microsoft. Major privacy improvement when disabled."
+    },
+    {
+      "Name": "WAP Push Message Routing",
+      "Key": "dmwappushsvc",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "dmwappushservice",
+      "AlternateNames": ["dmwappushsvc"],
+      "Description": "Routes carrier messages. Safe to disable unless using enterprise MDM management."
+    },
+    {
+      "Name": "Windows Insider Service",
+      "Key": "wisvc",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "wisvc",
+      "Description": "Manages Windows Insider Program enrollment. Safe to disable unless participating in beta testing."
+    }
+  ],
+  "Performance & Storage": [
+    {
+      "Name": "SysMain (Superfetch)",
+      "Key": "sysmain",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "SysMain",
+      "FormerName": "Superfetch",
+      "Description": "Preloads frequently used applications. Significant performance improvement on SSDs when disabled. May reduce performance on HDDs.",
+      "Warning": "WARNING: Disabling SysMain may reduce performance on traditional hard drives (HDDs). Only recommended for SSD users."
+    },
+    {
+      "Name": "Windows Search",
+      "Key": "wsearch",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "WSearch",
+      "Description": "Indexes files for search. Major performance boost when disabled but breaks Start menu search functionality.",
+      "Warning": "CRITICAL: Disabling Windows Search will completely break Start menu search functionality and Windows Explorer search. This significantly impacts system usability."
+    },
+    {
+      "Name": "Offline Files",
+      "Key": "cscservice",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "CscService",
+      "Description": "Synchronizes network files for offline access. Safe to disable for most users."
+    }
+  ],
+  "Network & Media": [
+    {
+      "Name": "Windows Media Player Network Sharing",
+      "Key": "wmpnetworksvc",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "WMPNetworkSvc",
+      "Description": "Shares media libraries over network. Security improvement when disabled."
+    },
+    {
+      "Name": "Remote Registry",
+      "Key": "remoteregistry",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "RemoteRegistry",
+      "Description": "Allows remote registry access. Major security improvement when disabled.",
+      "Warning": "WARNING: Disabling Remote Registry may break enterprise management tools and remote administration capabilities in business environments."
+    },
+    {
+      "Name": "Remote Access Auto Connection Manager",
+      "Key": "remoteaccess",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "RasAuto",
+      "Description": "Creates connections to remote networks. Enhanced security when disabled."
+    },
+    {
+      "Name": "Fax Service",
+      "Key": "fax",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "Fax",
+      "Description": "Sends and receives faxes. Obsolete functionality safe to disable."
+    }
+  ],
+  "System & Interface": [
+    {
+      "Name": "Program Compatibility Assistant",
+      "Key": "pcasvc",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "PcaSvc",
+      "Description": "Provides compatibility warnings. Reduces background scanning when disabled."
+    },
+    {
+      "Name": "Parental Controls",
+      "Key": "wpcmonsvc",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "WpcMonSvc",
+      "Description": "Monitors parental control settings. Safe to disable if not using family features."
+    },
+    {
+      "Name": "Downloaded Maps Manager",
+      "Key": "mapsbroker",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "MapsBroker",
+      "Description": "Downloads and updates map data. Improves privacy when disabled."
+    },
+    {
+      "Name": "Print Spooler Extensions and Notifications",
+      "Key": "printnotify",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "PrintNotify",
+      "Description": "Provides printer status notifications. Reduces background activity when disabled."
+    },
+    {
+      "Name": "Retail Demo Service",
+      "Key": "retaildemo",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "ServiceName": "RetailDemo",
+      "Description": "Provides retail demonstration features. Safe to disable for all users."
+    },
+    {
+      "Name": "Geolocation Service",
+      "Key": "lfsvc",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "ServiceName": "lfsvc",
+      "Description": "Provides location services to applications. Major privacy improvement when disabled.",
+      "Warning": "WARNING: Disabling Geolocation Service will break location-based features in all applications, including Maps, Weather, and many third-party apps."
+    },
+    {
+      "Name": "Touch Keyboard and Handwriting Panel",
+      "Key": "tabletinputservice",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "ServiceName": "TabletInputService",
+      "Description": "Provides touch keyboard and handwriting recognition. Safe to disable on non-touch devices."
+    },
+    {
+      "Name": "HomeGroup Provider",
+      "Key": "homegrpservice",
+      "Default": true,
+      "Win10": true,
+      "Win11": false,
+      "ServiceName": "HomeGroupProvider",
+      "Description": "Provides HomeGroup networking. Deprecated feature removed in Windows 11."
+    },
+    {
+      "Name": "Microsoft Wallet Service",
+      "Key": "walletservice",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "ServiceName": "WalletService",
+      "Description": "Manages payment and credential information. Improves privacy when disabled."
+    }
+  ]
+}

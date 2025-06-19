@@ -1,0 +1,473 @@
+{
+  "Development": [
+    {
+      "Name": "Visual Studio Code",
+      "Key": "vscode",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Microsoft.VisualStudioCode",
+      "DirectDownload": {
+        "Url": "https://code.visualstudio.com/download",
+        "UrlType": "redirect-page",
+        "FallbackUrl": "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user",
+        "Extension": ".exe",
+        "Arguments": "/VERYSILENT /NORESTART /MERGETASKS=!runcode",
+        "VerificationPaths": [
+          "%ProgramFiles%\\Microsoft VS Code\\Code.exe",
+          "%LocalAppData%\\Programs\\Microsoft VS Code\\Code.exe",
+          "%ProgramFiles(x86)%\\Microsoft VS Code\\Code.exe"
+        ]
+      }
+    },
+    {
+      "Name": "Git",
+      "Key": "git",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Git.Git",
+      "DirectDownload": {
+        "Url": "https://api.github.com/repos/git-for-windows/git/releases/latest",
+        "UrlType": "github-asset",
+        "AssetPattern": "Git-*-64-bit.exe",
+        "FallbackUrl": "https://github.com/git-for-windows/git/releases/download/v2.49.0.windows.1/Git-2.49.0-64-bit.exe",
+        "Extension": ".exe",
+        "Arguments": "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS=\"icons,ext\\reg\\shellhere,assoc,assoc_sh\"",
+        "VerificationPaths": [
+          "%ProgramFiles%\\Git\\cmd\\git.exe",
+          "%ProgramFiles(x86)%\\Git\\cmd\\git.exe"
+        ],
+        "PostInstall": {
+          "EnvironmentVariables": [
+            {"Name": "GIT_SSH", "Value": "%ProgramFiles%\\Git\\usr\\bin\\ssh.exe", "Target": "User"}
+          ]
+        }
+      }
+    },
+    {
+      "Name": "Python",
+      "Key": "python",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Python.Python.3",
+      "DirectDownload": {
+        "Url": "https://www.python.org/downloads/windows/",
+        "UrlType": "dynamic-python",
+        "FallbackUrl": "https://www.python.org/ftp/python/3.13.1/python-3.13.1-amd64.exe",
+        "Extension": ".exe",
+        "Arguments": "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0 Include_pip=1 Include_tcltk=1 Include_dev=1 Include_launcher=1 CompileAll=1 AssociateFiles=1",
+        "VerificationPaths": [
+          "%ProgramFiles%\\Python312\\python.exe",
+          "%ProgramFiles%\\Python313\\python.exe",
+          "%ProgramFiles%\\Python314\\python.exe",
+          "%LocalAppData%\\Programs\\Python\\Python312\\python.exe",
+          "%LocalAppData%\\Programs\\Python\\Python313\\python.exe",
+          "%LocalAppData%\\Microsoft\\WindowsApps\\python.exe"
+        ],
+        "CommandCheck": "python --version",
+        "PostInstall": {
+          "Commands": [
+            "python -m pip install --upgrade pip",
+            "python -m pip install virtualenv",
+            "python -m pip install pipenv",
+            "python -m pip install wheel",
+            "python -m pip install setuptools --upgrade"
+          ],
+          "EnvironmentVariables": [
+            {"Name": "PYTHONUNBUFFERED", "Value": "1", "Target": "User"},
+            {"Name": "PIP_DISABLE_PIP_VERSION_CHECK", "Value": "1", "Target": "User"},
+            {"Name": "PYTHONDONTWRITEBYTECODE", "Value": "0", "Target": "User"},
+            {"Name": "PIP_CACHE_DIR", "Value": "%USERPROFILE%\\.pip\\cache", "Target": "User"}
+          ],
+          "Message": "Python installed successfully with complete development environment. Includes: latest pip, virtualenv, pipenv, wheel, and setuptools. Environment variables configured for optimal development experience."
+        }
+      }
+    },
+    {
+      "Name": "PyCharm Community",
+      "Key": "pycharm",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "JetBrains.PyCharm.Community",
+      "DirectDownload": {
+        "Url": "https://data.services.jetbrains.com/products/releases?code=PCC&latest=true&type=release",
+        "UrlType": "jetbrains-api",
+        "FallbackUrl": "https://download.jetbrains.com/python/pycharm-community-latest.exe",
+        "Extension": ".exe",
+        "Arguments": "/S /CONFIG=%TEMP%\\silent.config",
+        "VerificationPaths": [
+          "%ProgramFiles%\\JetBrains\\PyCharm Community Edition*\\bin\\pycharm64.exe",
+          "%ProgramFiles(x86)%\\JetBrains\\PyCharm Community Edition*\\bin\\pycharm64.exe",
+          "%ProgramFiles%\\JetBrains\\PyCharm Community Edition*\\bin\\pycharm.exe",
+          "%LocalAppData%\\JetBrains\\Toolbox\\apps\\PyCharm-C\\*\\bin\\pycharm64.exe"
+        ]
+      }
+    },
+    {
+      "Name": "IntelliJ IDEA Community",
+      "Key": "intellij",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "JetBrains.IntelliJIDEA.Community",
+      "DirectDownload": {
+        "Url": "https://data.services.jetbrains.com/products/releases?code=IIC&latest=true&type=release",
+        "UrlType": "jetbrains-api",
+        "FallbackUrl": "https://download.jetbrains.com/idea/ideaIC-2024.3.1.1.exe",
+        "Extension": ".exe",
+        "Arguments": "/S /CONFIG=%TEMP%\\IntelliJ_silent_config.config",
+        "VerificationPaths": [
+          "%ProgramFiles%\\JetBrains\\IntelliJ IDEA Community Edition*\\bin\\idea64.exe",
+          "%ProgramFiles(x86)%\\JetBrains\\IntelliJ IDEA Community Edition*\\bin\\idea64.exe",
+          "%LocalAppData%\\JetBrains\\Toolbox\\apps\\IDEA-C\\*\\bin\\idea64.exe"
+        ]
+      }
+    },
+    {
+      "Name": "WebStorm",
+      "Key": "webstorm",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "JetBrains.WebStorm",
+      "DirectDownload": {
+        "Url": "https://data.services.jetbrains.com/products/releases?code=WS&latest=true&type=release",
+        "UrlType": "jetbrains-api",
+        "FallbackUrl": "https://download.jetbrains.com/webstorm/WebStorm-2024.3.1.1.exe",
+        "Extension": ".exe",
+        "Arguments": "/S /CONFIG=%TEMP%\\WebStorm_silent_config.config",
+        "VerificationPaths": [
+          "%ProgramFiles%\\JetBrains\\WebStorm*\\bin\\webstorm64.exe",
+          "%ProgramFiles(x86)%\\JetBrains\\WebStorm*\\bin\\webstorm64.exe",
+          "%LocalAppData%\\JetBrains\\Toolbox\\apps\\WebStorm\\*\\bin\\webstorm64.exe"
+        ]
+      }
+    },
+    {
+      "Name": "Android Studio",
+      "Key": "androidstudio",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Google.AndroidStudio",
+      "DirectDownload": {
+        "Url": "https://redirector.gvt1.com/edgedl/android/studio/install/2024.2.1.12/android-studio-2024.2.1.12-windows.exe",
+        "Extension": ".exe",
+        "Arguments": "/S /CONFIG=%TEMP%\\AndroidStudio_silent_config.config",
+        "VerificationPaths": [
+          "%ProgramFiles%\\Android\\Android Studio\\bin\\studio64.exe",
+          "%LocalAppData%\\Google\\AndroidStudio*\\bin\\studio64.exe"
+        ]
+      }
+    },
+    {
+      "Name": "GitHub Desktop",
+      "Key": "github",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "GitHub.GitHubDesktop",
+      "DirectDownload": {
+        "Url": "https://desktop.github.com/releases/latest/GitHubDesktopSetup.exe",
+        "Extension": ".exe",
+        "Arguments": "/silent",
+        "VerificationPaths": [
+          "%LocalAppData%\\GitHubDesktop\\GitHubDesktop.exe"
+        ]
+      }
+    },
+    {
+      "Name": "Postman",
+      "Key": "postman",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Postman.Postman",
+      "DirectDownload": {
+        "Url": "https://dl.pstmn.io/download/latest/win64",
+        "Extension": ".exe",
+        "Arguments": "/SILENT",
+        "VerificationPaths": [
+          "%LocalAppData%\\Postman\\Postman.exe",
+          "%ProgramFiles%\\Postman\\Postman.exe",
+          "%ProgramFiles(x86)%\\Postman\\Postman.exe"
+        ]
+      }
+    },
+    {
+      "Name": "Node.js",
+      "Key": "nodejs",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "OpenJS.NodeJS",
+      "DirectDownload": {
+        "Url": "https://nodejs.org/dist/latest/node-latest-x64.msi",
+        "Extension": ".msi",
+        "Arguments": ["/quiet", "/norestart"],
+        "VerificationPaths": [
+          "%ProgramFiles%\\nodejs\\node.exe",
+          "%ProgramFiles(x86)%\\nodejs\\node.exe"
+        ]
+      }
+    },
+    {
+      "Name": "Windows Terminal",
+      "Key": "terminal",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Microsoft.WindowsTerminal",
+      "DirectDownload": {
+        "Url": "https://api.github.com/repos/microsoft/terminal/releases/latest",
+        "UrlType": "github-asset",
+        "AssetPattern": "Microsoft.WindowsTerminal_*_8wekyb3d8bbwe.msixbundle",
+        "FallbackUrl": "https://github.com/microsoft/terminal/releases/latest/download/Microsoft.WindowsTerminal_Win10.msixbundle",
+        "Extension": ".msixbundle",
+        "Arguments": "",
+        "VerificationPaths": [
+          "%LocalAppData%\\Microsoft\\WindowsApps\\wt.exe"
+        ]
+      }
+    },
+    {
+      "Name": "Docker Desktop",
+      "Key": "docker",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Docker.DockerDesktop",
+      "DirectDownload": {
+        "Url": "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe",
+        "Extension": ".exe",
+        "Arguments": "install --quiet",
+        "VerificationPaths": [
+          "%ProgramFiles%\\Docker\\Docker\\Docker Desktop.exe"
+        ],
+        "RequiredFeatures": ["Hyper-V", "WSL2"],
+        "PostInstall": {
+          "RestartRequired": true,
+          "Message": "Docker Desktop requires system restart to complete installation"
+        }
+      }
+    },
+    {
+      "Name": "Windows Subsystem for Linux",
+      "Key": "wsl",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Microsoft.WSL",
+      "DirectDownload": {
+        "Url": "powershell-command",
+        "UrlType": "feature-install",
+        "Commands": [
+          "dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart",
+          "dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart"
+        ],
+        "PostInstall": {
+          "RestartRequired": true,
+          "AdditionalSteps": [
+            "Download WSL2 kernel update",
+            "Set WSL2 as default version",
+            "Install Ubuntu from Microsoft Store"
+          ]
+        }
+      }
+    }
+  ],
+  "Browsers": [
+    {
+      "Name": "Google Chrome",
+      "Key": "chrome",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Google.Chrome",
+      "DirectDownload": {
+        "Url": "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi",
+        "Extension": ".msi",
+        "Arguments": ["/quiet", "/norestart"],
+        "VerificationPaths": [
+          "%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe",
+          "%ProgramFiles(x86)%\\Google\\Chrome\\Application\\chrome.exe"
+        ]
+      }
+    },
+    {
+      "Name": "Mozilla Firefox",
+      "Key": "firefox",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Mozilla.Firefox",
+      "DirectDownload": {
+        "Url": "https://download.mozilla.org/?product=firefox-latest-ssl&os=win64&lang=en-US",
+        "Extension": ".exe",
+        "Arguments": "-ms",
+        "VerificationPaths": [
+          "%ProgramFiles%\\Mozilla Firefox\\firefox.exe",
+          "%ProgramFiles(x86)%\\Mozilla Firefox\\firefox.exe"
+        ]
+      }
+    },
+    {
+      "Name": "Brave Browser",
+      "Key": "brave",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Brave.Brave",
+      "DirectDownload": {
+        "Url": "https://referrals.brave.com/latest/BraveBrowserSetup.exe",
+        "Extension": ".exe",
+        "Arguments": "/S",
+        "VerificationPaths": [
+          "%ProgramFiles%\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+          "%ProgramFiles(x86)%\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"
+        ]
+      }
+    }
+  ],
+  "Media & Communication": [
+    {
+      "Name": "Spotify",
+      "Key": "spotify",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Spotify.Spotify",
+      "RequiresUserContext": true,
+      "Description": "Music streaming service (requires user context installation)",
+      "DirectDownload": {
+        "Url": "https://download.scdn.co/SpotifySetup.exe",
+        "Extension": ".exe",
+        "Arguments": "/silent",
+        "VerificationPaths": [
+          "%APPDATA%\\Spotify\\Spotify.exe",
+          "%ProgramFiles%\\Spotify\\Spotify.exe",
+          "%ProgramFiles(x86)%\\Spotify\\Spotify.exe"
+        ],
+        "InstallNotes": "This app cannot be installed with administrator privileges and will be installed in user context."
+      }
+    },
+    {
+      "Name": "Discord",
+      "Key": "discord",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Discord.Discord",
+      "RequiresUserContext": true,
+      "Description": "Voice and text communication for gamers (requires user context installation)",
+      "DirectDownload": {
+        "Url": "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x86",
+        "Extension": ".exe",
+        "Arguments": "--silent",
+        "VerificationPaths": [
+          "%LocalAppData%\\Discord\\Update.exe",
+          "%LocalAppData%\\Discord\\app-*\\Discord.exe",
+          "%ProgramFiles%\\Discord\\Discord.exe",
+          "%ProgramFiles(x86)%\\Discord\\Discord.exe"
+        ],
+        "InstallNotes": "This app may require user context installation if winget fails with privilege errors."
+      }
+    },
+    {
+      "Name": "Steam",
+      "Key": "steam",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Valve.Steam",
+      "DirectDownload": {
+        "Url": "https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe",
+        "Extension": ".exe",
+        "Arguments": "/S",
+        "VerificationPaths": [
+          "%ProgramFiles(x86)%\\Steam\\Steam.exe"
+        ]
+      }
+    },
+    {
+      "Name": "VLC Media Player",
+      "Key": "vlc",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "VideoLAN.VLC",
+      "DirectDownload": {
+        "Url": "https://www.videolan.org/vlc/download-windows.html",
+        "UrlType": "dynamic-vlc",
+        "FallbackUrl": "https://download.videolan.org/pub/videolan/vlc/last/win64/vlc-latest-win64.exe",
+        "Extension": ".exe",
+        "Arguments": "/S",
+        "VerificationPaths": [
+          "%ProgramFiles%\\VideoLAN\\VLC\\vlc.exe",
+          "%ProgramFiles(x86)%\\VideoLAN\\VLC\\vlc.exe"
+        ]
+      }
+    }
+  ],
+  "Utilities": [
+    {
+      "Name": "7-Zip",
+      "Key": "7zip",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "7zip.7zip",
+      "DirectDownload": {
+        "Url": "https://www.7-zip.org/download.html",
+        "UrlType": "dynamic-7zip",
+        "FallbackUrl": "https://www.7-zip.org/a/7z2409-x64.exe",
+        "Extension": ".exe",
+        "Arguments": "/S",
+        "VerificationPaths": [
+          "%ProgramFiles%\\7-Zip\\7z.exe",
+          "%ProgramFiles(x86)%\\7-Zip\\7z.exe"
+        ]
+      }
+    },
+    {
+      "Name": "Notepad++",
+      "Key": "notepad",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "WingetId": "Notepad++.Notepad++",
+      "DirectDownload": {
+        "Url": "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/latest",
+        "UrlType": "github-asset",
+        "AssetPattern": "*Installer.x64.exe",
+        "FallbackUrl": "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.1/npp.8.8.1.Installer.x64.exe",
+        "Extension": ".exe",
+        "Arguments": "/S",
+        "VerificationPaths": [
+          "%ProgramFiles%\\Notepad++\\notepad++.exe",
+          "%ProgramFiles(x86)%\\Notepad++\\notepad++.exe"
+        ]
+      }
+    },
+    {
+      "Name": "Microsoft PowerToys",
+      "Key": "powertoys",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "WingetId": "Microsoft.PowerToys",
+      "DirectDownload": {
+        "Url": "https://github.com/microsoft/PowerToys/releases/latest/download/PowerToysSetup-x64.exe",
+        "Extension": ".exe",
+        "Arguments": "-silent",
+        "VerificationPaths": [
+          "%LocalAppData%\\Programs\\PowerToys\\PowerToys.exe",
+          "%ProgramFiles%\\PowerToys\\PowerToys.exe"
+        ]
+      }
+    }
+  ]
+}

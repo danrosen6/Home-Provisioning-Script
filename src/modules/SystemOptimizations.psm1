@@ -5,6 +5,8 @@ $script:RegistryBackups = @{}
 $script:ServiceBackups = @{}
 $script:RegistryChangesRequiringRestart = @()
 $script:RestartRequired = $false
+$script:ExplorerRestartRequired = $false
+$script:IsAdministrator = $null
 
 # Timeout-based MessageBox function to prevent script hanging
 function Show-TimeoutMessageBox {
@@ -115,6 +117,134 @@ if (Test-Path $LoggingModule) {
         Write-Host $logMessage -ForegroundColor $color
     }
     Write-Warning "Centralized logging module not found, using fallback logging"
+}
+
+function Test-IsAdministrator {
+    if ($script:IsAdministrator -eq $null) {
+        $script:IsAdministrator = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+    return $script:IsAdministrator
+}
+
+function Add-ExplorerRestartChange {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$ChangeDescription
+    )
+    
+    # Mark that Explorer restart is required
+    $script:ExplorerRestartRequired = $true
+    
+    # Log the change
+    Write-LogMessage "Added Explorer restart change: $ChangeDescription" -Level "INFO"
+}
+
+function Restart-WindowsExplorer {
+    param (
+        [Parameter(Mandatory=$false)]
+        [switch]$Force = $false
+    )
+    
+    if (-not $Force -and -not $script:ExplorerRestartRequired) {
+        Write-LogMessage "No Explorer restart required" -Level "INFO"
+        return $true
+    }
+    
+    try {
+        Write-LogMessage "Restarting Windows Explorer to apply UI changes..." -Level "INFO"
+        
+        # Stop Explorer process
+        Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        
+        # Start Explorer process
+        Start-Process explorer -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
+        
+        Write-LogMessage "Windows Explorer restarted successfully" -Level "SUCCESS"
+        $script:ExplorerRestartRequired = $false
+        return $true
+    } catch {
+        Write-LogMessage "Could not restart explorer automatically: $_" -Level "WARNING"
+        Write-LogMessage "Please manually restart explorer.exe or log off/on to see UI changes" -Level "INFO"
+        return $false
+    }
+}
+
+function Set-ProtectedRegistryValue {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Path,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$Name,
+        
+        [Parameter(Mandatory=$true)]
+        [object]$Value,
+        
+        [Parameter(Mandatory=$false)]
+        [string]$Type = "DWord",
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$RequireAdmin = $false
+    )
+    
+    # Check admin requirements
+    if ($RequireAdmin -and -not (Test-IsAdministrator)) {
+        Write-LogMessage "Admin privileges required to modify $Path\$Name" -Level "WARNING"
+        return $false
+    }
+    
+    try {
+        # Try PowerShell method first
+        if (-not (Test-Path $Path)) {
+            New-Item -Path $Path -Force | Out-Null
+        }
+        Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force -ErrorAction Stop
+        
+        # Verify the change was successful
+        $verification = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
+        if ($verification -and $verification.$Name -eq $Value) {
+            Write-LogMessage "Successfully set $Path\$Name = $Value via PowerShell" -Level "SUCCESS"
+            return $true
+        } else {
+            throw "Value verification failed after PowerShell set operation"
+        }
+    } catch {
+        Write-LogMessage "PowerShell method failed for $Path\$Name : $_" -Level "WARNING"
+        
+        # Try cmd reg command for protected keys
+        if (Test-IsAdministrator) {
+            try {
+                $regPath = $Path -replace "HKCU:", "HKEY_CURRENT_USER" -replace "HKLM:", "HKEY_LOCAL_MACHINE"
+                $regType = switch ($Type) {
+                    "DWord" { "REG_DWORD" }
+                    "String" { "REG_SZ" }
+                    "Binary" { "REG_BINARY" }
+                    "ExpandString" { "REG_EXPAND_SZ" }
+                    default { "REG_DWORD" }
+                }
+                
+                & cmd /c "reg add `"$regPath`" /v `"$Name`" /t $regType /d `"$Value`" /f" 2>$null
+                
+                # Verify the change
+                $currentValue = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
+                if ($currentValue -and $currentValue.$Name -eq $Value) {
+                    Write-LogMessage "Successfully set $Path\$Name = $Value via cmd reg" -Level "SUCCESS"
+                    return $true
+                } else {
+                    Write-LogMessage "cmd reg command failed to set $Path\$Name" -Level "ERROR"
+                    return $false
+                }
+            } catch {
+                Write-LogMessage "cmd reg method also failed: $_" -Level "ERROR"
+                return $false
+            }
+        } else {
+            Write-LogMessage "Cannot use cmd reg method - not running as Administrator" -Level "WARNING"
+            return $false
+        }
+    }
 }
 
 function Add-RestartRegistryChange {
@@ -307,18 +437,39 @@ function Set-SystemOptimization {
                 Set-Service "DiagTrack" -StartupType Disabled
             }
             "dmwappushsvc" {
+                # Try both service names - primary and alternate
+                $serviceNames = @("dmwappushservice", "dmwappushsvc")
+                $actualServiceName = $null
+                
+                # Find which service name exists
+                foreach ($serviceName in $serviceNames) {
+                    try {
+                        $service = Get-Service -Name $serviceName -ErrorAction Stop
+                        $actualServiceName = $serviceName
+                        Write-LogMessage "Found service with name: $actualServiceName" -Level "INFO"
+                        break
+                    } catch {
+                        # Service not found with this name, try next
+                    }
+                }
+                
+                if (-not $actualServiceName) {
+                    Write-LogMessage "Service dmwappushservice/dmwappushsvc not found on this system" -Level "WARNING"
+                    return $false
+                }
+                
                 # Check dependencies first
-                $dependencyCheck = Test-ServiceDependency -ServiceName "dmwappushservice"
+                $dependencyCheck = Test-ServiceDependency -ServiceName $actualServiceName
                 
                 if ($dependencyCheck.HasDependencies) {
-                    $dependencyMessage = "The following services depend on dmwappushservice:`n"
+                    $dependencyMessage = "The following services depend on $actualServiceName :`n"
                     $dependencyMessage += ($dependencyCheck.DependencyList -join "`n")
-                    $dependencyMessage += "`n`nDisabling dmwappushservice may affect these services. Continue anyway?"
+                    $dependencyMessage += "`n`nDisabling $actualServiceName may affect these services. Continue anyway?"
                     
                     $result = Show-TimeoutMessageBox -Message $dependencyMessage -Title "Service Dependencies Found" -TimeoutSeconds 30 -DefaultResponse "No"
                     
                     if ($result -eq [System.Windows.Forms.DialogResult]::No) {
-                        Write-LogMessage "Skipping dmwappushservice service due to dependencies" -Level "WARNING"
+                        Write-LogMessage "Skipping $actualServiceName service due to dependencies" -Level "WARNING"
                         Save-OperationState -OperationType "SystemOptimization" -ItemKey $OptimizationKey -Status "Skipped" -AdditionalData @{
                             Reason = "User opted to skip due to dependencies"
                             Dependencies = $dependencyCheck.DependencyList -join ", "
@@ -327,9 +478,9 @@ function Set-SystemOptimization {
                     }
                 }
                 
-                Save-ServiceState -ServiceName "dmwappushservice"
-                Stop-Service "dmwappushservice" -Force -ErrorAction SilentlyContinue
-                Set-Service "dmwappushservice" -StartupType Disabled
+                Save-ServiceState -ServiceName $actualServiceName
+                Stop-Service $actualServiceName -Force -ErrorAction SilentlyContinue
+                Set-Service $actualServiceName -StartupType Disabled
             }
             "sysmain" {
                 # Check dependencies first
@@ -398,41 +549,32 @@ function Set-SystemOptimization {
                 Add-RestartRegistryChange -ChangeDescription "Restore classic right-click context menu"
             }
             "taskbar-left" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0 -Type "DWord") {
+                    Add-ExplorerRestartChange -ChangeDescription "Set taskbar alignment to left (classic style)"
                 }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0
-                Add-RestartRegistryChange -ChangeDescription "Set taskbar alignment to left (classic style)"
             }
             "disable-widgets" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
-                }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0
+                $success = $false
                 
-                # Also disable widgets via policies
-                try {
-                    if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh")) {
-                        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Force | Out-Null
-                    }
-                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0
-                    
-                    if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds")) {
-                        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Force | Out-Null
-                    }
-                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0
-                } catch {
-                    Write-LogMessage "Could not disable widgets via policies (may require admin rights): $_" -Level "WARNING"
+                # Disable widgets taskbar button
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -Type "DWord") {
+                    $success = $true
                 }
                 
-                Add-RestartRegistryChange -ChangeDescription "Disable Widgets icon and service"
+                # Also disable widgets via policies (requires admin)
+                if (Test-IsAdministrator) {
+                    Set-ProtectedRegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0 -Type "DWord" -RequireAdmin | Out-Null
+                    Set-ProtectedRegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -Type "DWord" -RequireAdmin | Out-Null
+                }
+                
+                if ($success) {
+                    Add-ExplorerRestartChange -ChangeDescription "Disable Widgets icon and service"
+                }
             }
             "disable-chat" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarMn" -Value 0 -Type "DWord") {
+                    Add-ExplorerRestartChange -ChangeDescription "Disable Chat icon on taskbar"
                 }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarMn" -Value 0
-                Add-RestartRegistryChange -ChangeDescription "Disable Chat icon on taskbar"
             }
             "disable-snap" {
                 if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
@@ -470,6 +612,12 @@ function Set-SystemOptimization {
                 }
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "Hidden" -Value 1
             }
+            "show-system-files" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowSuperHidden" -Value 1 -Type DWord
+            }
             "dev-mode" {
                 if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock")) {
                     New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" -Force | Out-Null
@@ -483,7 +631,7 @@ function Set-SystemOptimization {
                 Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 0
             }
             "disable-onedrive" {
-                Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "OneDrive" -ErrorAction SilentlyContinue
+                Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "OneDriveSetup" -ErrorAction SilentlyContinue
             }
             "disable-tips" {
                 if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager")) {
@@ -506,6 +654,12 @@ function Set-SystemOptimization {
                 }
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Value 1
             }
+            "disable-advertising-id" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name "Enabled" -Value 0 -Type DWord
+            }
             "search-bing" {
                 if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search")) {
                     New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Force | Out-Null
@@ -520,33 +674,24 @@ function Set-SystemOptimization {
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "Start_Layout" -Value 1
             }
             "disable-teams-autostart" {
-                # Disable Teams consumer auto-start
+                # Disable Teams consumer auto-start by removing the registry entry
                 Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "com.squirrel.Teams.Teams" -ErrorAction SilentlyContinue
-                
-                # Also try to disable via registry value approach
-                try {
-                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run")) {
-                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Force | Out-Null
-                    }
-                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "com.squirrel.Teams.Teams" -Value 0 -ErrorAction SilentlyContinue
-                } catch {
-                    # Ignore errors if property doesn't exist
-                }
             }
             "disable-startup-sound" {
-                if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation")) {
-                    New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Force | Out-Null
+                # Disable startup sound as specified in tweaks.json
+                if (-not (Test-Path "HKCU:\AppEvents\EventLabels\WindowsLogon")) {
+                    New-Item -Path "HKCU:\AppEvents\EventLabels\WindowsLogon" -Force | Out-Null
                 }
-                Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Name "DisableStartupSound" -Value 1
+                Set-ItemProperty -Path "HKCU:\AppEvents\EventLabels\WindowsLogon" -Name "ExcludeFromCPL" -Value 1 -Type DWord
                 
-                # Also disable boot animation (Windows 11)
+                # Also try the alternative method for better compatibility
                 try {
-                    if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Control\BootControl")) {
-                        New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\BootControl" -Force | Out-Null
+                    if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation")) {
+                        New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Force | Out-Null
                     }
-                    Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\BootControl" -Name "BootProgressAnimation" -Value 0
+                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Name "DisableStartupSound" -Value 1 -Type DWord
                 } catch {
-                    Write-LogMessage "Could not disable boot animation (requires admin rights): $_" -Level "WARNING"
+                    Write-LogMessage "Could not apply alternative startup sound disable (may require admin rights): $_" -Level "WARNING"
                 }
             }
             # Additional service configurations
@@ -690,44 +835,119 @@ function Set-SystemOptimization {
             
             # Windows 10 specific optimizations
             "hide-taskview" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowTaskViewButton" -Value 0 -Type "DWord") {
+                    Add-ExplorerRestartChange -ChangeDescription "Hide Task View button from taskbar"
                 }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowTaskViewButton" -Value 0
             }
             "hide-cortana-button" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" -Force | Out-Null
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" -Name "ShowCortanaButton" -Value 0 -Type "DWord") {
+                    Add-ExplorerRestartChange -ChangeDescription "Hide Cortana button from taskbar"
                 }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" -Name "ShowCortanaButton" -Value 0
             }
             "configure-searchbox" {
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Force | Out-Null
-                }
                 # SearchboxTaskbarMode: 0 = Hidden, 1 = Show search icon, 2 = Show search box
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 2
+                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 1 -Type "DWord") {
+                    Add-ExplorerRestartChange -ChangeDescription "Configure search box to show icon only"
+                }
             }
             "disable-news-interests" {
                 Write-LogMessage "Disabling News and Interests on Windows 10..." -Level "INFO"
                 
-                # Method 1: Disable News and Interests via user preferences  
-                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds")) {
-                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Force | Out-Null
-                }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force
+                $success = $false
                 
-                # Method 2: System-wide News and Interests disable
-                try {
-                    if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests")) {
-                        New-Item -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Force | Out-Null
+                # Method 1: Direct cmd reg approach (what worked before)
+                if (Test-IsAdministrator) {
+                    try {
+                        Write-LogMessage "Attempting to disable News and Interests via cmd reg..." -Level "INFO"
+                        
+                        # Use the exact method that worked before
+                        $regPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Feeds"
+                        & cmd /c "reg add `"$regPath`" /v ShellFeedsTaskbarViewMode /t REG_DWORD /d 2 /f" 2>$null
+                        
+                        # Verify the change
+                        $currentValue = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarViewMode" -ErrorAction SilentlyContinue
+                        if ($currentValue -and $currentValue.ShellFeedsTaskbarViewMode -eq 2) {
+                            Write-LogMessage "Successfully disabled News and Interests via cmd reg" -Level "SUCCESS"
+                            $success = $true
+                            Add-ExplorerRestartChange -ChangeDescription "Disable News and Interests taskbar widget"
+                        } else {
+                            Write-LogMessage "cmd reg method failed to set ShellFeedsTaskbarViewMode" -Level "WARNING"
+                        }
+                    } catch {
+                        Write-LogMessage "cmd reg method failed: $_" -Level "WARNING"
                     }
-                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Name "value" -Value 0 -Type DWord -Force
-                } catch {
-                    Write-LogMessage "Could not apply system-wide News and Interests disable: $_" -Level "WARNING"
                 }
                 
-                Write-LogMessage "News and Interests disabled successfully" -Level "INFO"
+                # Method 2: Group Policy approach (backup)
+                if (Test-IsAdministrator) {
+                    try {
+                        if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds")) {
+                            New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Force | Out-Null
+                        }
+                        Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -Type DWord -Force
+                        Write-LogMessage "Successfully applied News and Interests group policy disable" -Level "SUCCESS"
+                        $success = $true
+                    } catch {
+                        Write-LogMessage "Group policy method failed: $_" -Level "WARNING"
+                    }
+                }
+                
+                # Method 3: Alternative user registry settings (backup)
+                try {
+                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds")) {
+                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarOpenOnHover" -Value 0 -Type DWord -ErrorAction SilentlyContinue
+                    Write-LogMessage "Applied alternative News and Interests registry settings" -Level "SUCCESS"
+                    $success = $true
+                } catch {
+                    Write-LogMessage "Alternative registry method failed: $_" -Level "WARNING"
+                }
+                
+                # Force restart explorer if any method succeeded
+                if ($success) {
+                    Write-LogMessage "News and Interests disable operation completed successfully" -Level "SUCCESS"
+                    
+                    # Immediate Explorer restart for this critical change
+                    if (Test-IsAdministrator) {
+                        try {
+                            Write-LogMessage "Restarting Windows Explorer immediately to apply News and Interests changes..." -Level "INFO"
+                            Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+                            Start-Sleep -Seconds 2
+                            Start-Process explorer -ErrorAction SilentlyContinue
+                            Write-LogMessage "Explorer restarted successfully" -Level "SUCCESS"
+                        } catch {
+                            Write-LogMessage "Could not restart explorer automatically: $_" -Level "WARNING"
+                        }
+                    }
+                } else {
+                    Write-LogMessage "All News and Interests disable methods failed" -Level "ERROR"
+                    Write-LogMessage "Manual workaround: Right-click taskbar -> News and interests -> Turn off" -Level "INFO"
+                }
+            }
+            "disable-auto-restart" {
+                if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU")) {
+                    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Name "NoAutoRebootWithLoggedOnUsers" -Value 1 -Type DWord
+            }
+            "disable-fast-startup" {
+                if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power")) {
+                    New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Name "HiberbootEnabled" -Value 0 -Type DWord
+            }
+            "disable-lock-screen" {
+                if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization")) {
+                    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name "NoLockScreen" -Value 1 -Type DWord
+            }
+            "disable-search-highlights" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings" -Name "IsDynamicSearchBoxEnabled" -Value 0 -Type DWord
             }
             
             # General interface optimizations
@@ -742,8 +962,9 @@ function Set-SystemOptimization {
                 if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer")) {
                     New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Force | Out-Null
                 }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "ShowFrequent" -Value 0
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "ShowRecent" -Value 0
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "ShowQuickAccess" -Value 0 -Type DWord
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "ShowFrequent" -Value 0 -Type DWord
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "ShowRecent" -Value 0 -Type DWord
             }
             default {
                 Write-LogMessage "Unknown optimization key: ${OptimizationKey}" -Level "WARNING"
@@ -787,6 +1008,27 @@ function Set-SystemOptimization {
                 }
                 "DisableWindowsFirewall" {
                     Restore-RegistryValue -Path "HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile" -Name "EnableFirewall"
+                }
+                "internet-explorer" {
+                    # Re-enable Internet Explorer
+                    try {
+                        Write-LogMessage "Attempting to re-enable Internet Explorer..." -Level "INFO"
+                        Enable-WindowsOptionalFeature -FeatureName Internet-Explorer-Optional-amd64 -Online -NoRestart -ErrorAction Stop
+                        Write-LogMessage "Internet Explorer re-enabled successfully" -Level "SUCCESS"
+                    } catch {
+                        Write-LogMessage "Failed to re-enable Internet Explorer via PowerShell: $_" -Level "WARNING"
+                        # Try DISM as fallback
+                        try {
+                            & dism /online /Enable-Feature /FeatureName:Internet-Explorer-Optional-amd64 /NoRestart /Quiet
+                            if ($LASTEXITCODE -eq 0) {
+                                Write-LogMessage "Internet Explorer re-enabled via DISM" -Level "SUCCESS"
+                            } else {
+                                Write-LogMessage "DISM re-enable also failed" -Level "ERROR"
+                            }
+                        } catch {
+                            Write-LogMessage "Both PowerShell and DISM re-enable methods failed" -Level "ERROR"
+                        }
+                    }
                 }
             }
             Write-LogMessage "Successfully rolled back optimization: ${OptimizationKey}" -Level "INFO"
@@ -866,6 +1108,7 @@ function Remove-Bloatware {
         "whatsapp" = "*.WhatsApp*"
         "amazon-prime" = "*.AmazonPrimeVideo*"
         "skype-app" = "Microsoft.SkypeApp"
+        "internet-explorer" = "Internet-Explorer-Optional-amd64"
     }
     
     Write-LogMessage "Starting bloatware removal..." -Level "INFO"
@@ -1045,6 +1288,66 @@ function Remove-Bloatware {
                     $removedCount++
                 } catch {
                     Write-LogMessage "Failed to apply Widgets/Weather/News removal tweaks: $_" -Level "WARNING"
+                }
+            }
+            
+            # Special handling for Internet Explorer (Windows 10 only)
+            if ($BloatwareKey -eq "internet-explorer") {
+                Write-LogMessage "Applying Internet Explorer disable (Windows Feature)..." -Level "INFO"
+                try {
+                    # Check Windows version - IE should only be handled on Windows 10
+                    $windowsVersion = [System.Environment]::OSVersion.Version
+                    $isWindows10 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -lt 22000
+                    $isWindows11 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -ge 22000
+                    
+                    if ($isWindows11) {
+                        Write-LogMessage "Internet Explorer is not available on Windows 11 - skipping" -Level "WARNING"
+                        Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Skipped" -AdditionalData @{
+                            Reason = "Not available on Windows 11"
+                            WindowsVersion = $windowsVersion.Build
+                        }
+                        return $true
+                    }
+                    
+                    Write-LogMessage "Proceeding with Internet Explorer disable..." -Level "INFO"
+                    
+                    # Method 1: Disable via DISM (most reliable)
+                    Write-LogMessage "Disabling Internet Explorer via DISM..." -Level "INFO"
+                    try {
+                        $dismResult = & dism /online /Disable-Feature /FeatureName:Internet-Explorer-Optional-amd64 /NoRestart /Quiet
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-LogMessage "Successfully disabled Internet Explorer via DISM" -Level "SUCCESS"
+                            $removedCount++
+                        } else {
+                            Write-LogMessage "DISM command failed with exit code: $LASTEXITCODE" -Level "WARNING"
+                            # Fall back to PowerShell method
+                            throw "DISM method failed, trying PowerShell method"
+                        }
+                    } catch {
+                        Write-LogMessage "DISM method failed: $($_). Trying PowerShell method..." -Level "WARNING"
+                        
+                        # Method 2: PowerShell fallback
+                        try {
+                            Write-LogMessage "Disabling Internet Explorer via PowerShell..." -Level "INFO"
+                            Disable-WindowsOptionalFeature -FeatureName Internet-Explorer-Optional-amd64 -Online -NoRestart -ErrorAction Stop
+                            Write-LogMessage "Successfully disabled Internet Explorer via PowerShell" -Level "SUCCESS"
+                            $removedCount++
+                        } catch {
+                            Write-LogMessage "PowerShell method also failed: $_" -Level "ERROR"
+                            throw $_
+                        }
+                    }
+                    
+                    # Add restart requirement
+                    $script:RestartRequired = $true
+                    Add-RestartRegistryChange -ChangeDescription "Disable Internet Explorer 11"
+                    
+                    Write-LogMessage "Internet Explorer has been disabled. System restart required for changes to take effect." -Level "SUCCESS"
+                    Write-LogMessage "WARNING: IE Mode in Microsoft Edge will no longer function." -Level "WARNING"
+                    
+                } catch {
+                    Write-LogMessage "Failed to disable Internet Explorer: $_" -Level "ERROR"
+                    Write-LogMessage "You can manually disable IE through: Control Panel > Programs > Turn Windows features on or off > Uncheck Internet Explorer 11" -Level "INFO"
                 }
             }
             
@@ -1274,4 +1577,4 @@ function Configure-Services {
 }
 
 # Export updated functions
-Export-ModuleMember -Function Set-SystemOptimization, Save-RegistryValue, Save-ServiceState, Restore-RegistryValue, Restore-ServiceState, Optimize-System, Remove-Bloatware, Configure-Services, Test-ServiceDependency, Add-RestartRegistryChange
+Export-ModuleMember -Function Set-SystemOptimization, Save-RegistryValue, Save-ServiceState, Restore-RegistryValue, Restore-ServiceState, Optimize-System, Remove-Bloatware, Configure-Services, Test-ServiceDependency, Add-RestartRegistryChange, Test-IsAdministrator, Add-ExplorerRestartChange, Restart-WindowsExplorer, Set-ProtectedRegistryValue

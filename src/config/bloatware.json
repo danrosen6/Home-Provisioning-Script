@@ -1,0 +1,483 @@
+{
+  "Microsoft Office & Productivity": [
+    {
+      "Name": "Microsoft Office Hub",
+      "Key": "ms-officehub",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.MicrosoftOfficeHub",
+      "Description": "Office application launcher and trial promotions."
+    },
+    {
+      "Name": "Microsoft Teams (Consumer)",
+      "Key": "ms-teams",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "PackageName": "MicrosoftTeams",
+      "Description": "Consumer version of Teams chat application."
+    },
+    {
+      "Name": "OneNote (Store)",
+      "Key": "ms-onenote",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.Office.OneNote",
+      "Description": "Universal Windows Platform version of OneNote.",
+      "Warning": "WARNING: Removing OneNote may affect note synchronization and access to existing notebooks stored in OneDrive."
+    },
+    {
+      "Name": "Microsoft People",
+      "Key": "ms-people",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.People",
+      "Description": "Contact management and syncing application.",
+      "Warning": "WARNING: Removing People app will break contact synchronization with Microsoft services and may cause data sync issues."
+    },
+    {
+      "Name": "Microsoft To-Do",
+      "Key": "ms-todo",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "PackageName": "Microsoft.Todos",
+      "Description": "Task management and list application."
+    }
+  ],
+  "Windows Built-ins": [
+    {
+      "Name": "Microsoft 3D Viewer",
+      "Key": "ms-3dviewer",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.Microsoft3DViewer",
+      "Description": "3D model viewing application."
+    },
+    {
+      "Name": "Mixed Reality Portal",
+      "Key": "ms-mixedreality",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.MixedReality.Portal",
+      "Description": "VR and mixed reality setup portal."
+    },
+    {
+      "Name": "Print 3D",
+      "Key": "win-print3d",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.Print3D",
+      "Description": "3D printing preparation application."
+    },
+    {
+      "Name": "Phone Link (Your Phone)",
+      "Key": "win-yourphone",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.YourPhone",
+      "Description": "Phone integration and syncing application.",
+      "Warning": "WARNING: Removing Phone Link will break Android phone integration, notifications, and cross-device functionality."
+    },
+    {
+      "Name": "Windows Camera",
+      "Key": "win-camera",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.WindowsCamera",
+      "Description": "Built-in camera application."
+    },
+    {
+      "Name": "Mail and Calendar",
+      "Key": "win-mail",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "microsoft.windowscommunicationsapps",
+      "Description": "Built-in email and calendar applications.",
+      "Warning": "WARNING: Removing Mail and Calendar will break default Windows email and calendar synchronization. Existing mail data may become inaccessible."
+    },
+    {
+      "Name": "Windows Sound Recorder",
+      "Key": "win-soundrec",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.WindowsSoundRecorder",
+      "Description": "Basic audio recording application."
+    },
+    {
+      "Name": "Microsoft Wallet",
+      "Key": "ms-wallet",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.Wallet",
+      "Description": "Payment and credential storage application."
+    },
+    {
+      "Name": "Messaging",
+      "Key": "ms-messaging",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.Messaging",
+      "Description": "SMS and messaging application."
+    },
+    {
+      "Name": "OneConnect",
+      "Key": "ms-oneconnect",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.OneConnect",
+      "Description": "Cellular data management application."
+    },
+    {
+      "Name": "ClipChamp",
+      "Key": "ms-clipchamp",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "PackageName": "Clipchamp.Clipchamp",
+      "Description": "Video editing application."
+    },
+    {
+      "Name": "Bing Weather",
+      "Key": "bing-weather",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.BingWeather",
+      "Description": "Weather information and forecasting."
+    },
+    {
+      "Name": "Bing News",
+      "Key": "bing-news",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.BingNews",
+      "Description": "News aggregation and reading application."
+    },
+    {
+      "Name": "Bing Finance",
+      "Key": "bing-finance",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.BingFinance",
+      "Description": "Financial news and stock tracking."
+    },
+    {
+      "Name": "Windows Alarms & Clock",
+      "Key": "win-alarms",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.WindowsAlarms",
+      "Description": "Alarm, timer, and clock application."
+    },
+    {
+      "Name": "Windows Maps",
+      "Key": "win-maps",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.WindowsMaps",
+      "Description": "Built-in mapping and navigation application."
+    },
+    {
+      "Name": "Windows Feedback Hub",
+      "Key": "win-feedback",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.WindowsFeedbackHub",
+      "Description": "System feedback and bug reporting tool."
+    },
+    {
+      "Name": "Get Help",
+      "Key": "win-gethelp",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.GetHelp",
+      "Description": "Built-in help and support application."
+    },
+    {
+      "Name": "Get Started",
+      "Key": "win-getstarted",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.Getstarted",
+      "Description": "Windows introduction and tutorial application."
+    },
+    {
+      "Name": "Microsoft Widgets",
+      "Key": "ms-widgets",
+      "Default": false,
+      "Win10": false,
+      "Win11": true,
+      "PackageName": "MicrosoftWindows.Client.WebExperience",
+      "Description": "News, weather, and information widgets panel."
+    },
+    {
+      "Name": "Microsoft Copilot",
+      "Key": "ms-copilot",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.Copilot",
+      "Description": "AI assistant and chat application."
+    },
+    {
+      "Name": "Skype App",
+      "Key": "skype-app",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.SkypeApp",
+      "Description": "Universal Windows Platform version of Skype."
+    }
+  ],
+  "Entertainment & Gaming": [
+    {
+      "Name": "Xbox Gaming App",
+      "Key": "gaming-app",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.GamingApp",
+      "FormerName": "Microsoft.XboxApp",
+      "Description": "Xbox Game Pass and gaming services application."
+    },
+    {
+      "Name": "Xbox Game Bar",
+      "Key": "xbox-gamebar",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.XboxGameOverlay",
+      "Description": "In-game overlay for screenshots and recording."
+    },
+    {
+      "Name": "Xbox Gaming Overlay",
+      "Key": "xbox-gamingoverlay",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "PackageName": "Microsoft.XboxGamingOverlay",
+      "Description": "Gaming performance overlay and capture tools."
+    },
+    {
+      "Name": "Xbox Identity Provider",
+      "Key": "xbox-identity",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "PackageName": "Microsoft.XboxIdentityProvider",
+      "Description": "Xbox Live authentication services.",
+      "Warning": "CRITICAL: May break Microsoft Store if removed."
+    },
+    {
+      "Name": "Xbox Speech to Text",
+      "Key": "xbox-speech",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "PackageName": "Microsoft.XboxSpeechToTextOverlay",
+      "Description": "Voice recognition for Xbox features.",
+      "Warning": "CRITICAL: Cannot be reinstalled once removed."
+    },
+    {
+      "Name": "Xbox TCUI",
+      "Key": "xbox-tcui",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "PackageName": "Microsoft.Xbox.TCUI",
+      "Description": "Xbox title callable user interface.",
+      "Warning": "CRITICAL: Breaks Microsoft Store and Photos app if removed."
+    },
+    {
+      "Name": "Groove Music",
+      "Key": "zune-music",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.ZuneMusic",
+      "Description": "Music player application (discontinued service)."
+    },
+    {
+      "Name": "Movies & TV",
+      "Key": "zune-video",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.ZuneVideo",
+      "Description": "Video player and Microsoft Store movie purchases."
+    },
+    {
+      "Name": "Solitaire Collection",
+      "Key": "solitaire",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Microsoft.MicrosoftSolitaireCollection",
+      "Description": "Collection of card games with ads."
+    }
+  ],
+  "Third-Party Apps": [
+    {
+      "Name": "Candy Crush Saga",
+      "Key": "candy-crush",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "king.com.CandyCrushSaga",
+      "Description": "Match-three puzzle game with microtransactions."
+    },
+    {
+      "Name": "Candy Crush Soda Saga",
+      "Key": "candy-crush-soda",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "king.com.CandyCrushSodaSaga",
+      "Description": "Sequel to Candy Crush Saga game."
+    },
+    {
+      "Name": "Facebook",
+      "Key": "facebook",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Facebook.Facebook",
+      "Description": "Social media application."
+    },
+    {
+      "Name": "Netflix",
+      "Key": "netflix",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "4DF9E0F8.Netflix",
+      "Description": "Video streaming service application."
+    },
+    {
+      "Name": "Disney+",
+      "Key": "disney",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Disney.37853FC22B2CE",
+      "Description": "Disney streaming service application."
+    },
+    {
+      "Name": "TikTok",
+      "Key": "tiktok",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "TikTok.TikTok",
+      "Description": "Short-form video social media application."
+    },
+    {
+      "Name": "Spotify (Store)",
+      "Key": "spotify-store",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "SpotifyAB.SpotifyMusic",
+      "Description": "Universal Windows Platform version of Spotify."
+    },
+    {
+      "Name": "Twitter",
+      "Key": "twitter",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "9E2F88E3.Twitter",
+      "Description": "Social media application (legacy package)."
+    },
+    {
+      "Name": "LinkedIn",
+      "Key": "linkedin",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "PackageName": "7EE7776C.LinkedInforWindows",
+      "Description": "Professional networking application."
+    },
+    {
+      "Name": "Instagram",
+      "Key": "instagram",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Facebook.Instagram",
+      "Description": "Photo and video sharing application."
+    },
+    {
+      "Name": "WhatsApp",
+      "Key": "whatsapp",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "5319275A.WhatsAppDesktop",
+      "Description": "Messaging application."
+    },
+    {
+      "Name": "Amazon Prime Video",
+      "Key": "amazon-prime",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "AmazonVideo.PrimeVideo",
+      "Description": "Amazon streaming service application."
+    },
+    {
+      "Name": "Hulu",
+      "Key": "hulu",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "HuluLLC.HuluPlus",
+      "Description": "Streaming service application."
+    },
+    {
+      "Name": "PicsArt",
+      "Key": "picsart",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "PicsArt-Inc.PicsArt",
+      "Description": "Photo editing and creative application."
+    }
+  ],
+  "Legacy Browsers": [
+    {
+      "Name": "Internet Explorer 11",
+      "Key": "internet-explorer",
+      "Default": false,
+      "Win10": true,
+      "Win11": false,
+      "PackageName": "Internet-Explorer-Optional-amd64",
+      "Description": "Disable Internet Explorer while preserving IE Mode in Microsoft Edge.",
+      "Warning": "CAUTION: May break legacy applications and IE Mode in Microsoft Edge. Only disable if you don't need IE compatibility.",
+      "Method": "WindowsFeature",
+      "RequiresRestart": true,
+      "Reversible": true
+    }
+  ]
+}

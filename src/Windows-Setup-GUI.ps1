@@ -1,292 +1,270 @@
 #Requires -RunAsAdministrator
 
-# Windows Setup Automation GUI - Fixed Version
-# Clean implementation focused on working tab switching and scrolling
+# Windows Setup Automation GUI - Clean Fixed Version
+# A comprehensive GUI-based tool to automate Windows 10/11 setup
 
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-[System.Windows.Forms.Application]::EnableVisualStyles()
+# Load Windows Forms assemblies
+try {
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+    Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+    Write-Host "Loaded Windows Forms assemblies successfully" -ForegroundColor Green
+} catch {
+    Write-Host "Failed to load Windows Forms assemblies: $_" -ForegroundColor Red
+    exit 1
+}
 
-# Import required modules - Import logging first so other modules can use it
-$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-Import-Module (Join-Path $scriptPath "utils\Logging.psm1") -Force
+try {
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+    Write-Host "Enabled visual styles successfully" -ForegroundColor Green
+} catch {
+    Write-Host "Failed to enable visual styles: $_" -ForegroundColor Red
+}
 
-# Initialize logging immediately after import
-Initialize-Logging
+# Import required modules
+$ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-Import-Module (Join-Path $scriptPath "utils\RecoveryUtils.psm1") -Force
-Import-Module (Join-Path $scriptPath "modules\Installers.psm1") -Force
-Import-Module (Join-Path $scriptPath "modules\SystemOptimizations.psm1") -Force
+# Validate script structure first
+$requiredPaths = @(
+    (Join-Path $ScriptPath "utils"),
+    (Join-Path $ScriptPath "modules"),
+    (Join-Path $ScriptPath "config")
+)
 
-# Helper functions
-function Test-WingetCompatibility {
-    try {
-        $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
-        $osName = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
-        
-        $isCompatible = ([int]$buildNumber -ge 16299)
-        $wingetAvailable = (Get-Command winget -ErrorAction SilentlyContinue) -ne $null
-        
-        # Get Windows version name for better user information
-        $versionName = "Unknown"
-        $buildInt = [int]$buildNumber
-        if ($buildInt -ge 22000) {
-            $versionName = "Windows 11"
-        } elseif ($buildInt -ge 19041) {
-            $versionName = "Windows 10 2004+"
-        } elseif ($buildInt -ge 18363) {
-            $versionName = "Windows 10 1909"
-        } elseif ($buildInt -ge 18362) {
-            $versionName = "Windows 10 1903"
-        } elseif ($buildInt -ge 17763) {
-            $versionName = "Windows 10 1809"
-        } elseif ($buildInt -ge 17134) {
-            $versionName = "Windows 10 1803"
-        } elseif ($buildInt -ge 16299) {
-            $versionName = "Windows 10 1709"
-        } else {
-            $versionName = "Windows 10 (Pre-1709)"
-        }
-        
-        return @{
-            Compatible = $isCompatible
-            Available = $wingetAvailable
-            BuildNumber = $buildNumber
-            OSName = $osName
-            VersionName = $versionName
-            MinimumBuild = 16299
-            MinimumVersion = "Windows 10 1709"
-        }
-    }
-    catch {
-        return @{
-            Compatible = $false
-            Available = $false
-            BuildNumber = "Unknown"
-            OSName = "Unknown"
-            VersionName = "Unknown"
-            MinimumBuild = 16299
-            MinimumVersion = "Windows 10 1709"
-            Error = $_.Exception.Message
-        }
+$requiredModules = @(
+    "utils/Logging.psm1",
+    "utils/ConfigLoader.psm1", 
+    "utils/JsonUtils.psm1",
+    "utils/WingetUtils.psm1",
+    "utils/ProfileManager.psm1",
+    "utils/RecoveryUtils.psm1",
+    "modules/Installers.psm1",
+    "modules/SystemOptimizations.psm1"
+)
+
+# Check directory structure
+foreach ($path in $requiredPaths) {
+    if (-not (Test-Path $path)) {
+        Write-Host "CRITICAL ERROR: Required directory missing: $path" -ForegroundColor Red
+        Write-Host "Please ensure you're running this script from the correct location" -ForegroundColor Yellow
+        Read-Host "Press Enter to exit"
+        exit 1
     }
 }
+
+# Check required modules
+foreach ($module in $requiredModules) {
+    $modulePath = Join-Path $ScriptPath $module
+    if (-not (Test-Path $modulePath)) {
+        Write-Host "CRITICAL ERROR: Required module missing: $modulePath" -ForegroundColor Red
+        Read-Host "Press Enter to exit"
+        exit 1
+    }
+}
+
+try {
+    Import-Module (Join-Path $ScriptPath "utils/Logging.psm1") -Force -ErrorAction Stop
+    Import-Module (Join-Path $ScriptPath "utils/JsonUtils.psm1") -Force -ErrorAction Stop
+    Import-Module (Join-Path $ScriptPath "utils/ConfigLoader.psm1") -Force -ErrorAction Stop
+    Import-Module (Join-Path $ScriptPath "utils/WingetUtils.psm1") -Force -ErrorAction Stop
+    Import-Module (Join-Path $ScriptPath "utils/ProfileManager.psm1") -Force -ErrorAction Stop
+    Import-Module (Join-Path $ScriptPath "utils/RecoveryUtils.psm1") -Force -ErrorAction Stop
+    Import-Module (Join-Path $ScriptPath "modules/Installers.psm1") -Force -ErrorAction Stop
+    Import-Module (Join-Path $ScriptPath "modules/SystemOptimizations.psm1") -Force -ErrorAction Stop
+    Write-Host "All modules loaded successfully" -ForegroundColor Green
+} catch {
+    Write-Host "CRITICAL ERROR: Failed to load required modules: $_" -ForegroundColor Red
+    Write-Host "Module load error details: $($_.Exception.Message)" -ForegroundColor Yellow
+    Read-Host "Press Enter to exit"
+    exit 1
+}
+
+# Initialize logging
+try {
+    Initialize-Logging
+    Write-Host "Logging initialized successfully" -ForegroundColor Green
+} catch {
+    Write-Host "WARNING: Failed to initialize logging: $_" -ForegroundColor Yellow
+}
+
+Write-Host "===========================================================" -ForegroundColor Cyan
+Write-Host "           Windows Setup Automation GUI" -ForegroundColor Green
+Write-Host "===========================================================" -ForegroundColor Cyan
 
 # Global variables
 $script:SelectedApps = @()
 $script:SelectedBloatware = @()
 $script:SelectedServices = @()
 $script:SelectedTweaks = @()
+$script:OperationCancelled = $false
 
-# Checkbox state storage
-$script:CheckboxStates = @{
-    Apps = @{}
-    Bloatware = @{}
-    Services = @{}
-    Tweaks = @{}
+# Warning colors and functions
+$script:WarningColors = @{
+    "CRITICAL" = [System.Drawing.Color]::FromArgb(220, 53, 69)    # Red
+    "WARNING"  = [System.Drawing.Color]::FromArgb(255, 193, 7)    # Orange/Yellow  
+    "CAUTION"  = [System.Drawing.Color]::FromArgb(23, 162, 184)   # Blue
+    "SAFE"     = [System.Drawing.Color]::FromArgb(40, 167, 69)    # Green
+}
+
+$script:WarningLabels = @{
+    "CRITICAL" = "(may break system)"
+    "WARNING"  = "(may affect functionality)"
+    "CAUTION"  = "(compatibility issues)"
+    "SAFE"     = ""
+}
+
+function Get-WarningLevel {
+    param($WarningText)
+    
+    if (-not $WarningText) {
+        return "SAFE"
+    }
+    
+    if ($WarningText -match "^CRITICAL:") {
+        return "CRITICAL"
+    } elseif ($WarningText -match "^WARNING:") {
+        return "WARNING"
+    } elseif ($WarningText -match "^CAUTION:") {
+        return "CAUTION"
+    } else {
+        # Fallback detection based on content
+        if ($WarningText -match "break|damage|critical|cannot be reinstalled|system files") {
+            return "CRITICAL"
+        } elseif ($WarningText -match "may|might|could|data loss|sync") {
+            return "WARNING"
+        } else {
+            return "CAUTION"
+        }
+    }
+}
+
+function Format-CheckboxWithWarning {
+    param($checkbox, $item)
+    
+    $warningLevel = Get-WarningLevel -WarningText $item.Warning
+    $warningLabel = $script:WarningLabels[$warningLevel]
+    
+    # Set text with warning level in parentheses
+    if ($warningLabel) {
+        $checkbox.Text = "$($item.Name) $warningLabel"
+    } else {
+        $checkbox.Text = $item.Name
+    }
+    
+    # Set color based on warning level but use black for text readability
+    $checkbox.ForeColor = [System.Drawing.Color]::Black
+    
+    # Set background color for warning indication
+    switch ($warningLevel) {
+        "CRITICAL" { $checkbox.BackColor = [System.Drawing.Color]::FromArgb(255, 220, 220) } # Light red
+        "WARNING"  { $checkbox.BackColor = [System.Drawing.Color]::FromArgb(255, 243, 205) } # Light orange
+        "CAUTION"  { $checkbox.BackColor = [System.Drawing.Color]::FromArgb(217, 237, 247) } # Light blue
+        "SAFE"     { $checkbox.BackColor = [System.Drawing.Color]::White }                    # White/default
+    }
+    
+    # Add tooltip with full warning text
+    if ($item.Warning) {
+        $tooltip = New-Object System.Windows.Forms.ToolTip
+        $tooltip.SetToolTip($checkbox, $item.Warning)
+    }
+}
+
+function Add-WarningLegend {
+    param($panel, $yPosition)
+    
+    $legendLabel = New-Object System.Windows.Forms.Label
+    $legendLabel.Text = "Background Colors: Light Red = may break system  |  Light Orange = may affect functionality  |  Light Blue = compatibility issues  |  White = safe"
+    $legendLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Italic)
+    $legendLabel.ForeColor = [System.Drawing.Color]::FromArgb(108, 117, 125)
+    $legendLabel.Location = New-Object System.Drawing.Point(20, $yPosition)
+    $legendLabel.AutoSize = $true
+    $panel.Controls.Add($legendLabel)
+    
+    return ($yPosition + 25)
 }
 
 # Detect Windows version
 $script:OSInfo = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
 if ($script:OSInfo) {
-    $script:IsWindows11 = $script:OSInfo.Version -match "^10\.0\.2[2-9]"
+    $buildNumber = [int]$script:OSInfo.BuildNumber
+    $script:IsWindows11 = $buildNumber -ge 22000
+    $script:WindowsVersion = if ($script:IsWindows11) { "Windows 11" } else { "Windows 10" }
+    $script:BuildNumber = $script:OSInfo.BuildNumber
 } else {
     $script:IsWindows11 = $false
+    $script:WindowsVersion = "Unknown"
+    $script:BuildNumber = "Unknown"
 }
 
-# App definitions
-$script:Apps = @{
-    "Development" = @(
-        @{Name="Visual Studio Code"; Key="vscode"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Git"; Key="git"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Python"; Key="python"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="PyCharm Community"; Key="pycharm"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="IntelliJ IDEA Community"; Key="intellij"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="WebStorm"; Key="webstorm"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Android Studio"; Key="androidstudio"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="GitHub Desktop"; Key="github"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Postman"; Key="postman"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Node.js"; Key="nodejs"; Default=$false; Win10=$false; Win11=$true}
-        @{Name="Windows Terminal"; Key="terminal"; Default=$true; Win10=$false; Win11=$true}
-    )
-    "Browsers" = @(
-        @{Name="Google Chrome"; Key="chrome"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Mozilla Firefox"; Key="firefox"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Brave Browser"; Key="brave"; Default=$false; Win10=$true; Win11=$true}
-    )
-    "Media & Communication" = @(
-        @{Name="Spotify"; Key="spotify"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Discord"; Key="discord"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Steam"; Key="steam"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="VLC Media Player"; Key="vlc"; Default=$false; Win10=$true; Win11=$true}
-    )
-    "Utilities" = @(
-        @{Name="7-Zip"; Key="7zip"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Notepad++"; Key="notepad"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Microsoft PowerToys"; Key="powertoys"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Windows Terminal"; Key="terminal"; Default=$true; Win10=$false; Win11=$true}
-    )
-}
+Write-Host "Detected: $($script:WindowsVersion) (Build: $($script:BuildNumber))" -ForegroundColor Yellow
 
-# Bloatware definitions
-$script:Bloatware = @{
-    "Microsoft Office & Productivity" = @(
-        @{Name="Microsoft Office Hub"; Key="ms-officehub"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Microsoft Teams (Consumer)"; Key="ms-teams"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="OneNote (Store)"; Key="ms-onenote"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Microsoft People"; Key="ms-people"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Microsoft To-Do"; Key="ms-todo"; Default=$true; Win10=$false; Win11=$true}
-    )
-    "Windows Built-ins" = @(
-        @{Name="Microsoft 3D Viewer"; Key="ms-3dviewer"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Mixed Reality Portal"; Key="ms-mixedreality"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Print 3D"; Key="win-print3d"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Your Phone"; Key="win-yourphone"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Camera"; Key="win-camera"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Mail and Calendar"; Key="win-mail"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Sound Recorder"; Key="win-soundrec"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Microsoft Wallet"; Key="ms-wallet"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Messaging"; Key="ms-messaging"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="OneConnect"; Key="ms-oneconnect"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="ClipChamp"; Key="ms-clipchamp"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Bing Weather"; Key="bing-weather"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Bing News"; Key="bing-news"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Bing Finance"; Key="bing-finance"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Alarms & Clock"; Key="win-alarms"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Maps"; Key="win-maps"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Feedback Hub"; Key="win-feedback"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Get Help"; Key="win-gethelp"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Get Started"; Key="win-getstarted"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Microsoft Widgets"; Key="ms-widgets"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Microsoft Copilot"; Key="ms-copilot"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Skype App"; Key="skype-app"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "Entertainment & Gaming" = @(
-        @{Name="Xbox Gaming App"; Key="gaming-app"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Xbox Game Overlay"; Key="xbox-gameoverlay"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Xbox Gaming Overlay"; Key="xbox-gamingoverlay"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Xbox Identity Provider"; Key="xbox-identity"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Xbox Speech to Text"; Key="xbox-speech"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Xbox TCUI"; Key="xbox-tcui"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Groove Music"; Key="zune-music"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Movies & TV"; Key="zune-video"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Solitaire Collection"; Key="solitaire"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "Third-Party Apps" = @(
-        @{Name="Candy Crush Games"; Key="candy-crush"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Facebook"; Key="facebook"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Netflix"; Key="netflix"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disney+"; Key="disney"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="TikTok"; Key="tiktok"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Spotify (Store)"; Key="spotify-store"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Twitter"; Key="twitter"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="LinkedIn"; Key="linkedin"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Instagram"; Key="instagram"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="WhatsApp"; Key="whatsapp"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Amazon Prime Video"; Key="amazon-prime"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Hulu"; Key="hulu"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="PicsArt"; Key="picsart"; Default=$true; Win10=$true; Win11=$true}
-    )
-}
+# Load configuration data
+Write-Host "Loading configuration files..." -ForegroundColor Gray
 
-# Services definitions
-$script:Services = @{
-    "Telemetry & Privacy" = @(
-        @{Name="Connected User Experiences and Telemetry"; Key="diagtrack"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="WAP Push Message Routing"; Key="dmwappushsvc"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Insider Service"; Key="wisvc"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "Performance & Storage" = @(
-        @{Name="Superfetch/SysMain"; Key="sysmain"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Windows Search"; Key="wsearch"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Offline Files"; Key="cscservice"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "Network & Media" = @(
-        @{Name="Windows Media Player Network Sharing"; Key="wmpnetworksvc"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Remote Registry"; Key="remoteregistry"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Remote Access"; Key="remoteaccess"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Fax Service"; Key="fax"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "System & Interface" = @(
-        @{Name="Program Compatibility Assistant"; Key="pcasvc"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Parental Controls"; Key="wpcmonsvc"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Downloaded Maps Manager"; Key="mapsbroker"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Printer Extensions and Notifications"; Key="printnotify"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Retail Demo Service"; Key="retaildemo"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Geolocation Service"; Key="lfsvc"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Touch Keyboard and Handwriting Panel"; Key="tabletinputservice"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="HomeGroup Provider"; Key="homegrpservice"; Default=$true; Win10=$true; Win11=$false}
-        @{Name="Microsoft Wallet Service"; Key="walletservice"; Default=$true; Win10=$false; Win11=$true}
-    )
-}
-
-# System tweaks definitions
-$script:Tweaks = @{
-    "File Explorer" = @(
-        @{Name="Show file extensions"; Key="show-extensions"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Show hidden files"; Key="show-hidden"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disable quick access"; Key="disable-quickaccess"; Default=$false; Win10=$true; Win11=$true}
-    )
-    "Privacy & Telemetry" = @(
-        @{Name="Disable Cortana"; Key="disable-cortana"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disable OneDrive auto-start"; Key="disable-onedrive"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Reduce telemetry"; Key="reduce-telemetry"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disable activity history"; Key="disable-activity"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disable web search in Start Menu"; Key="search-bing"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disable background apps"; Key="disable-background"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "Windows 11 Interface" = @(
-        @{Name="Taskbar left alignment"; Key="taskbar-left"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Classic right-click menu"; Key="classic-context"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Disable widgets"; Key="disable-widgets"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Disable Chat icon on taskbar"; Key="disable-chat"; Default=$true; Win10=$false; Win11=$true}
-        @{Name="Disable Snap layouts hover"; Key="disable-snap"; Default=$false; Win10=$false; Win11=$true}
-        @{Name="Configure Start menu layout"; Key="start-menu-pins"; Default=$false; Win10=$false; Win11=$true}
-    )
-    "Windows 10 Interface" = @(
-        @{Name="Hide Task View button"; Key="hide-taskview"; Default=$true; Win10=$true; Win11=$false}
-        @{Name="Hide Cortana button"; Key="hide-cortana-button"; Default=$true; Win10=$true; Win11=$false}
-        @{Name="Configure search box"; Key="configure-searchbox"; Default=$true; Win10=$true; Win11=$false}
-        @{Name="Disable News and Interests"; Key="disable-news-interests"; Default=$true; Win10=$true; Win11=$false}
-    )
-    "General Interface" = @(
-        @{Name="Dark theme"; Key="dark-theme"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Disable tips and suggestions"; Key="disable-tips"; Default=$true; Win10=$true; Win11=$true}
-        @{Name="Disable startup sound"; Key="disable-startup-sound"; Default=$true; Win10=$true; Win11=$true}
-    )
-    "System Performance" = @(
-        @{Name="Enable developer mode"; Key="dev-mode"; Default=$false; Win10=$true; Win11=$true}
-        @{Name="Disable Teams auto-start"; Key="disable-teams-autostart"; Default=$true; Win10=$true; Win11=$true}
-    )
-}
-
-function Get-InstallerName {
-    param([string]$AppKey)
+try {
+    # Load configuration data
+    $script:Apps = Get-ConfigurationData -ConfigType "Apps"
+    $script:Bloatware = Get-ConfigurationData -ConfigType "Bloatware" 
+    $script:Services = Get-ConfigurationData -ConfigType "Services"
+    $script:Tweaks = Get-ConfigurationData -ConfigType "Tweaks"
     
-    $mapping = @{
-        "vscode" = "Visual Studio Code"
-        "git" = "Git"
-        "python" = "Python"
-        "pycharm" = "PyCharm"
-        "intellij" = "IntelliJ IDEA"
-        "webstorm" = "WebStorm"
-        "androidstudio" = "Android Studio"
-        "github" = "GitHub Desktop"
-        "postman" = "Postman"
-        "nodejs" = "Node.js"
-        "terminal" = "Windows Terminal"
-        "chrome" = "Chrome"
-        "firefox" = "Firefox"
-        "brave" = "Brave"
-        "spotify" = "Spotify"
-        "discord" = "Discord"
-        "steam" = "Steam"
-        "vlc" = "VLC"
-        "7zip" = "7-Zip"
-        "notepad" = "Notepad++"
-        "powertoys" = "Microsoft PowerToys"
+    # Check if any configuration returned empty
+    if ($script:Apps.Keys.Count -eq 0 -or $script:Bloatware.Keys.Count -eq 0 -or $script:Services.Keys.Count -eq 0 -or $script:Tweaks.Keys.Count -eq 0) {
+        throw "One or more configuration files failed to load or are empty"
     }
     
+    # Validate that we actually loaded data
+    $appsCount = ($script:Apps.Values | ForEach-Object { if ($_ -and $_.Count) { $_.Count } else { 0 } } | Measure-Object -Sum).Sum
+    $bloatwareCount = ($script:Bloatware.Values | ForEach-Object { if ($_ -and $_.Count) { $_.Count } else { 0 } } | Measure-Object -Sum).Sum
+    $servicesCount = ($script:Services.Values | ForEach-Object { if ($_ -and $_.Count) { $_.Count } else { 0 } } | Measure-Object -Sum).Sum
+    $tweaksCount = ($script:Tweaks.Values | ForEach-Object { if ($_ -and $_.Count) { $_.Count } else { 0 } } | Measure-Object -Sum).Sum
+    
+    if ($appsCount -eq 0 -or $bloatwareCount -eq 0 -or $servicesCount -eq 0 -or $tweaksCount -eq 0) {
+        throw "Configuration loaded but contains empty data (Apps: $appsCount, Bloatware: $bloatwareCount, Services: $servicesCount, Tweaks: $tweaksCount)"
+    }
+    
+    Write-Host "Configuration loaded successfully: Apps: $appsCount, Bloatware: $bloatwareCount, Services: $servicesCount, Tweaks: $tweaksCount" -ForegroundColor Green
+}
+catch {
+    Write-Host "CRITICAL ERROR loading configuration: $_" -ForegroundColor Red
+    
+    try {
+        Write-LogMessage "Failed to load configuration: $_" -Level "ERROR"
+    }
+    catch {
+        # Logging not available, continue
+    }
+    
+    Write-Host "Attempting to diagnose configuration issues..." -ForegroundColor Yellow
+    
+    $configFiles = @("apps.json", "bloatware.json", "services.json", "tweaks.json")
+    $expectedConfigPath = Join-Path $ScriptPath "config"
+    foreach ($file in $configFiles) {
+        $filePath = Join-Path $expectedConfigPath $file
+        if (Test-Path $filePath) {
+            Write-Host "Found: $file" -ForegroundColor Green
+            try {
+                $content = Get-Content $filePath -Raw
+                $json = $content | ConvertFrom-Json
+                Write-Host "  Valid JSON structure" -ForegroundColor Green
+            }
+            catch {
+                Write-Host "  Invalid JSON: $_" -ForegroundColor Red
+            }
+        }
+        else {
+            Write-Host "Missing: $file at $filePath" -ForegroundColor Red
+        }
+    }
+    
+    Write-Host "CANNOT CONTINUE: Configuration files are required for proper operation." -ForegroundColor Red
+    Read-Host "Press Enter to exit"
+    exit 1
+}
+
+# Helper functions
+function Get-InstallerName {
+    param([string]$AppKey)
+    $mapping = Get-InstallerNameMapping
     if ($mapping.ContainsKey($AppKey)) {
         return $mapping[$AppKey]
     } else {
@@ -296,30 +274,7 @@ function Get-InstallerName {
 
 function Get-WingetId {
     param([string]$AppKey)
-    
-    $wingetIds = @{
-        "vscode" = "Microsoft.VisualStudioCode"
-        "git" = "Git.Git"
-        "python" = "Python.Python.3.13"
-        "pycharm" = "JetBrains.PyCharm.Community"
-        "intellij" = "JetBrains.IntelliJIDEA.Community"
-        "webstorm" = "JetBrains.WebStorm"
-        "github" = "GitHub.GitHubDesktop"
-        "postman" = "Postman.Postman"
-        "nodejs" = "OpenJS.NodeJS"
-        "terminal" = "Microsoft.WindowsTerminal"
-        "chrome" = "Google.Chrome"
-        "firefox" = "Mozilla.Firefox"
-        "brave" = "Brave.Brave"
-        "spotify" = "Spotify.Spotify"
-        "discord" = "Discord.Discord"
-        "steam" = "Valve.Steam"
-        "vlc" = "VideoLAN.VLC"
-        "7zip" = "7zip.7zip"
-        "notepad" = "Notepad++.Notepad++"
-        "powertoys" = "Microsoft.PowerToys"
-    }
-    
+    $wingetIds = Get-WingetIdMapping
     if ($wingetIds.ContainsKey($AppKey)) {
         return $wingetIds[$AppKey]
     } else {
@@ -327,915 +282,781 @@ function Get-WingetId {
     }
 }
 
-function Create-ScrollableTabContent {
-    param($TabPage, $Categories, $SelectedArray)
-    
-    # Clear tab
-    $TabPage.Controls.Clear()
-    
-    # Create scrollable panel
-    $panel = New-Object System.Windows.Forms.Panel
-    $panel.Dock = [System.Windows.Forms.DockStyle]::Fill
-    $panel.AutoScroll = $true
-    $panel.BackColor = [System.Drawing.Color]::White
-    $TabPage.Controls.Add($panel)
-    
-    $yPos = 10
-    
-    # Select All checkbox
-    $selectAll = New-Object System.Windows.Forms.CheckBox
-    $selectAll.Text = "Select All"
-    $selectAll.Location = New-Object System.Drawing.Point(10, $yPos)
-    $selectAll.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-    $selectAll.AutoSize = $true
-    $selectAll.Add_CheckedChanged({
-        $checked = $this.Checked
-        foreach ($control in $this.Parent.Controls) {
-            if ($control -is [System.Windows.Forms.CheckBox] -and $control -ne $this) {
-                $control.Checked = $checked
-            }
-        }
-    })
-    $panel.Controls.Add($selectAll)
-    $yPos += 40
-    
-    # Add categories and items
-    foreach ($category in $Categories.Keys | Sort-Object) {
-        # Category header
-        $header = New-Object System.Windows.Forms.Label
-        $header.Text = $category
-        $header.Location = New-Object System.Drawing.Point(10, $yPos)
-        $header.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-        $header.ForeColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
-        $header.AutoSize = $true
-        $panel.Controls.Add($header)
-        $yPos += 30
-        
-        # Items
-        foreach ($item in $Categories[$category]) {
-            $checkbox = New-Object System.Windows.Forms.CheckBox
-            $checkbox.Text = $item.Name
-            $checkbox.Tag = $item.Key
-            $checkbox.Location = New-Object System.Drawing.Point(30, $yPos)
-            $checkbox.AutoSize = $true
-            $checkbox.Checked = $item.Default
-            $panel.Controls.Add($checkbox)
-            $yPos += 25
-        }
-        $yPos += 15
-    }
-    
-    # Set scroll size
-    $panel.AutoScrollMinSize = New-Object System.Drawing.Size(0, $yPos)
-}
-
 # Create main form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Windows Setup Automation"
-$form.Size = New-Object System.Drawing.Size(900, 700)
+$form.Size = New-Object System.Drawing.Size(1000, 800)
 $form.StartPosition = "CenterScreen"
-$form.MinimumSize = New-Object System.Drawing.Size(800, 600)
+$form.MinimumSize = New-Object System.Drawing.Size(900, 700)
+$form.MaximizeBox = $true
 
-# Header at top
-$header = New-Object System.Windows.Forms.Panel
-$header.Height = 60
-$header.Dock = [System.Windows.Forms.DockStyle]::Top
-$header.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+# Create header panel
+$headerPanel = New-Object System.Windows.Forms.Panel
+$headerPanel.Height = 80
+$headerPanel.Dock = [System.Windows.Forms.DockStyle]::Top
+$headerPanel.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
 
-$title = New-Object System.Windows.Forms.Label
-$title.Text = "Windows Setup Automation"
-$title.ForeColor = [System.Drawing.Color]::White
-$title.Font = New-Object System.Drawing.Font("Segoe UI", 16)
-$title.Location = New-Object System.Drawing.Point(20, 20)
-$title.AutoSize = $true
-$header.Controls.Add($title)
+$titleLabel = New-Object System.Windows.Forms.Label
+$titleLabel.Text = "Windows Setup Automation"
+$titleLabel.ForeColor = [System.Drawing.Color]::White
+$titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
+$titleLabel.Location = New-Object System.Drawing.Point(20, 15)
+$titleLabel.AutoSize = $true
+$headerPanel.Controls.Add($titleLabel)
 
-$osLabel = New-Object System.Windows.Forms.Label
-$wingetCompat = Test-WingetCompatibility
-if ($script:IsWindows11) {
-    $osText = "Windows 11"
+$versionLabel = New-Object System.Windows.Forms.Label
+$versionLabel.Text = "$($script:WindowsVersion) (Build: $($script:BuildNumber))"
+$versionLabel.ForeColor = [System.Drawing.Color]::White
+$versionLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$versionLabel.Location = New-Object System.Drawing.Point(20, 50)
+$versionLabel.AutoSize = $true
+$headerPanel.Controls.Add($versionLabel)
+
+# Check winget compatibility
+$wingetInfo = Test-WingetCompatibility
+$wingetStatusLabel = New-Object System.Windows.Forms.Label
+if ($wingetInfo.Compatible) {
+    $wingetStatusLabel.Text = "[OK] Winget Compatible"
+    $wingetStatusLabel.ForeColor = [System.Drawing.Color]::LightGreen
 } else {
-    $osText = "Windows 10"
+    $wingetStatusLabel.Text = "[WARN] Winget Incompatible (Build $($wingetInfo.BuildNumber) less than 16299)"
+    $wingetStatusLabel.ForeColor = [System.Drawing.Color]::Yellow
 }
-if (-not $wingetCompat.Compatible) {
-    $osText += " (Build $($wingetCompat.BuildNumber))"
-}
-$osLabel.Text = $osText
-$osLabel.ForeColor = [System.Drawing.Color]::White
-$osLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$osLabel.Location = New-Object System.Drawing.Point(750, 25)
-$osLabel.AutoSize = $true
-$header.Controls.Add($osLabel)
+$wingetStatusLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$wingetStatusLabel.Location = New-Object System.Drawing.Point(750, 25)
+$wingetStatusLabel.AutoSize = $true
+$headerPanel.Controls.Add($wingetStatusLabel)
 
-$form.Controls.Add($header)
+$form.Controls.Add($headerPanel)
 
-# Bottom area with tabs and controls
-$bottomArea = New-Object System.Windows.Forms.Panel
-$bottomArea.Height = 180
-$bottomArea.Dock = [System.Windows.Forms.DockStyle]::Bottom
-$bottomArea.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
-
-# Tab control in bottom area
+# Create tab control with optimizations - moved to bottom
 $tabControl = New-Object System.Windows.Forms.TabControl
-$tabControl.Size = New-Object System.Drawing.Size(500, 120)
-$tabControl.Location = New-Object System.Drawing.Point(20, 10)
+$tabControl.Dock = [System.Windows.Forms.DockStyle]::Fill
+$tabControl.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$tabControl.Alignment = [System.Windows.Forms.TabAlignment]::Bottom
+$tabControl.SuspendLayout()  # Suspend layout for performance
 
-# Control buttons area
-$controlPanel = New-Object System.Windows.Forms.Panel
-$controlPanel.Size = New-Object System.Drawing.Size(350, 120)
-$controlPanel.Location = New-Object System.Drawing.Point(530, 10)
-$controlPanel.BackColor = [System.Drawing.Color]::FromArgb(220, 220, 220)
+# Apps tab
+$appsTab = New-Object System.Windows.Forms.TabPage
+$appsTab.Text = "Applications"
+$appsTab.BackColor = [System.Drawing.Color]::White
 
-$runBtn = New-Object System.Windows.Forms.Button
-$runBtn.Text = "Run Selected Tasks"
-$runBtn.Size = New-Object System.Drawing.Size(150, 35)
-$runBtn.Location = New-Object System.Drawing.Point(20, 20)
-$runBtn.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
-$runBtn.ForeColor = [System.Drawing.Color]::White
-$runBtn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$controlPanel.Controls.Add($runBtn)
+$appsPanel = New-Object System.Windows.Forms.Panel
+$appsPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
+$appsPanel.AutoScroll = $true
+$appsPanel.SuspendLayout()  # Suspend layout for performance
 
-$cancelBtn = New-Object System.Windows.Forms.Button
-$cancelBtn.Text = "Cancel"
-$cancelBtn.Size = New-Object System.Drawing.Size(100, 35)
-$cancelBtn.Location = New-Object System.Drawing.Point(180, 20)
-$cancelBtn.BackColor = [System.Drawing.Color]::Gray
-$cancelBtn.ForeColor = [System.Drawing.Color]::White
-$cancelBtn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-$controlPanel.Controls.Add($cancelBtn)
+# Add controls to Apps tab
+$yPos = 35
+$appsTitle = New-Object System.Windows.Forms.Label
+$appsTitle.Text = "Select Applications to Install"
+$appsTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+$appsTitle.Location = New-Object System.Drawing.Point(20, $yPos)
+$appsTitle.AutoSize = $true
+$appsPanel.Controls.Add($appsTitle)
+$yPos += 40
 
+# Apps Select All checkbox
+$appsSelectAll = New-Object System.Windows.Forms.CheckBox
+$appsSelectAll.Text = "Select All Applications"
+$appsSelectAll.Location = New-Object System.Drawing.Point(20, $yPos)
+$appsSelectAll.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$appsSelectAll.AutoSize = $true
+$appsPanel.Controls.Add($appsSelectAll)
+$yPos += 35
+
+# Add warning legend
+$yPos = Add-WarningLegend -panel $appsPanel -yPosition $yPos
+
+# Store app checkboxes
+$script:AppCheckboxes = @()
+
+# Add app categories and checkboxes
+foreach ($category in $script:Apps.Keys | Sort-Object) {
+    # Category header
+    $categoryLabel = New-Object System.Windows.Forms.Label
+    $categoryLabel.Text = $category
+    $categoryLabel.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+    $categoryLabel.ForeColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+    $categoryLabel.Location = New-Object System.Drawing.Point(20, $yPos)
+    $categoryLabel.AutoSize = $true
+    $appsPanel.Controls.Add($categoryLabel)
+    $yPos += 30
+    
+    # Apps in category (2 columns for wider text)
+    $col = 0
+    $colWidth = 450
+    $itemsInRow = 0
+    
+    foreach ($app in $script:Apps[$category]) {
+        # Skip apps not compatible with current Windows version
+        if (($script:IsWindows11 -and $app.Win11 -eq $false) -or 
+            (-not $script:IsWindows11 -and $app.Win10 -eq $false)) {
+            continue
+        }
+        
+        $checkbox = New-Object System.Windows.Forms.CheckBox
+        $checkbox.Tag = $app.Key
+        $checkbox.Checked = $app.Default
+        $checkbox.AutoSize = $false
+        $checkbox.Size = New-Object System.Drawing.Size(430, 25)
+        $checkbox.Location = New-Object System.Drawing.Point((40 + ($col * $colWidth)), $yPos)
+        
+        # Apply warning formatting (apps typically don't have warnings, so will be green/safe)
+        Format-CheckboxWithWarning -checkbox $checkbox -item $app
+        
+        $appsPanel.Controls.Add($checkbox)
+        $script:AppCheckboxes += $checkbox
+        
+        $col++
+        $itemsInRow++
+        if ($col -ge 2) {
+            $col = 0
+            $yPos += 32
+        }
+    }
+    
+    # Move to next row if items were added and not at start of row
+    if ($itemsInRow -gt 0 -and $col -ne 0) {
+        $yPos += 30
+    }
+    $yPos += 15  # Spacing between categories
+}
+
+# Apps Select All event handler
+$appsSelectAll.Add_CheckedChanged({
+    $appsPanel.SuspendLayout()
+    foreach ($checkbox in $script:AppCheckboxes) {
+        $checkbox.Checked = $appsSelectAll.Checked
+    }
+    $appsPanel.ResumeLayout()
+})
+
+$appsPanel.ResumeLayout()  # Resume layout after adding all controls
+$appsTab.Controls.Add($appsPanel)
+$tabControl.TabPages.Add($appsTab)
+
+# Bloatware tab
+$bloatwareTab = New-Object System.Windows.Forms.TabPage
+$bloatwareTab.Text = "Bloatware"
+$bloatwareTab.BackColor = [System.Drawing.Color]::White
+
+$bloatwarePanel = New-Object System.Windows.Forms.Panel
+$bloatwarePanel.Dock = [System.Windows.Forms.DockStyle]::Fill
+$bloatwarePanel.AutoScroll = $true
+$bloatwarePanel.SuspendLayout()  # Suspend layout for performance
+
+# Add controls to Bloatware tab
+$yPos = 35
+$bloatwareTitle = New-Object System.Windows.Forms.Label
+$bloatwareTitle.Text = "Select Bloatware to Remove"
+$bloatwareTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+$bloatwareTitle.Location = New-Object System.Drawing.Point(20, $yPos)
+$bloatwareTitle.AutoSize = $true
+$bloatwarePanel.Controls.Add($bloatwareTitle)
+$yPos += 40
+
+# Bloatware Select All checkbox
+$bloatwareSelectAll = New-Object System.Windows.Forms.CheckBox
+$bloatwareSelectAll.Text = "Select All Bloatware"
+$bloatwareSelectAll.Location = New-Object System.Drawing.Point(20, $yPos)
+$bloatwareSelectAll.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$bloatwareSelectAll.AutoSize = $true
+$bloatwarePanel.Controls.Add($bloatwareSelectAll)
+$yPos += 35
+
+# Add warning legend
+$yPos = Add-WarningLegend -panel $bloatwarePanel -yPosition $yPos
+
+$script:BloatwareCheckboxes = @()
+
+# Add bloatware categories and checkboxes
+foreach ($category in $script:Bloatware.Keys | Sort-Object) {
+    # Category header
+    $categoryLabel = New-Object System.Windows.Forms.Label
+    $categoryLabel.Text = $category
+    $categoryLabel.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+    $categoryLabel.ForeColor = [System.Drawing.Color]::FromArgb(220, 53, 69)
+    $categoryLabel.Location = New-Object System.Drawing.Point(20, $yPos)
+    $categoryLabel.AutoSize = $true
+    $bloatwarePanel.Controls.Add($categoryLabel)
+    $yPos += 30
+    
+    # Bloatware items in category (2 columns for wider text)
+    $col = 0
+    $colWidth = 450
+    $itemsInRow = 0
+    
+    foreach ($item in $script:Bloatware[$category]) {
+        # Skip items not compatible with current Windows version
+        if (($script:IsWindows11 -and $item.Win11 -eq $false) -or 
+            (-not $script:IsWindows11 -and $item.Win10 -eq $false)) {
+            continue
+        }
+        
+        $checkbox = New-Object System.Windows.Forms.CheckBox
+        $checkbox.Tag = $item.Key
+        $checkbox.Checked = $item.Default
+        $checkbox.AutoSize = $false
+        $checkbox.Size = New-Object System.Drawing.Size(430, 25)
+        $checkbox.Location = New-Object System.Drawing.Point((40 + ($col * $colWidth)), $yPos)
+        
+        # Apply warning formatting
+        Format-CheckboxWithWarning -checkbox $checkbox -item $item
+        
+        $bloatwarePanel.Controls.Add($checkbox)
+        $script:BloatwareCheckboxes += $checkbox
+        
+        $col++
+        $itemsInRow++
+        if ($col -ge 2) {
+            $col = 0
+            $yPos += 32
+        }
+    }
+    
+    if ($itemsInRow -gt 0 -and $col -ne 0) {
+        $yPos += 30
+    }
+    $yPos += 15
+}
+
+$bloatwareSelectAll.Add_CheckedChanged({
+    $bloatwarePanel.SuspendLayout()
+    foreach ($checkbox in $script:BloatwareCheckboxes) {
+        $checkbox.Checked = $bloatwareSelectAll.Checked
+    }
+    $bloatwarePanel.ResumeLayout()
+})
+
+$bloatwarePanel.ResumeLayout()  # Resume layout after adding all controls
+$bloatwareTab.Controls.Add($bloatwarePanel)
+$tabControl.TabPages.Add($bloatwareTab)
+
+# Services tab
+$servicesTab = New-Object System.Windows.Forms.TabPage
+$servicesTab.Text = "Services"
+$servicesTab.BackColor = [System.Drawing.Color]::White
+
+$servicesPanel = New-Object System.Windows.Forms.Panel
+$servicesPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
+$servicesPanel.AutoScroll = $true
+$servicesPanel.SuspendLayout()  # Suspend layout for performance
+
+# Add controls to Services tab
+$yPos = 35
+$servicesTitle = New-Object System.Windows.Forms.Label
+$servicesTitle.Text = "Select Services to Disable"
+$servicesTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+$servicesTitle.Location = New-Object System.Drawing.Point(20, $yPos)
+$servicesTitle.AutoSize = $true
+$servicesPanel.Controls.Add($servicesTitle)
+$yPos += 40
+
+# Services Select All checkbox
+$servicesSelectAll = New-Object System.Windows.Forms.CheckBox
+$servicesSelectAll.Text = "Select All Services"
+$servicesSelectAll.Location = New-Object System.Drawing.Point(20, $yPos)
+$servicesSelectAll.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$servicesSelectAll.AutoSize = $true
+$servicesPanel.Controls.Add($servicesSelectAll)
+$yPos += 35
+
+# Add warning legend
+$yPos = Add-WarningLegend -panel $servicesPanel -yPosition $yPos
+
+$script:ServiceCheckboxes = @()
+
+# Add service categories and checkboxes
+foreach ($category in $script:Services.Keys | Sort-Object) {
+    # Category header
+    $categoryLabel = New-Object System.Windows.Forms.Label
+    $categoryLabel.Text = $category
+    $categoryLabel.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+    $categoryLabel.ForeColor = [System.Drawing.Color]::FromArgb(255, 193, 7)
+    $categoryLabel.Location = New-Object System.Drawing.Point(20, $yPos)
+    $categoryLabel.AutoSize = $true
+    $servicesPanel.Controls.Add($categoryLabel)
+    $yPos += 30
+    
+    # Service items in category (2 columns for longer descriptions)
+    $col = 0
+    $colWidth = 450
+    $itemsInRow = 0
+    
+    foreach ($service in $script:Services[$category]) {
+        # Skip services not compatible with current Windows version
+        if (($script:IsWindows11 -and $service.Win11 -eq $false) -or 
+            (-not $script:IsWindows11 -and $service.Win10 -eq $false)) {
+            continue
+        }
+        
+        $checkbox = New-Object System.Windows.Forms.CheckBox
+        $checkbox.Tag = $service.Key
+        $checkbox.Checked = $service.Default
+        $checkbox.AutoSize = $false
+        $checkbox.Size = New-Object System.Drawing.Size(430, 25)
+        $checkbox.Location = New-Object System.Drawing.Point((40 + ($col * $colWidth)), $yPos)
+        
+        # Apply warning formatting
+        Format-CheckboxWithWarning -checkbox $checkbox -item $service
+        
+        $servicesPanel.Controls.Add($checkbox)
+        $script:ServiceCheckboxes += $checkbox
+        
+        $col++
+        $itemsInRow++
+        if ($col -ge 2) {
+            $col = 0
+            $yPos += 32
+        }
+    }
+    
+    if ($itemsInRow -gt 0 -and $col -ne 0) {
+        $yPos += 30
+    }
+    $yPos += 15
+}
+
+$servicesSelectAll.Add_CheckedChanged({
+    $servicesPanel.SuspendLayout()
+    foreach ($checkbox in $script:ServiceCheckboxes) {
+        $checkbox.Checked = $servicesSelectAll.Checked
+    }
+    $servicesPanel.ResumeLayout()
+})
+
+$servicesPanel.ResumeLayout()  # Resume layout after adding all controls
+$servicesTab.Controls.Add($servicesPanel)
+$tabControl.TabPages.Add($servicesTab)
+
+# Tweaks tab
+$tweaksTab = New-Object System.Windows.Forms.TabPage
+$tweaksTab.Text = "Tweaks"
+$tweaksTab.BackColor = [System.Drawing.Color]::White
+
+$tweaksPanel = New-Object System.Windows.Forms.Panel
+$tweaksPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
+$tweaksPanel.AutoScroll = $true
+$tweaksPanel.SuspendLayout()  # Suspend layout for performance
+
+# Add controls to Tweaks tab
+$yPos = 35
+$tweaksTitle = New-Object System.Windows.Forms.Label
+$tweaksTitle.Text = "Select System Tweaks to Apply"
+$tweaksTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+$tweaksTitle.Location = New-Object System.Drawing.Point(20, $yPos)
+$tweaksTitle.AutoSize = $true
+$tweaksPanel.Controls.Add($tweaksTitle)
+$yPos += 40
+
+# Tweaks Select All checkbox
+$tweaksSelectAll = New-Object System.Windows.Forms.CheckBox
+$tweaksSelectAll.Text = "Select All Tweaks"
+$tweaksSelectAll.Location = New-Object System.Drawing.Point(20, $yPos)
+$tweaksSelectAll.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$tweaksSelectAll.AutoSize = $true
+$tweaksPanel.Controls.Add($tweaksSelectAll)
+$yPos += 35
+
+# Add warning legend
+$yPos = Add-WarningLegend -panel $tweaksPanel -yPosition $yPos
+
+$script:TweakCheckboxes = @()
+
+# Add tweak categories and checkboxes
+foreach ($category in $script:Tweaks.Keys | Sort-Object) {
+    # Category header
+    $categoryLabel = New-Object System.Windows.Forms.Label
+    $categoryLabel.Text = $category
+    $categoryLabel.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
+    $categoryLabel.ForeColor = [System.Drawing.Color]::FromArgb(108, 117, 125)
+    $categoryLabel.Location = New-Object System.Drawing.Point(20, $yPos)
+    $categoryLabel.AutoSize = $true
+    $tweaksPanel.Controls.Add($categoryLabel)
+    $yPos += 30
+    
+    # Tweak items in category (2 columns)
+    $col = 0
+    $colWidth = 450
+    $itemsInRow = 0
+    
+    foreach ($tweak in $script:Tweaks[$category]) {
+        # Skip tweaks not compatible with current Windows version
+        if (($script:IsWindows11 -and $tweak.Win11 -eq $false) -or 
+            (-not $script:IsWindows11 -and $tweak.Win10 -eq $false)) {
+            continue
+        }
+        
+        $checkbox = New-Object System.Windows.Forms.CheckBox
+        $checkbox.Tag = $tweak.Key
+        $checkbox.Checked = $tweak.Default
+        $checkbox.AutoSize = $false
+        $checkbox.Size = New-Object System.Drawing.Size(430, 25)
+        $checkbox.Location = New-Object System.Drawing.Point((40 + ($col * $colWidth)), $yPos)
+        
+        # Apply warning formatting
+        Format-CheckboxWithWarning -checkbox $checkbox -item $tweak
+        
+        $tweaksPanel.Controls.Add($checkbox)
+        $script:TweakCheckboxes += $checkbox
+        
+        $col++
+        $itemsInRow++
+        if ($col -ge 2) {
+            $col = 0
+            $yPos += 32
+        }
+    }
+    
+    if ($itemsInRow -gt 0 -and $col -ne 0) {
+        $yPos += 30
+    }
+    $yPos += 15
+}
+
+$tweaksSelectAll.Add_CheckedChanged({
+    $tweaksPanel.SuspendLayout()
+    foreach ($checkbox in $script:TweakCheckboxes) {
+        $checkbox.Checked = $tweaksSelectAll.Checked
+    }
+    $tweaksPanel.ResumeLayout()
+})
+
+$tweaksPanel.ResumeLayout()  # Resume layout after adding all controls
+$tweaksTab.Controls.Add($tweaksPanel)
+$tabControl.TabPages.Add($tweaksTab)
+
+$tabControl.ResumeLayout()  # Resume layout after all tabs added
+$form.Controls.Add($tabControl)
+
+# Create bottom panel for buttons and status
+$bottomPanel = New-Object System.Windows.Forms.Panel
+$bottomPanel.Height = 120
+$bottomPanel.Dock = [System.Windows.Forms.DockStyle]::Bottom
+$bottomPanel.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 250)
+
+# Main action buttons
+$runButton = New-Object System.Windows.Forms.Button
+$runButton.Text = "Run Current Tab"
+$runButton.Size = New-Object System.Drawing.Size(180, 35)
+$runButton.Location = New-Object System.Drawing.Point(20, 20)
+$runButton.BackColor = [System.Drawing.Color]::FromArgb(0, 123, 255)
+$runButton.ForeColor = [System.Drawing.Color]::White
+$runButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$runButton.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+
+$closeButton = New-Object System.Windows.Forms.Button
+$closeButton.Text = "Close"
+$closeButton.Size = New-Object System.Drawing.Size(80, 35)
+$closeButton.Location = New-Object System.Drawing.Point(220, 20)
+$closeButton.BackColor = [System.Drawing.Color]::FromArgb(220, 53, 69)
+$closeButton.ForeColor = [System.Drawing.Color]::White
+$closeButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$closeButton.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+
+# Status label
 $statusLabel = New-Object System.Windows.Forms.Label
-$statusLabel.Text = "Select options in tabs and click Run"
+$statusLabel.Text = "Ready - Select options in current tab and click 'Run Current Tab'"
 $statusLabel.Location = New-Object System.Drawing.Point(20, 65)
-$statusLabel.Size = New-Object System.Drawing.Size(300, 20)
-$controlPanel.Controls.Add($statusLabel)
+$statusLabel.AutoSize = $true
+$statusLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$statusLabel.ForeColor = [System.Drawing.Color]::FromArgb(108, 117, 125)
 
-$bottomArea.Controls.Add($tabControl)
-$bottomArea.Controls.Add($controlPanel)
+# Progress bar - positioned to not overlap with close button
+$progressBar = New-Object System.Windows.Forms.ProgressBar
+$progressBar.Size = New-Object System.Drawing.Size(400, 20)
+$progressBar.Location = New-Object System.Drawing.Point(320, 30)
+$progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
+$progressBar.Visible = $false
 
-# Log area at very bottom
-$logBox = New-Object System.Windows.Forms.TextBox
-$logBox.Multiline = $true
-$logBox.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
-$logBox.ReadOnly = $true
-$logBox.Location = New-Object System.Drawing.Point(20, 140)
-$logBox.Size = New-Object System.Drawing.Size(840, 30)
-$logBox.BackColor = [System.Drawing.Color]::Black
-$logBox.ForeColor = [System.Drawing.Color]::Lime
-$logBox.Font = New-Object System.Drawing.Font("Consolas", 8)
-$bottomArea.Controls.Add($logBox)
+$bottomPanel.Controls.AddRange(@($runButton, $closeButton, $statusLabel, $progressBar))
+$form.Controls.Add($bottomPanel)
 
-$form.Controls.Add($bottomArea)
-
-# Main content area (fills remaining space above bottom area)
-$contentArea = New-Object System.Windows.Forms.Panel
-$contentArea.Dock = [System.Windows.Forms.DockStyle]::Fill
-$contentArea.BackColor = [System.Drawing.Color]::White
-
-# Large content display area with proper scrolling
-$contentDisplay = New-Object System.Windows.Forms.Panel
-$contentDisplay.Dock = [System.Windows.Forms.DockStyle]::Fill
-$contentDisplay.AutoScroll = $true
-$contentDisplay.BackColor = [System.Drawing.Color]::White
-$contentDisplay.BorderStyle = [System.Windows.Forms.BorderStyle]::None
-
-# Force scroll bars to appear when needed
-$contentDisplay.Add_Layout({
-    $this.AutoScrollMinSize = New-Object System.Drawing.Size($this.AutoScrollMinSize.Width, $this.AutoScrollMinSize.Height)
-})
-
-# Enable mouse wheel scrolling with improved handling
-$contentDisplay.Add_MouseWheel({
-    param($sender, $e)
-    $scrollAmount = [Math]::Max(1, [Math]::Abs($e.Delta) / 120) * 40  # Larger scroll amount
-    $currentY = -$sender.AutoScrollPosition.Y
-    
-    if ($e.Delta -gt 0) {
-        # Scroll up
-        $newY = [Math]::Max(0, $currentY - $scrollAmount)
-    } else {
-        # Scroll down
-        $contentHeight = $sender.AutoScrollMinSize.Height
-        $panelHeight = $sender.ClientSize.Height
-        $maxY = [Math]::Max(0, $contentHeight - $panelHeight)
-        $newY = [Math]::Min($maxY, $currentY + $scrollAmount)
-        
-        # Debug scrolling
-        Write-Host "Scrolling: Current=$currentY, New=$newY, Max=$maxY, Content=$contentHeight, Panel=$panelHeight" -ForegroundColor Cyan
+# Event handlers
+function Update-StatusLabel {
+    param([string]$Message, [string]$Color = "Gray")
+    $statusLabel.Text = $Message
+    try {
+        $statusLabel.ForeColor = [System.Drawing.Color]::FromName($Color)
+    } catch {
+        $statusLabel.ForeColor = [System.Drawing.Color]::Gray
     }
-    
-    $sender.AutoScrollPosition = New-Object System.Drawing.Point(0, $newY)
-    $e.Handled = $true
-})
-
-# Ensure panel gets focus when mouse enters for wheel scrolling
-$contentDisplay.Add_MouseEnter({
-    $this.Focus()
-})
-
-# Make sure scroll position is reset properly when content changes
-$contentDisplay.Add_ControlAdded({
-    $this.AutoScrollPosition = New-Object System.Drawing.Point(0, 0)
-})
-
-$contentArea.Controls.Add($contentDisplay)
-
-$form.Controls.Add($contentArea)
-
-# Store reference to content display for tab switching
-$script:ContentDisplay = $contentDisplay
-
-# Create small tabs for bottom area
-$tabInstall = New-Object System.Windows.Forms.TabPage
-$tabInstall.Text = "Apps"
-
-$tabRemove = New-Object System.Windows.Forms.TabPage
-$tabRemove.Text = "Bloatware"
-
-$tabServices = New-Object System.Windows.Forms.TabPage
-$tabServices.Text = "Services"
-
-$tabTweaks = New-Object System.Windows.Forms.TabPage
-$tabTweaks.Text = "Tweaks"
-
-# Add tabs to control
-$tabControl.TabPages.Add($tabInstall)
-$tabControl.TabPages.Add($tabRemove)
-$tabControl.TabPages.Add($tabServices)
-$tabControl.TabPages.Add($tabTweaks)
-
-# Function to populate main content area based on selected tab
-function Show-TabContent {
-    param($Categories, $Title)
-    
-    # Properly clear all controls and reset scroll position
-    $script:ContentDisplay.Controls.Clear()
-    $script:ContentDisplay.AutoScrollPosition = New-Object System.Drawing.Point(0, 0)
-    
-    # Force a layout update to clear any cached positions
-    $script:ContentDisplay.PerformLayout()
-    $script:ContentDisplay.Refresh()
-    
-    $yPos = 20
-    
-    # Title with explicit sizing to prevent overlap
-    $titleLabel = New-Object System.Windows.Forms.Label
-    $titleLabel.Text = $Title
-    $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
-    $titleLabel.Location = New-Object System.Drawing.Point(20, $yPos)
-    $titleLabel.Size = New-Object System.Drawing.Size(800, 30)  # Explicit size
-    $titleLabel.AutoSize = $false
-    $script:ContentDisplay.Controls.Add($titleLabel)
-    $yPos += 50
-    
-    # Select All checkbox with explicit sizing
-    $selectAll = New-Object System.Windows.Forms.CheckBox
-    $selectAll.Text = "Select All"
-    $selectAll.Location = New-Object System.Drawing.Point(20, $yPos)
-    $selectAll.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $selectAll.Size = New-Object System.Drawing.Size(200, 25)  # Explicit size
-    $selectAll.AutoSize = $false
-    $selectAll.Add_CheckedChanged({
-        $checked = $this.Checked
-        foreach ($control in $script:ContentDisplay.Controls) {
-            if ($control -is [System.Windows.Forms.CheckBox] -and $control -ne $this) {
-                $control.Checked = $checked
-            }
-        }
-    })
-    $script:ContentDisplay.Controls.Add($selectAll)
-    $yPos += 50
-    
-    # Add categories and items
-    foreach ($category in $Categories.Keys | Sort-Object) {
-        # Category header with explicit sizing
-        $header = New-Object System.Windows.Forms.Label
-        $header.Text = $category
-        $header.Location = New-Object System.Drawing.Point(20, $yPos)
-        $header.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
-        $header.ForeColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
-        $header.Size = New-Object System.Drawing.Size(750, 25)  # Explicit size
-        $header.AutoSize = $false
-        $script:ContentDisplay.Controls.Add($header)
-        $yPos += 40
-        
-        # Items in columns with better layout tracking
-        $xPos = [int]50
-        $colWidth = [int]250
-        $col = [int]0
-        $maxCols = [int]3
-        $rowStartY = $yPos
-        $itemsInCategory = 0
-        
-        foreach ($item in $Categories[$category]) {
-            # Skip items not for this Windows version
-            if (($script:IsWindows11 -and $item.Win11 -eq $false) -or 
-                (-not $script:IsWindows11 -and $item.Win10 -eq $false)) {
-                continue
-            }
-            
-            $checkbox = New-Object System.Windows.Forms.CheckBox
-            $checkbox.Text = $item.Name
-            $checkbox.Tag = $item.Key
-            $xPosition = $xPos + ($col * $colWidth)
-            $checkbox.Location = New-Object System.Drawing.Point($xPosition, $yPos)
-            $checkbox.Size = New-Object System.Drawing.Size(240, 25)
-            $checkbox.Checked = $item.Default
-            $script:ContentDisplay.Controls.Add($checkbox)
-            
-            $itemsInCategory++
-            $col++
-            if ($col -ge $maxCols) {
-                $col = 0
-                $yPos += 30
-            }
-        }
-        
-        # Ensure we move to next row if items were added
-        if ($itemsInCategory -gt 0) {
-            if ($col -gt 0) {
-                $yPos += 30  # Complete the current row
-            }
-            $yPos += 20  # Add spacing between categories
-        }
-    }
-    
-    # Calculate and set scroll size with generous margin
-    $scrollHeight = $yPos + 150  # Generous margin for complete scrolling
-    $scrollWidth = 800  # Ensure horizontal space for 3 columns
-    
-    # Force the panel to recognize the new content size
-    $script:ContentDisplay.AutoScrollMinSize = New-Object System.Drawing.Size($scrollWidth, $scrollHeight)
-    
-    # Multiple refresh approaches to ensure scroll bars appear
-    $script:ContentDisplay.Invalidate()
-    $script:ContentDisplay.Update()
-    $script:ContentDisplay.PerformLayout()
-    $script:ContentDisplay.Refresh()
-    
-    # Reset scroll position to top for new content
-    $script:ContentDisplay.AutoScrollPosition = New-Object System.Drawing.Point(0, 0)
-    
-    # Small delay to allow Windows Forms to calculate layout
     [System.Windows.Forms.Application]::DoEvents()
-    Start-Sleep -Milliseconds 50
-    
-    # Final refresh after delay
-    $script:ContentDisplay.PerformLayout()
-    
-    # Ensure the panel can receive focus for mouse wheel events
-    $script:ContentDisplay.Focus()
-    
-    # Debug output to check scroll area
-    Write-Host "Content height: $yPos, Scroll area: $scrollHeight, Panel size: $($script:ContentDisplay.ClientSize.Height)" -ForegroundColor Yellow
 }
 
 function Get-SelectedItems {
-    param($CurrentCategories)
+    param([array]$Checkboxes)
     
-    $selectedItems = @()
-    
-    foreach ($control in $script:ContentDisplay.Controls) {
-        if ($control -is [System.Windows.Forms.CheckBox] -and $control.Tag -and $control.Checked) {
-            $selectedItems += $control.Tag
+    $selected = @()
+    foreach ($checkbox in $Checkboxes) {
+        if ($checkbox.Checked) {
+            $selected += $checkbox.Tag
         }
     }
-    
-    return $selectedItems
+    return $selected
 }
 
-function Update-StatusMessage {
-    param($Message)
-    
-    $statusLabel.Text = $Message
-    $logBox.Text += "$(Get-Date -Format 'HH:mm:ss'): $Message`r`n"
-    $logBox.SelectionStart = $logBox.Text.Length
-    $logBox.ScrollToCaret()
-    [System.Windows.Forms.Application]::DoEvents()
-}
-
-function Save-CheckboxStates {
-    param($TabType)
-    
-    $script:CheckboxStates[$TabType] = @{}
-    
-    foreach ($control in $script:ContentDisplay.Controls) {
-        if ($control -is [System.Windows.Forms.CheckBox] -and $control.Tag) {
-            $script:CheckboxStates[$TabType][$control.Tag] = $control.Checked
-        }
-    }
-}
-
-function Restore-CheckboxStates {
-    param($TabType)
-    
-    if (-not $script:CheckboxStates.ContainsKey($TabType)) {
-        return
-    }
-    
-    foreach ($control in $script:ContentDisplay.Controls) {
-        if ($control -is [System.Windows.Forms.CheckBox] -and $control.Tag) {
-            if ($script:CheckboxStates[$TabType].ContainsKey($control.Tag)) {
-                $control.Checked = $script:CheckboxStates[$TabType][$control.Tag]
-            }
-        }
-    }
-}
-
-function Get-WingetId {
-    param($AppKey)
-    
-    $wingetIds = @{
-        "chrome" = "Google.Chrome"
-        "firefox" = "Mozilla.Firefox" 
-        "brave" = "Brave.Brave"
-        "vscode" = "Microsoft.VisualStudioCode"
-        "git" = "Git.Git"
-        "python" = "Python.Python.3.12"
-        "pycharm" = "JetBrains.PyCharm.Community"
-        "github" = "GitHub.GitHubDesktop"
-        "postman" = "Postman.Postman"
-        "nodejs" = "OpenJS.NodeJS"
-        "terminal" = "Microsoft.WindowsTerminal"
-        "spotify" = "Spotify.Spotify"
-        "discord" = "Discord.Discord"
-        "steam" = "Valve.Steam"
-        "vlc" = "VideoLAN.VLC"
-        "7zip" = "7zip.7zip"
-        "notepad" = "Notepad++.Notepad++"
-        "powertoys" = "Microsoft.PowerToys"
-    }
-    
-    return $wingetIds[$AppKey]
-}
-
-
-function Show-WindowsUpdateDialog {
-    param(
-        [Parameter(Mandatory=$true)]
-        [hashtable]$WingetInfo
-    )
-    
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
-    
-    # Create the dialog form
-    $updateForm = New-Object System.Windows.Forms.Form
-    $updateForm.Text = "Windows Update Required for Winget"
-    $updateForm.Size = New-Object System.Drawing.Size(500, 400)
-    $updateForm.StartPosition = "CenterParent"
-    $updateForm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
-    $updateForm.MaximizeBox = $false
-    $updateForm.MinimizeBox = $false
-    $updateForm.ShowInTaskbar = $false
-    
-    # Warning icon and main message
-    $iconLabel = New-Object System.Windows.Forms.Label
-    $iconLabel.Text = "[WARNING]"
-    $iconLabel.Font = New-Object System.Drawing.Font("Segoe UI", 16)
-    $iconLabel.Location = New-Object System.Drawing.Point(20, 20)
-    $iconLabel.Size = New-Object System.Drawing.Size(40, 40)
-    $updateForm.Controls.Add($iconLabel)
-    
-    $titleLabel = New-Object System.Windows.Forms.Label
-    $titleLabel.Text = "Windows Update Required"
-    $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
-    $titleLabel.Location = New-Object System.Drawing.Point(70, 25)
-    $titleLabel.Size = New-Object System.Drawing.Size(400, 30)
-    $updateForm.Controls.Add($titleLabel)
-    
-    # Information text
-    $infoText = @"
-Your current Windows version does not support winget (Windows Package Manager):
-
-Current Version: $($WingetInfo.VersionName) (Build $($WingetInfo.BuildNumber))
-Required Version: Windows 10 1709 or later (Build 16299+)
-
-Winget provides faster and more reliable application installations. Without it, applications will be downloaded directly from their official sources, which may be slower.
-
-You can update Windows to enable winget support, or continue with direct downloads.
-"@
-    
-    $infoLabel = New-Object System.Windows.Forms.Label
-    $infoLabel.Text = $infoText
-    $infoLabel.Location = New-Object System.Drawing.Point(20, 70)
-    $infoLabel.Size = New-Object System.Drawing.Size(440, 180)
-    $infoLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $updateForm.Controls.Add($infoLabel)
-    
-    # Button panel
-    $buttonPanel = New-Object System.Windows.Forms.Panel
-    $buttonPanel.Location = New-Object System.Drawing.Point(20, 270)
-    $buttonPanel.Size = New-Object System.Drawing.Size(440, 80)
-    $updateForm.Controls.Add($buttonPanel)
-    
-    # Open Windows Update button
-    $updateButton = New-Object System.Windows.Forms.Button
-    $updateButton.Text = "Open Windows Update"
-    $updateButton.Size = New-Object System.Drawing.Size(140, 30)
-    $updateButton.Location = New-Object System.Drawing.Point(0, 0)
-    $updateButton.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
-    $updateButton.ForeColor = [System.Drawing.Color]::White
-    $updateButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $updateButton.Add_Click({
-        try {
-            Start-Process "ms-settings:windowsupdate"
-            [System.Windows.Forms.MessageBox]::Show(
-                "Windows Update has been opened. Please install all available updates and restart your computer. After restarting, you can run this setup script again to use winget.",
-                "Windows Update Opened",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Information
-            )
-        } catch {
-            [System.Windows.Forms.MessageBox]::Show(
-                "Could not open Windows Update automatically. Please manually go to Settings > Update & Security > Windows Update and install all available updates.",
-                "Manual Update Required",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Warning
-            )
-        }
-    })
-    $buttonPanel.Controls.Add($updateButton)
-    
-    # Recheck button
-    $recheckButton = New-Object System.Windows.Forms.Button
-    $recheckButton.Text = "Recheck Compatibility"
-    $recheckButton.Size = New-Object System.Drawing.Size(140, 30)
-    $recheckButton.Location = New-Object System.Drawing.Point(150, 0)
-    $recheckButton.Add_Click({
-        $newWingetInfo = Test-WingetCompatibility
-        if ($newWingetInfo.Compatible) {
-            [System.Windows.Forms.MessageBox]::Show(
-                "Great! Your Windows version now supports winget. The script will continue with winget-based installations.",
-                "Winget Compatible",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Information
-            )
-            $updateForm.DialogResult = [System.Windows.Forms.DialogResult]::Retry
-            $updateForm.Close()
-        } else {
-            [System.Windows.Forms.MessageBox]::Show(
-                "Your Windows version still does not support winget. Please install more updates or continue with direct downloads.",
-                "Still Incompatible",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Warning
-            )
-        }
-    })
-    $buttonPanel.Controls.Add($recheckButton)
-    
-    # Continue anyway button
-    $continueButton = New-Object System.Windows.Forms.Button
-    $continueButton.Text = "Continue with Direct Downloads"
-    $continueButton.Size = New-Object System.Drawing.Size(140, 30)
-    $continueButton.Location = New-Object System.Drawing.Point(300, 0)
-    $continueButton.Add_Click({
-        $updateForm.DialogResult = [System.Windows.Forms.DialogResult]::Ignore
-        $updateForm.Close()
-    })
-    $buttonPanel.Controls.Add($continueButton)
-    
-    # Help text
-    $helpLabel = New-Object System.Windows.Forms.Label
-    $helpLabel.Text = "TIP: After updating Windows, restart your computer and run this script again for the best experience."
-    $helpLabel.Location = New-Object System.Drawing.Point(0, 40)
-    $helpLabel.Size = New-Object System.Drawing.Size(440, 30)
-    $helpLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
-    $helpLabel.ForeColor = [System.Drawing.Color]::Gray
-    $buttonPanel.Controls.Add($helpLabel)
-    
-    # Show the dialog and return the result
-    return $updateForm.ShowDialog()
-}
-
-# Track current tab for state saving
-$script:CurrentTab = "Apps"
-
-# Tab selection event handler
-$tabControl.Add_SelectedIndexChanged({
-    # Save current tab state before switching
-    Save-CheckboxStates -TabType $script:CurrentTab
-    
-    $selectedTab = $tabControl.SelectedTab
-    
-    # Add small delay to ensure proper tab switching
-    [System.Windows.Forms.Application]::DoEvents()
-    
-    switch ($selectedTab.Text) {
-        "Apps" { 
-            $script:CurrentTab = "Apps"
-            Show-TabContent -Categories $script:Apps -Title "Select Applications to Install"
-            # Small delay before restoring states
-            [System.Windows.Forms.Application]::DoEvents()
-            Start-Sleep -Milliseconds 50
-            Restore-CheckboxStates -TabType "Apps"
-        }
-        "Bloatware" { 
-            $script:CurrentTab = "Bloatware"
-            Show-TabContent -Categories $script:Bloatware -Title "Select Bloatware to Remove"
-            [System.Windows.Forms.Application]::DoEvents()
-            Start-Sleep -Milliseconds 50
-            Restore-CheckboxStates -TabType "Bloatware"
-        }
-        "Services" { 
-            $script:CurrentTab = "Services"
-            Show-TabContent -Categories $script:Services -Title "Select Services to Disable"
-            [System.Windows.Forms.Application]::DoEvents()
-            Start-Sleep -Milliseconds 50
-            Restore-CheckboxStates -TabType "Services"
-        }
-        "Tweaks" { 
-            $script:CurrentTab = "Tweaks"
-            Show-TabContent -Categories $script:Tweaks -Title "Select System Tweaks to Apply"
-            [System.Windows.Forms.Application]::DoEvents()
-            Start-Sleep -Milliseconds 50
-            Restore-CheckboxStates -TabType "Tweaks"
-        }
-    }
-})
-
-# Show initial content (Apps tab) with winget compatibility info
-$wingetInfo = Test-WingetCompatibility
-if ($wingetInfo.Compatible) {
-    if ($wingetInfo.Available) {
-        Show-TabContent -Categories $script:Apps -Title "Select Applications to Install (Winget Available)"
-    } else {
-        Show-TabContent -Categories $script:Apps -Title "Select Applications to Install (Winget Compatible - May Need Registration)"
-    }
-} else {
-    Show-TabContent -Categories $script:Apps -Title "Select Applications to Install (Direct Downloads - Build $($wingetInfo.BuildNumber) < 16299)"
-}
-
-# Event handlers
-$runBtn.Add_Click({
+$runButton.Add_Click({
     try {
-        $runBtn.Enabled = $false
-        $cancelBtn.Text = "Cancel"
-        $logBox.Text = ""
+        $script:OperationCancelled = $false
+        $runButton.Enabled = $false
+        $closeButton.Text = "Cancel"
+        $progressBar.Visible = $true
         
-        Update-StatusMessage "Starting Windows Setup Operations..."
+        # Get current active tab
+        $activeTab = $tabControl.SelectedTab
+        $activeTabName = $activeTab.Text
         
-        # Save current tab state before processing
-        Save-CheckboxStates -TabType $script:CurrentTab
-        
-        # Determine current tab and get selected items
-        $selectedTab = $tabControl.SelectedTab
         $selectedItems = @()
         $operationType = ""
         
-        switch ($selectedTab.Text) {
-            "Apps" { 
-                $selectedItems = Get-SelectedItems -CurrentCategories $script:Apps
-                $operationType = "Install Applications"
+        # Determine which tab is active and get selected items
+        switch ($activeTabName) {
+            "Applications" {
+                $selectedItems = Get-SelectedItems -Checkboxes $script:AppCheckboxes
+                $operationType = "Apps"
             }
-            "Bloatware" { 
-                $selectedItems = Get-SelectedItems -CurrentCategories $script:Bloatware
-                $operationType = "Remove Bloatware"
+            "Bloatware" {
+                $selectedItems = Get-SelectedItems -Checkboxes $script:BloatwareCheckboxes
+                $operationType = "Bloatware"
             }
-            "Services" { 
-                $selectedItems = Get-SelectedItems -CurrentCategories $script:Services
-                $operationType = "Disable Services"
+            "Services" {
+                $selectedItems = Get-SelectedItems -Checkboxes $script:ServiceCheckboxes
+                $operationType = "Services"
             }
-            "Tweaks" { 
-                $selectedItems = Get-SelectedItems -CurrentCategories $script:Tweaks
-                $operationType = "Apply System Tweaks"
+            "Tweaks" {
+                $selectedItems = Get-SelectedItems -Checkboxes $script:TweakCheckboxes
+                $operationType = "Tweaks"
             }
         }
         
         if ($selectedItems.Count -eq 0) {
-            Update-StatusMessage "No items selected. Please select items to process."
+            Update-StatusLabel "No items selected in $activeTabName tab. Please select items to process." "Orange"
+            $runButton.Enabled = $true
+            $closeButton.Text = "Close"
+            $progressBar.Visible = $false
             return
         }
         
-        Update-StatusMessage "$operationType - Processing $($selectedItems.Count) items..."
+        Update-StatusLabel "Starting $operationType operations... ($($selectedItems.Count) items)" "Blue"
+        $progressBar.Maximum = $selectedItems.Count
+        $progressBar.Value = 0
         
-        # Process based on operation type
-        switch ($selectedTab.Text) {
+        $currentStep = 0
+        
+        # Execute operations based on tab type
+        switch ($operationType) {
             "Apps" {
-                # Comprehensive winget availability check and setup
-                Update-StatusMessage "Checking winget availability and Windows compatibility..."
-                
-                # Get detailed Windows version info
-                $osVersion = [System.Environment]::OSVersion.Version
-                $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
-                $osName = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").ProductName
-                
-                Update-StatusMessage "System: $osName (Build $buildNumber)"
-                
-                # Check minimum Windows 10 build requirement (1709 = build 16299)
-                if ([int]$buildNumber -lt 16299) {
-                    Update-StatusMessage "[ERROR] Windows version too old for winget (requires Windows 10 1709/build 16299+)"
-                    Update-StatusMessage "Current build: $buildNumber - Showing Windows Update options..."
-                    
-                    # Show Windows Update dialog to help user upgrade
-                    $wingetCompatInfo = Test-WingetCompatibility
-                    $updateDialogResult = Show-WindowsUpdateDialog -WingetInfo $wingetCompatInfo
-                    
-                    if ($updateDialogResult -eq [System.Windows.Forms.DialogResult]::Retry) {
-                        # User updated and wants to recheck - test again
-                        $newWingetInfo = Test-WingetCompatibility
-                        if ($newWingetInfo.Compatible) {
-                            Update-StatusMessage "[SUCCESS] Windows version now supports winget after update!"
-                            $buildNumber = $newWingetInfo.BuildNumber
-                        } else {
-                            Update-StatusMessage "Windows still incompatible after update - using direct downloads"
-                        }
-                    } else {
-                        Update-StatusMessage "User chose to continue with direct downloads"
-                    }
-                } else {
-                    Update-StatusMessage "[SUCCESS] Windows version supports winget (build $buildNumber >= 16299)"
-                    
+                # Check if winget is already available before initializing
+                $wingetNeedsSetup = $true
+                if (Get-Command winget -ErrorAction SilentlyContinue) {
                     try {
-                        # First check if winget command is available
-                        $wingetVersion = winget --version 2>$null
-                        if ($wingetVersion) {
-                            Update-StatusMessage "[SUCCESS] Winget already available: $wingetVersion"
-                        } else {
-                            Update-StatusMessage "Winget command not found - checking App Installer registration..."
-                            
-                            # Check if App Installer (which contains winget) is installed
-                            $appInstaller = Get-AppxPackage -Name "Microsoft.DesktopAppInstaller" -ErrorAction SilentlyContinue
-                            if ($appInstaller) {
-                                Update-StatusMessage "[SUCCESS] App Installer found: $($appInstaller.Version)"
-                                Update-StatusMessage "Attempting winget registration..."
-                                
-                                try {
-                                    # Register the App Installer to make winget available
-                                    Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
-                                    Update-StatusMessage "Registration command executed successfully"
-                                    
-                                    # Wait for registration to complete
-                                    Update-StatusMessage "Waiting for registration to complete..."
-                                    Start-Sleep -Seconds 3
-                                    
-                                    # Try to refresh environment and check again
-                                    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-                                    
-                                    # Multiple verification attempts
-                                    $attempts = 0
-                                    $maxAttempts = 3
-                                    $wingetWorking = $false
-                                    
-                                    while ($attempts -lt $maxAttempts -and -not $wingetWorking) {
-                                        $attempts++
-                                        Start-Sleep -Seconds 2
-                                        
-                                        try {
-                                            $testVersion = winget --version 2>$null
-                                            if ($testVersion) {
-                                                Update-StatusMessage "[SUCCESS] Winget successfully registered and working: $testVersion"
-                                                $wingetWorking = $true
-                                            }
-                                        } catch {
-                                            Update-StatusMessage "Winget verification attempt $attempts/$maxAttempts..."
-                                        }
-                                    }
-                                    
-                                    if (-not $wingetWorking) {
-                                        Update-StatusMessage "[WARNING] Winget registration completed but command not immediately available"
-                                        Update-StatusMessage "This is normal - winget may require a new PowerShell session or user logout/login"
-                                        Update-StatusMessage "Continuing with direct downloads as fallback"
-                                    }
-                                    
-                                } catch {
-                                    Update-StatusMessage "[WARNING] Winget registration failed: $_"
-                                    Update-StatusMessage "Continuing with direct downloads"
-                                }
-                            } else {
-                                Update-StatusMessage "[INFO] App Installer not found - attempting to install winget..."
-                                
-                                # Try to install winget if Windows version is compatible
-                                $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
-                                if ([int]$buildNumber -ge 16299) {
-                                    try {
-                                        Update-StatusMessage "Installing winget via Install-Winget function..."
-                                        $wingetInstalled = Install-Winget
-                                        
-                                        if ($wingetInstalled) {
-                                            Update-StatusMessage "[SUCCESS] Winget installation completed successfully"
-                                            
-                                            # Verify winget is working
-                                            try {
-                                                $testVersion = winget --version 2>$null
-                                                if ($testVersion) {
-                                                    Update-StatusMessage "[SUCCESS] Winget is now available: $testVersion"
-                                                } else {
-                                                    Update-StatusMessage "[WARNING] Winget installed but may require PowerShell restart"
-                                                }
-                                            } catch {
-                                                Update-StatusMessage "[WARNING] Winget installed but verification failed"
-                                            }
-                                        } else {
-                                            Update-StatusMessage "[WARNING] Winget installation failed - falling back to direct downloads"
-                                        }
-                                    } catch {
-                                        Update-StatusMessage "[ERROR] Winget installation error: $_"
-                                        Update-StatusMessage "Continuing with direct downloads"
-                                    }
-                                } else {
-                                    Update-StatusMessage "[ERROR] Windows version not compatible with winget (requires build 16299+)"
-                                    Update-StatusMessage "Tip: Update Windows or use direct downloads"
-                                }
-                            }
+                        $testVersion = winget --version 2>&1
+                        if ($LASTEXITCODE -eq 0 -and $testVersion -and $testVersion.Trim() -ne "") {
+                            Write-LogMessage "Winget already available: $testVersion" -Level "INFO"
+                            $wingetNeedsSetup = $false
                         }
-                    } catch {
-                        Update-StatusMessage "[WARNING] Error during winget check: $_"
-                        Update-StatusMessage "Continuing with direct downloads"
+                    }
+                    catch {
+                        Write-LogMessage "Winget command found but not working properly" -Level "WARNING"
                     }
                 }
                 
-                foreach ($appKey in $selectedItems) {
-                    $installerName = Get-InstallerName -AppKey $appKey
-                    Update-StatusMessage "Installing $installerName..."
-                    try {
-                        # Check if we should attempt winget or go straight to direct download
-                        $buildNumber = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
-                        $useWinget = ([int]$buildNumber -ge 16299) -and (Get-Command winget -ErrorAction SilentlyContinue)
-                        
-                        if ($useWinget) {
-                            # Provide winget IDs for prioritized installation
-                            $wingetId = Get-WingetId -AppKey $appKey
-                            if ($wingetId) {
-                                Install-Application -AppName $installerName -WingetId $wingetId
-                            } else {
-                                Install-Application -AppName $installerName
-                            }
-                        } else {
-                            # Skip winget and use direct download
-                            Update-StatusMessage "Using direct download for $installerName (winget not available)"
-                            Install-Application -AppName $installerName
+                if ($wingetNeedsSetup) {
+                    Update-StatusLabel "Setting up winget environment..." "Blue"
+                    
+                    # Setup progress bar for winget initialization
+                    $progressBar.Maximum = 100
+                    $progressBar.Value = 0
+                    
+                    # Create progress callback for winget initialization
+                    $wingetProgressCallback = {
+                        param([string]$Status, [int]$PercentComplete)
+                        Update-StatusLabel $Status "Blue"
+                        if ($PercentComplete -ge 0 -and $PercentComplete -le 100) {
+                            $progressBar.Value = $PercentComplete
                         }
-                        Update-StatusMessage "[SUCCESS] Successfully installed $appKey"
+                        [System.Windows.Forms.Application]::DoEvents()
+                    }
+                    
+                    $wingetResult = Initialize-WingetEnvironment -ProgressCallback $wingetProgressCallback -TimeoutMinutes 15
+                } else {
+                    Update-StatusLabel "Winget ready, starting installations..." "Blue"
+                }
+                
+                foreach ($appKey in $selectedItems) {
+                    if ($script:OperationCancelled) {
+                        Update-StatusLabel "Operations cancelled by user" "Orange"
+                        break
+                    }
+                    
+                    $currentStep++
+                    $progressBar.Value = $currentStep
+                    
+                    $installerName = Get-InstallerName -AppKey $appKey
+                    $wingetId = Get-WingetId -AppKey $appKey
+                    Update-StatusLabel "Installing $installerName... ($currentStep of $($selectedItems.Count))" "Blue"
+                    
+                    try {
+                        # Get DirectDownload info from configuration
+                        $appConfig = $null
+                        foreach ($category in $script:Apps.Keys) {
+                            $app = $script:Apps[$category] | Where-Object { $_.Key -eq $appKey }
+                            if ($app) {
+                                $appConfig = $app
+                                break
+                            }
+                        }
+                        
+                        $directDownload = if ($appConfig -and $appConfig.DirectDownload) { $appConfig.DirectDownload } else { $null }
+                        Install-Application -AppName $installerName -AppKey $appKey -WingetId $wingetId -DirectDownload $directDownload -TimeoutMinutes 15 -DownloadTimeoutMinutes 10
+                        Write-LogMessage "Successfully installed $installerName" -Level "SUCCESS"
                     } catch {
-                        Update-StatusMessage "[ERROR] Failed to install $appKey - ${_}"
-                        Write-LogMessage -Message "Failed to install $appKey - ${_}" -Level "ERROR"
+                        Write-LogMessage "Failed to install $installerName - $_" -Level "ERROR"
+                    }
+                    
+                    # Update UI every 5 operations or on final operation for better performance
+                    if ($currentStep % 5 -eq 0 -or $currentStep -eq $selectedItems.Count) {
+                        [System.Windows.Forms.Application]::DoEvents()
                     }
                 }
             }
             "Bloatware" {
                 foreach ($bloatKey in $selectedItems) {
-                    Update-StatusMessage "Removing bloatware $bloatKey..."
+                    if ($script:OperationCancelled) {
+                        Update-StatusLabel "Operations cancelled by user" "Orange"
+                        break
+                    }
+                    
+                    $currentStep++
+                    $progressBar.Value = $currentStep
+                    Update-StatusLabel "Removing bloatware $bloatKey... ($currentStep of $($selectedItems.Count))" "Blue"
+                    
                     try {
                         Remove-Bloatware -BloatwareKey $bloatKey
-                        Update-StatusMessage "[SUCCESS] Successfully removed $bloatKey"
+                        Write-LogMessage "Successfully removed bloatware $bloatKey" -Level "SUCCESS"
                     } catch {
-                        Update-StatusMessage "[ERROR] Failed to remove $bloatKey - ${_}"
-                        Write-LogMessage -Message "Failed to remove bloatware $bloatKey - ${_}" -Level "ERROR"
+                        Write-LogMessage "Failed to remove bloatware $bloatKey - $_" -Level "ERROR"
+                    }
+                    
+                    # Update UI every 5 operations or on final operation for better performance
+                    if ($currentStep % 5 -eq 0 -or $currentStep -eq $selectedItems.Count) {
+                        [System.Windows.Forms.Application]::DoEvents()
                     }
                 }
             }
             "Services" {
                 foreach ($serviceKey in $selectedItems) {
-                    Update-StatusMessage "Disabling service $serviceKey..."
+                    if ($script:OperationCancelled) {
+                        Update-StatusLabel "Operations cancelled by user" "Orange"
+                        break
+                    }
+                    
+                    $currentStep++
+                    $progressBar.Value = $currentStep
+                    Update-StatusLabel "Disabling service $serviceKey... ($currentStep of $($selectedItems.Count))" "Blue"
+                    
                     try {
                         Set-SystemOptimization -OptimizationKey $serviceKey
-                        Update-StatusMessage "[SUCCESS] Successfully disabled $serviceKey"
+                        Write-LogMessage "Successfully disabled service $serviceKey" -Level "SUCCESS"
                     } catch {
-                        Update-StatusMessage "[ERROR] Failed to disable $serviceKey - ${_}"
-                        Write-LogMessage -Message "Failed to disable service $serviceKey - ${_}" -Level "ERROR"
+                        Write-LogMessage "Failed to disable service $serviceKey - $_" -Level "ERROR"
+                    }
+                    
+                    # Update UI every 5 operations or on final operation for better performance
+                    if ($currentStep % 5 -eq 0 -or $currentStep -eq $selectedItems.Count) {
+                        [System.Windows.Forms.Application]::DoEvents()
                     }
                 }
             }
             "Tweaks" {
                 foreach ($tweakKey in $selectedItems) {
-                    Update-StatusMessage "Applying tweak $tweakKey..."
+                    if ($script:OperationCancelled) {
+                        Update-StatusLabel "Operations cancelled by user" "Orange"
+                        break
+                    }
+                    
+                    $currentStep++
+                    $progressBar.Value = $currentStep
+                    Update-StatusLabel "Applying tweak $tweakKey... ($currentStep of $($selectedItems.Count))" "Blue"
+                    
                     try {
                         Set-SystemOptimization -OptimizationKey $tweakKey
-                        Update-StatusMessage "[SUCCESS] Successfully applied $tweakKey"
+                        Write-LogMessage "Successfully applied tweak $tweakKey" -Level "SUCCESS"
                     } catch {
-                        Update-StatusMessage "[ERROR] Failed to apply $tweakKey - ${_}"
-                        Write-LogMessage -Message "Failed to apply tweak $tweakKey - ${_}" -Level "ERROR"
+                        Write-LogMessage "Failed to apply tweak $tweakKey - $_" -Level "ERROR"
+                    }
+                    
+                    # Update UI every 5 operations or on final operation for better performance
+                    if ($currentStep % 5 -eq 0 -or $currentStep -eq $selectedItems.Count) {
+                        [System.Windows.Forms.Application]::DoEvents()
                     }
                 }
             }
         }
         
-        Update-StatusMessage "All operations completed!"
+        if (-not $script:OperationCancelled) {
+            # Check if Explorer restart is required for UI changes
+            try {
+                if ($script:ExplorerRestartRequired) {
+                    Update-StatusLabel "Restarting Explorer to apply UI changes..." "Orange"
+                    Write-LogMessage "Explorer restart required for UI changes, restarting..." -Level "INFO"
+                    
+                    if (Restart-WindowsExplorer) {
+                        Write-LogMessage "Explorer restarted successfully" -Level "SUCCESS"
+                    } else {
+                        Write-LogMessage "Explorer restart failed, changes may require manual restart or logoff/logon" -Level "WARNING"
+                    }
+                }
+            } catch {
+                Write-LogMessage "Error during Explorer restart: $_" -Level "ERROR"
+            }
+            
+            Update-StatusLabel "$operationType operations completed! Check logs for details." "Green"
+            
+            # Show appropriate completion message
+            if ($script:ExplorerRestartRequired -and $script:RestartRequired) {
+                [System.Windows.Forms.MessageBox]::Show("$operationType operations completed!`n`nExplorer has been restarted to apply UI changes.`nA system restart is also required for some changes to take full effect.", "Operations Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            } elseif ($script:ExplorerRestartRequired) {
+                [System.Windows.Forms.MessageBox]::Show("$operationType operations completed!`n`nExplorer has been restarted to apply UI changes.", "Operations Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            } elseif ($script:RestartRequired) {
+                [System.Windows.Forms.MessageBox]::Show("$operationType operations completed!`n`nA system restart is required for some changes to take full effect.", "Operations Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            } else {
+                [System.Windows.Forms.MessageBox]::Show("$operationType operations have been completed!", "Operations Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            }
+        }
         
     } catch {
-        Update-StatusMessage "Error during operations: $_"
-        Write-LogMessage -Message "GUI operation error: $_" -Level "ERROR"
+        Update-StatusLabel "Error during operations: $_" "Red"
+        Write-LogMessage "GUI operation error: $_" -Level "ERROR"
+        [System.Windows.Forms.MessageBox]::Show("An error occurred: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
     } finally {
-        $runBtn.Enabled = $true
-        $cancelBtn.Text = "Close"
+        $runButton.Enabled = $true
+        $closeButton.Text = "Close"
+        $progressBar.Visible = $false
+        $script:OperationCancelled = $false
     }
 })
 
-$cancelBtn.Add_Click({
-    $form.Close()
+$closeButton.Add_Click({
+    if ($closeButton.Text -eq "Cancel") {
+        # Cancel ongoing operations
+        $script:OperationCancelled = $true
+        Update-StatusLabel "Cancelling operations..." "Orange"
+    } else {
+        # Close the form
+        $form.Close()
+    }
 })
 
+# Show the form
 Write-Host "Launching Windows Setup GUI..." -ForegroundColor Green
-Write-Host "4 tabs: Install Apps, Remove Bloatware, Disable Services, System Tweaks" -ForegroundColor Yellow
+Write-Host "GUI loaded with $($script:AppCheckboxes.Count) applications, $($script:BloatwareCheckboxes.Count) bloatware items, $($script:ServiceCheckboxes.Count) services, and $($script:TweakCheckboxes.Count) tweaks" -ForegroundColor Yellow
 
-# Display log file location
 $logPath = Get-LogFilePath
 if ($logPath) {
     Write-Host "Log file: $logPath" -ForegroundColor Cyan
-} else {
-    Write-Host "Warning: Logging may not be working properly" -ForegroundColor Yellow
 }
 
-# Show form
 [void]$form.ShowDialog()
