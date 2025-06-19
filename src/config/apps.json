@@ -51,37 +51,47 @@
       "Default": true,
       "Win10": true,
       "Win11": true,
-      "WingetId": "Python.Python.3",
+      "WingetId": "Python.Python.3.12",
       "DirectDownload": {
-        "Url": "https://www.python.org/downloads/windows/",
-        "UrlType": "dynamic-python",
-        "FallbackUrl": "https://www.python.org/ftp/python/3.13.1/python-3.13.1-amd64.exe",
+        "Url": "https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe",
+        "UrlType": "direct",
+        "FallbackUrl": "https://www.python.org/ftp/python/3.12.7/python-3.12.7-amd64.exe",
         "Extension": ".exe",
-        "Arguments": "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0 Include_pip=1 Include_tcltk=1 Include_dev=1 Include_launcher=1 CompileAll=1 AssociateFiles=1",
+        "Arguments": "/quiet InstallAllUsers=1 PrependPath=1 Include_pip=1 Include_launcher=1 AssociateFiles=1",
         "VerificationPaths": [
           "%ProgramFiles%\\Python312\\python.exe",
-          "%ProgramFiles%\\Python313\\python.exe",
-          "%ProgramFiles%\\Python314\\python.exe",
+          "%ProgramFiles(x86)\\Python312\\python.exe",
           "%LocalAppData%\\Programs\\Python\\Python312\\python.exe",
-          "%LocalAppData%\\Programs\\Python\\Python313\\python.exe",
-          "%LocalAppData%\\Microsoft\\WindowsApps\\python.exe"
+          "%LocalAppData%\\Programs\\Python\\Python312-64\\python.exe",
+          "%LocalAppData%\\Microsoft\\WindowsApps\\python.exe",
+          "C:\\Python312\\python.exe"
         ],
         "CommandCheck": "python --version",
         "PostInstall": {
           "Commands": [
-            "python -m pip install --upgrade pip",
-            "python -m pip install virtualenv",
-            "python -m pip install pipenv",
-            "python -m pip install wheel",
-            "python -m pip install setuptools --upgrade"
+            "refreshenv",
+            "python -m pip install --upgrade pip --quiet",
+            "python -m pip install virtualenv --quiet",
+            "python -m pip install wheel --quiet"
           ],
           "EnvironmentVariables": [
             {"Name": "PYTHONUNBUFFERED", "Value": "1", "Target": "User"},
-            {"Name": "PIP_DISABLE_PIP_VERSION_CHECK", "Value": "1", "Target": "User"},
-            {"Name": "PYTHONDONTWRITEBYTECODE", "Value": "0", "Target": "User"},
-            {"Name": "PIP_CACHE_DIR", "Value": "%USERPROFILE%\\.pip\\cache", "Target": "User"}
+            {"Name": "PIP_DISABLE_PIP_VERSION_CHECK", "Value": "1", "Target": "User"}
           ],
-          "Message": "Python installed successfully with complete development environment. Includes: latest pip, virtualenv, pipenv, wheel, and setuptools. Environment variables configured for optimal development experience."
+          "PathAdditions": [
+            "%ProgramFiles%\\Python312",
+            "%ProgramFiles%\\Python312\\Scripts",
+            "C:\\Python312",
+            "C:\\Python312\\Scripts"
+          ],
+          "AdditionalSteps": [
+            "Verify Python is accessible via 'python --version'",
+            "Verify pip is accessible via 'pip --version'",
+            "Create virtual environments with: python -m venv myenv",
+            "Activate venv with: myenv\\Scripts\\activate",
+            "If 'python' doesn't work, try 'py' command instead"
+          ],
+          "Message": "Python 3.12 installed successfully with pip, virtualenv, and wheel. Use 'python -m venv myenv' to create virtual environments."
         }
       }
     },
@@ -415,7 +425,7 @@
   "Utilities": [
     {
       "Name": "7-Zip",
-      "Key": "7zip",
+      "Key": "seven-zip",
       "Default": false,
       "Win10": true,
       "Win11": true,

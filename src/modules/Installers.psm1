@@ -106,7 +106,7 @@ function Start-ProcessWithTimeout {
 }
 
 # Import required modules
-$utilsPath = Join-Path (Split-Path $PSScriptRoot) "utils"
+$utilsPath = Join-Path (Split-Path $PSScriptRoot -Parent) "utils"
 $LoggingModule = Join-Path $utilsPath "Logging.psm1"
 $ConfigModule = Join-Path $utilsPath "ConfigLoader.psm1"
 
@@ -762,8 +762,25 @@ function Test-ApplicationInstalled {
         }
         
         if (Get-Command $appCommand -ErrorAction SilentlyContinue) {
-            Write-LogMessage "Installation verified: Command '$appCommand' is available for $AppName" -Level "SUCCESS"
-            return $true
+            # Special handling for Python to avoid Microsoft Store placeholder
+            if ($appCommand -eq "python") {
+                try {
+                    $testOutput = python --version 2>&1
+                    if ($testOutput -and $testOutput -match "Python \d+\.\d+\.\d+" -and $testOutput -notlike "*Microsoft Store*") {
+                        Write-LogMessage "Installation verified: Command '$appCommand' is available for $AppName" -Level "SUCCESS"
+                        return $true
+                    } else {
+                        Write-LogMessage "Command '$appCommand' found but appears to be Microsoft Store placeholder" -Level "WARNING"
+                        return $false
+                    }
+                } catch {
+                    Write-LogMessage "Command '$appCommand' check failed: $_" -Level "WARNING"
+                    return $false
+                }
+            } else {
+                Write-LogMessage "Installation verified: Command '$appCommand' is available for $AppName" -Level "SUCCESS"
+                return $true
+            }
         }
     }
     
@@ -1030,9 +1047,18 @@ function Test-InstalledVersion {
     try {
         switch ($AppName) {
             "Python" {
-                $pythonVersion = python --version 2>&1
-                if ($pythonVersion -match "Python (\d+\.\d+\.\d+)") {
-                    return $matches[1]
+                try {
+                    $pythonVersion = python --version 2>&1
+                    # Check if this is real Python (not Microsoft Store placeholder)
+                    if ($pythonVersion -and $pythonVersion -match "Python (\d+\.\d+\.\d+)" -and $pythonVersion -notlike "*Microsoft Store*") {
+                        return $matches[1]
+                    } else {
+                        Write-LogMessage "Detected Microsoft Store Python placeholder in version check" -Level "DEBUG"
+                        return $null
+                    }
+                } catch {
+                    Write-LogMessage "Python version check failed: $_" -Level "DEBUG"
+                    return $null
                 }
             }
             "Git" {
@@ -2045,11 +2071,22 @@ function Install-Python {
             $pythonFound = $false
             $pythonPath = $null
             
-            # Check command availability first
+            # Check command availability first (with Microsoft Store placeholder detection)
             if (Get-Command python -ErrorAction SilentlyContinue) {
-                $pythonVersion = python --version 2>&1
-                Write-LogMessage "Python command available: $pythonVersion" -Level "SUCCESS"
-                $pythonFound = $true
+                try {
+                    $pythonVersion = python --version 2>&1
+                    # Check if this is the real Python or Microsoft Store placeholder
+                    if ($pythonVersion -and $pythonVersion -match "Python \d+\.\d+\.\d+" -and $pythonVersion -notlike "*Microsoft Store*") {
+                        Write-LogMessage "Python command available: $pythonVersion" -Level "SUCCESS"
+                        $pythonFound = $true
+                    } else {
+                        Write-LogMessage "Detected Microsoft Store Python placeholder, ignoring..." -Level "WARNING"
+                        $pythonFound = $false
+                    }
+                } catch {
+                    Write-LogMessage "Python command failed: $_" -Level "WARNING"
+                    $pythonFound = $false
+                }
             }
             
             # If command not found, search installation paths
@@ -2235,12 +2272,35 @@ function Install-WindowsFeature {
         if ($FeatureInfo.Commands) {
             foreach ($command in $FeatureInfo.Commands) {
                 Write-LogMessage "Executing: $command" -Level "INFO"
-                $result = Invoke-Expression $command
-                
-                if ($LASTEXITCODE -ne 0) {
-                    Write-LogMessage "Command failed with exit code: $LASTEXITCODE" -Level "WARNING"
-                } else {
-                    Write-LogMessage "Command completed successfully" -Level "SUCCESS"
+                try {
+                    # Parse command into executable and arguments for safer execution
+                    $commandParts = $command -split '\s+', 2
+                    $executable = $commandParts[0]
+                    $arguments = if ($commandParts.Length -gt 1) { $commandParts[1] } else { "" }
+                    
+                    # Execute using Start-Process for better security and control
+                    $processArgs = @{
+                        FilePath = $executable
+                        Wait = $true
+                        NoNewWindow = $true
+                        PassThru = $true
+                    }
+                    
+                    if ($arguments) {
+                        $processArgs.ArgumentList = $arguments
+                    }
+                    
+                    $process = Start-Process @processArgs
+                    $result = $process.ExitCode
+                    
+                    if ($result -ne 0) {
+                        Write-LogMessage "Command failed with exit code: $result" -Level "WARNING"
+                    } else {
+                        Write-LogMessage "Command completed successfully" -Level "SUCCESS"
+                    }
+                }
+                catch {
+                    Write-LogMessage "Command execution error: $_" -Level "ERROR"
                 }
             }
         }
@@ -2286,6 +2346,36 @@ function Invoke-PostInstallActions {
             }
         }
         
+        # Add paths to PATH environment variable
+        if ($PostInstallInfo.PathAdditions) {
+            Write-LogMessage "Adding paths to PATH environment variable" -Level "INFO"
+            $currentPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+            $pathsAdded = 0
+            
+            foreach ($pathToAdd in $PostInstallInfo.PathAdditions) {
+                # Expand environment variables in the path
+                $expandedPath = [System.Environment]::ExpandEnvironmentVariables($pathToAdd)
+                
+                # Check if path exists and is not already in PATH
+                if ((Test-Path $expandedPath) -and ($currentPath -notlike "*$expandedPath*")) {
+                    $currentPath = "$expandedPath;$currentPath"
+                    $pathsAdded++
+                    Write-LogMessage "Added to PATH: $expandedPath" -Level "INFO"
+                } elseif (Test-Path $expandedPath) {
+                    Write-LogMessage "Path already exists in PATH: $expandedPath" -Level "DEBUG"
+                } else {
+                    Write-LogMessage "Path does not exist, skipping: $expandedPath" -Level "DEBUG"
+                }
+            }
+            
+            if ($pathsAdded -gt 0) {
+                [System.Environment]::SetEnvironmentVariable("Path", $currentPath, "User")
+                # Also update current session PATH
+                $env:Path = "$currentPath;$env:Path"
+                Write-LogMessage "Added $pathsAdded path(s) to user PATH environment variable" -Level "SUCCESS"
+            }
+        }
+        
         # Show restart required message
         if ($PostInstallInfo.RestartRequired) {
             $message = if ($PostInstallInfo.Message) { $PostInstallInfo.Message } else { "$AppName requires a system restart to complete installation" }
@@ -2307,11 +2397,42 @@ function Invoke-PostInstallActions {
             foreach ($command in $PostInstallInfo.Commands) {
                 Write-LogMessage "Executing post-install command: $command" -Level "INFO"
                 try {
-                    $result = Invoke-Expression $command
-                    if ($LASTEXITCODE -eq 0) {
+                    # Special handling for refreshenv command
+                    if ($command -eq "refreshenv") {
+                        try {
+                            # Try to refresh environment variables manually
+                            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+                            Write-LogMessage "Environment variables refreshed manually" -Level "SUCCESS"
+                        } catch {
+                            Write-LogMessage "Could not refresh environment variables: $_" -Level "WARNING"
+                        }
+                        continue
+                    }
+                    
+                    # Parse command into executable and arguments for safer execution
+                    $commandParts = $command -split '\s+', 2
+                    $executable = $commandParts[0]
+                    $arguments = if ($commandParts.Length -gt 1) { $commandParts[1] } else { "" }
+                    
+                    # Execute using Start-Process for better security and control
+                    $processArgs = @{
+                        FilePath = $executable
+                        Wait = $true
+                        NoNewWindow = $true
+                        PassThru = $true
+                    }
+                    
+                    if ($arguments) {
+                        $processArgs.ArgumentList = $arguments
+                    }
+                    
+                    $process = Start-Process @processArgs
+                    $result = $process.ExitCode
+                    
+                    if ($result -eq 0) {
                         Write-LogMessage "Post-install command completed successfully" -Level "SUCCESS"
                     } else {
-                        Write-LogMessage "Post-install command failed with exit code: $LASTEXITCODE" -Level "WARNING"
+                        Write-LogMessage "Post-install command failed with exit code: $result" -Level "WARNING"
                     }
                 }
                 catch {

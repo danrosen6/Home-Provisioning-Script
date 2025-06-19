@@ -87,7 +87,7 @@ function Show-TimeoutMessageBox {
 }
 
 # Import the centralized logging system
-$LoggingModule = Join-Path (Split-Path $PSScriptRoot) "utils\Logging.psm1"
+$LoggingModule = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) "utils") "Logging.psm1"
 if (Test-Path $LoggingModule) {
     Import-Module $LoggingModule -Force -Global
     Write-Verbose "Imported centralized logging module"
@@ -445,17 +445,24 @@ function Set-SystemOptimization {
                 foreach ($serviceName in $serviceNames) {
                     try {
                         $service = Get-Service -Name $serviceName -ErrorAction Stop
-                        $actualServiceName = $serviceName
-                        Write-LogMessage "Found service with name: $actualServiceName" -Level "INFO"
-                        break
+                        if ($service) {
+                            $actualServiceName = $serviceName
+                            Write-LogMessage "Found service with name: $actualServiceName (Display: $($service.DisplayName))" -Level "INFO"
+                            break
+                        }
                     } catch {
                         # Service not found with this name, try next
+                        Write-LogMessage "Service '$serviceName' not found, trying next..." -Level "DEBUG"
                     }
                 }
                 
                 if (-not $actualServiceName) {
-                    Write-LogMessage "Service dmwappushservice/dmwappushsvc not found on this system" -Level "WARNING"
-                    return $false
+                    Write-LogMessage "Service dmwappushservice/dmwappushsvc not found on this system - this is normal on some Windows versions" -Level "WARNING"
+                    Save-OperationState -OperationType "SystemOptimization" -ItemKey $OptimizationKey -Status "Skipped" -AdditionalData @{
+                        Reason = "Service not found on this system"
+                        SearchedNames = $serviceNames -join ", "
+                    }
+                    return $true  # Return true since this is expected behavior, not a failure
                 }
                 
                 # Check dependencies first
@@ -534,10 +541,13 @@ function Set-SystemOptimization {
             
             # Registry changes that require restart
             "disable-cortana" {
-                Save-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana"
+                # Ensure registry path exists before trying to backup
                 if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search")) {
                     New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Force | Out-Null
                 }
+                # Backup existing value before modification
+                Save-RegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana"
+                # Apply the change
                 Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" -Name "AllowCortana" -Value 0
                 Add-RestartRegistryChange -ChangeDescription "Disable Cortana"
             }

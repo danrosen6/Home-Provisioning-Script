@@ -44,7 +44,7 @@ function Write-LogMessage {
             
             # Check log file size and rotate if needed
             if ((Test-Path $script:LogFile) -and ((Get-Item $script:LogFile).Length -gt $script:MaxLogSize)) {
-                Rotate-LogFile
+                Reset-LogFile
             }
             
             # Write to log file
@@ -91,7 +91,7 @@ function Initialize-Logging {
     }
 }
 
-function Rotate-LogFile {
+function Reset-LogFile {
     try {
         $logDir = Split-Path -Parent $script:LogFile
         $logFiles = Get-ChildItem -Path $logDir -Filter "setup_*.log" | Sort-Object LastWriteTime -Descending
@@ -121,4 +121,4 @@ function Get-LogDirectory {
     return $null
 }
 
-Export-ModuleMember -Function Write-LogMessage, Initialize-Logging, Rotate-LogFile, Get-LogFilePath, Get-LogDirectory 
+Export-ModuleMember -Function Write-LogMessage, Initialize-Logging, Reset-LogFile, Get-LogFilePath, Get-LogDirectory 
