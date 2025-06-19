@@ -87,7 +87,7 @@ function Show-TimeoutMessageBox {
 }
 
 # Import the centralized logging system
-$LoggingModule = Join-Path (Split-Path $PSScriptRoot -Parent) "utils" "Logging.psm1"
+$LoggingModule = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) "utils") "Logging.psm1"
 if (Test-Path $LoggingModule) {
     Import-Module $LoggingModule -Force -Global
     Write-Verbose "Imported centralized logging module"

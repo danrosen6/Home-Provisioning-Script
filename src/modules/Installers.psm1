@@ -762,8 +762,25 @@ function Test-ApplicationInstalled {
         }
         
         if (Get-Command $appCommand -ErrorAction SilentlyContinue) {
-            Write-LogMessage "Installation verified: Command '$appCommand' is available for $AppName" -Level "SUCCESS"
-            return $true
+            # Special handling for Python to avoid Microsoft Store placeholder
+            if ($appCommand -eq "python") {
+                try {
+                    $testOutput = python --version 2>&1
+                    if ($testOutput -and $testOutput -match "Python \d+\.\d+\.\d+" -and $testOutput -notlike "*Microsoft Store*") {
+                        Write-LogMessage "Installation verified: Command '$appCommand' is available for $AppName" -Level "SUCCESS"
+                        return $true
+                    } else {
+                        Write-LogMessage "Command '$appCommand' found but appears to be Microsoft Store placeholder" -Level "WARNING"
+                        return $false
+                    }
+                } catch {
+                    Write-LogMessage "Command '$appCommand' check failed: $_" -Level "WARNING"
+                    return $false
+                }
+            } else {
+                Write-LogMessage "Installation verified: Command '$appCommand' is available for $AppName" -Level "SUCCESS"
+                return $true
+            }
         }
     }
     
@@ -1030,9 +1047,18 @@ function Test-InstalledVersion {
     try {
         switch ($AppName) {
             "Python" {
-                $pythonVersion = python --version 2>&1
-                if ($pythonVersion -match "Python (\d+\.\d+\.\d+)") {
-                    return $matches[1]
+                try {
+                    $pythonVersion = python --version 2>&1
+                    # Check if this is real Python (not Microsoft Store placeholder)
+                    if ($pythonVersion -and $pythonVersion -match "Python (\d+\.\d+\.\d+)" -and $pythonVersion -notlike "*Microsoft Store*") {
+                        return $matches[1]
+                    } else {
+                        Write-LogMessage "Detected Microsoft Store Python placeholder in version check" -Level "DEBUG"
+                        return $null
+                    }
+                } catch {
+                    Write-LogMessage "Python version check failed: $_" -Level "DEBUG"
+                    return $null
                 }
             }
             "Git" {
@@ -2045,11 +2071,22 @@ function Install-Python {
             $pythonFound = $false
             $pythonPath = $null
             
-            # Check command availability first
+            # Check command availability first (with Microsoft Store placeholder detection)
             if (Get-Command python -ErrorAction SilentlyContinue) {
-                $pythonVersion = python --version 2>&1
-                Write-LogMessage "Python command available: $pythonVersion" -Level "SUCCESS"
-                $pythonFound = $true
+                try {
+                    $pythonVersion = python --version 2>&1
+                    # Check if this is the real Python or Microsoft Store placeholder
+                    if ($pythonVersion -and $pythonVersion -match "Python \d+\.\d+\.\d+" -and $pythonVersion -notlike "*Microsoft Store*") {
+                        Write-LogMessage "Python command available: $pythonVersion" -Level "SUCCESS"
+                        $pythonFound = $true
+                    } else {
+                        Write-LogMessage "Detected Microsoft Store Python placeholder, ignoring..." -Level "WARNING"
+                        $pythonFound = $false
+                    }
+                } catch {
+                    Write-LogMessage "Python command failed: $_" -Level "WARNING"
+                    $pythonFound = $false
+                }
             }
             
             # If command not found, search installation paths
@@ -2360,6 +2397,18 @@ function Invoke-PostInstallActions {
             foreach ($command in $PostInstallInfo.Commands) {
                 Write-LogMessage "Executing post-install command: $command" -Level "INFO"
                 try {
+                    # Special handling for refreshenv command
+                    if ($command -eq "refreshenv") {
+                        try {
+                            # Try to refresh environment variables manually
+                            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+                            Write-LogMessage "Environment variables refreshed manually" -Level "SUCCESS"
+                        } catch {
+                            Write-LogMessage "Could not refresh environment variables: $_" -Level "WARNING"
+                        }
+                        continue
+                    }
+                    
                     # Parse command into executable and arguments for safer execution
                     $commandParts = $command -split '\s+', 2
                     $executable = $commandParts[0]
