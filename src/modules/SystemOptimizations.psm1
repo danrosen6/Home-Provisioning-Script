@@ -855,30 +855,71 @@ function Set-SystemOptimization {
                 
                 $success = $false
                 
-                # Method 1: Protected registry key (requires admin)
-                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type "DWord") {
-                    $success = $true
-                    Add-ExplorerRestartChange -ChangeDescription "Disable News and Interests taskbar widget"
-                }
-                
-                # Method 2: Group Policy approach (requires admin)
+                # Method 1: Direct cmd reg approach (what worked before)
                 if (Test-IsAdministrator) {
-                    if (Set-ProtectedRegistryValue -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -Type "DWord" -RequireAdmin) {
-                        $success = $true
+                    try {
+                        Write-LogMessage "Attempting to disable News and Interests via cmd reg..." -Level "INFO"
+                        
+                        # Use the exact method that worked before
+                        $regPath = "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Feeds"
+                        & cmd /c "reg add `"$regPath`" /v ShellFeedsTaskbarViewMode /t REG_DWORD /d 2 /f" 2>$null
+                        
+                        # Verify the change
+                        $currentValue = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarViewMode" -ErrorAction SilentlyContinue
+                        if ($currentValue -and $currentValue.ShellFeedsTaskbarViewMode -eq 2) {
+                            Write-LogMessage "Successfully disabled News and Interests via cmd reg" -Level "SUCCESS"
+                            $success = $true
+                            Add-ExplorerRestartChange -ChangeDescription "Disable News and Interests taskbar widget"
+                        } else {
+                            Write-LogMessage "cmd reg method failed to set ShellFeedsTaskbarViewMode" -Level "WARNING"
+                        }
+                    } catch {
+                        Write-LogMessage "cmd reg method failed: $_" -Level "WARNING"
                     }
                 }
                 
-                # Method 3: Alternative user registry settings
-                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "IsFeedsAvailable" -Value 0 -Type "DWord") {
-                    $success = $true
+                # Method 2: Group Policy approach (backup)
+                if (Test-IsAdministrator) {
+                    try {
+                        if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds")) {
+                            New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Force | Out-Null
+                        }
+                        Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -Type DWord -Force
+                        Write-LogMessage "Successfully applied News and Interests group policy disable" -Level "SUCCESS"
+                        $success = $true
+                    } catch {
+                        Write-LogMessage "Group policy method failed: $_" -Level "WARNING"
+                    }
                 }
                 
-                if (Set-ProtectedRegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarOpenOnHover" -Value 0 -Type "DWord") {
+                # Method 3: Alternative user registry settings (backup)
+                try {
+                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds")) {
+                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarOpenOnHover" -Value 0 -Type DWord -ErrorAction SilentlyContinue
+                    Write-LogMessage "Applied alternative News and Interests registry settings" -Level "SUCCESS"
                     $success = $true
+                } catch {
+                    Write-LogMessage "Alternative registry method failed: $_" -Level "WARNING"
                 }
                 
+                # Force restart explorer if any method succeeded
                 if ($success) {
                     Write-LogMessage "News and Interests disable operation completed successfully" -Level "SUCCESS"
+                    
+                    # Immediate Explorer restart for this critical change
+                    if (Test-IsAdministrator) {
+                        try {
+                            Write-LogMessage "Restarting Windows Explorer immediately to apply News and Interests changes..." -Level "INFO"
+                            Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+                            Start-Sleep -Seconds 2
+                            Start-Process explorer -ErrorAction SilentlyContinue
+                            Write-LogMessage "Explorer restarted successfully" -Level "SUCCESS"
+                        } catch {
+                            Write-LogMessage "Could not restart explorer automatically: $_" -Level "WARNING"
+                        }
+                    }
                 } else {
                     Write-LogMessage "All News and Interests disable methods failed" -Level "ERROR"
                     Write-LogMessage "Manual workaround: Right-click taskbar -> News and interests -> Turn off" -Level "INFO"
