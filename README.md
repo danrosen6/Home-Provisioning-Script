@@ -32,7 +32,7 @@ This script provides a graphical interface for automating common Windows setup t
 
 ## How to Run
 
-1. **Prerequisites**: Windows 10 1709+ or Windows 11, PowerShell 5.1+, Administrator privileges
+1. **Prerequisites**: Windows 10 19045+ with updates installed or Windows 11, PowerShell 5.1+, Administrator privileges
 2. **Run**: Right-click PowerShell → "Run as Administrator" → Navigate to src folder → Run:
 ```commandline
 PowerShell -ExecutionPolicy Bypass .\Windows-Setup-GUI.ps1
