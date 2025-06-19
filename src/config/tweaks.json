@@ -272,7 +272,7 @@
       "RegistryKey": "ShellFeedsTaskbarViewMode",
       "RegistryValue": 2,
       "RegistryType": "DWORD",
-      "Description": "Disables weather and news feed on taskbar."
+      "Description": "Disables weather and news feed on taskbar (0=enabled, 1=icon only, 2=disabled)."
     }
   ],
   "General Interface": [

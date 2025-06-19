@@ -307,18 +307,39 @@ function Set-SystemOptimization {
                 Set-Service "DiagTrack" -StartupType Disabled
             }
             "dmwappushsvc" {
+                # Try both service names - primary and alternate
+                $serviceNames = @("dmwappushservice", "dmwappushsvc")
+                $actualServiceName = $null
+                
+                # Find which service name exists
+                foreach ($serviceName in $serviceNames) {
+                    try {
+                        $service = Get-Service -Name $serviceName -ErrorAction Stop
+                        $actualServiceName = $serviceName
+                        Write-LogMessage "Found service with name: $actualServiceName" -Level "INFO"
+                        break
+                    } catch {
+                        # Service not found with this name, try next
+                    }
+                }
+                
+                if (-not $actualServiceName) {
+                    Write-LogMessage "Service dmwappushservice/dmwappushsvc not found on this system" -Level "WARNING"
+                    return $false
+                }
+                
                 # Check dependencies first
-                $dependencyCheck = Test-ServiceDependency -ServiceName "dmwappushservice"
+                $dependencyCheck = Test-ServiceDependency -ServiceName $actualServiceName
                 
                 if ($dependencyCheck.HasDependencies) {
-                    $dependencyMessage = "The following services depend on dmwappushservice:`n"
+                    $dependencyMessage = "The following services depend on $actualServiceName :`n"
                     $dependencyMessage += ($dependencyCheck.DependencyList -join "`n")
-                    $dependencyMessage += "`n`nDisabling dmwappushservice may affect these services. Continue anyway?"
+                    $dependencyMessage += "`n`nDisabling $actualServiceName may affect these services. Continue anyway?"
                     
                     $result = Show-TimeoutMessageBox -Message $dependencyMessage -Title "Service Dependencies Found" -TimeoutSeconds 30 -DefaultResponse "No"
                     
                     if ($result -eq [System.Windows.Forms.DialogResult]::No) {
-                        Write-LogMessage "Skipping dmwappushservice service due to dependencies" -Level "WARNING"
+                        Write-LogMessage "Skipping $actualServiceName service due to dependencies" -Level "WARNING"
                         Save-OperationState -OperationType "SystemOptimization" -ItemKey $OptimizationKey -Status "Skipped" -AdditionalData @{
                             Reason = "User opted to skip due to dependencies"
                             Dependencies = $dependencyCheck.DependencyList -join ", "
@@ -327,9 +348,9 @@ function Set-SystemOptimization {
                     }
                 }
                 
-                Save-ServiceState -ServiceName "dmwappushservice"
-                Stop-Service "dmwappushservice" -Force -ErrorAction SilentlyContinue
-                Set-Service "dmwappushservice" -StartupType Disabled
+                Save-ServiceState -ServiceName $actualServiceName
+                Stop-Service $actualServiceName -Force -ErrorAction SilentlyContinue
+                Set-Service $actualServiceName -StartupType Disabled
             }
             "sysmain" {
                 # Check dependencies first
@@ -470,6 +491,12 @@ function Set-SystemOptimization {
                 }
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "Hidden" -Value 1
             }
+            "show-system-files" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowSuperHidden" -Value 1 -Type DWord
+            }
             "dev-mode" {
                 if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock")) {
                     New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" -Force | Out-Null
@@ -483,7 +510,7 @@ function Set-SystemOptimization {
                 Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 0
             }
             "disable-onedrive" {
-                Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "OneDrive" -ErrorAction SilentlyContinue
+                Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "OneDriveSetup" -ErrorAction SilentlyContinue
             }
             "disable-tips" {
                 if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager")) {
@@ -506,6 +533,12 @@ function Set-SystemOptimization {
                 }
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" -Name "GlobalUserDisabled" -Value 1
             }
+            "disable-advertising-id" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name "Enabled" -Value 0 -Type DWord
+            }
             "search-bing" {
                 if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search")) {
                     New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Force | Out-Null
@@ -520,33 +553,24 @@ function Set-SystemOptimization {
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "Start_Layout" -Value 1
             }
             "disable-teams-autostart" {
-                # Disable Teams consumer auto-start
+                # Disable Teams consumer auto-start by removing the registry entry
                 Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "com.squirrel.Teams.Teams" -ErrorAction SilentlyContinue
-                
-                # Also try to disable via registry value approach
-                try {
-                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run")) {
-                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Force | Out-Null
-                    }
-                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "com.squirrel.Teams.Teams" -Value 0 -ErrorAction SilentlyContinue
-                } catch {
-                    # Ignore errors if property doesn't exist
-                }
             }
             "disable-startup-sound" {
-                if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation")) {
-                    New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Force | Out-Null
+                # Disable startup sound as specified in tweaks.json
+                if (-not (Test-Path "HKCU:\AppEvents\EventLabels\WindowsLogon")) {
+                    New-Item -Path "HKCU:\AppEvents\EventLabels\WindowsLogon" -Force | Out-Null
                 }
-                Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Name "DisableStartupSound" -Value 1
+                Set-ItemProperty -Path "HKCU:\AppEvents\EventLabels\WindowsLogon" -Name "ExcludeFromCPL" -Value 1 -Type DWord
                 
-                # Also disable boot animation (Windows 11)
+                # Also try the alternative method for better compatibility
                 try {
-                    if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Control\BootControl")) {
-                        New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\BootControl" -Force | Out-Null
+                    if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation")) {
+                        New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Force | Out-Null
                     }
-                    Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\BootControl" -Name "BootProgressAnimation" -Value 0
+                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI\BootAnimation" -Name "DisableStartupSound" -Value 1 -Type DWord
                 } catch {
-                    Write-LogMessage "Could not disable boot animation (requires admin rights): $_" -Level "WARNING"
+                    Write-LogMessage "Could not apply alternative startup sound disable (may require admin rights): $_" -Level "WARNING"
                 }
             }
             # Additional service configurations
@@ -706,7 +730,7 @@ function Set-SystemOptimization {
                     New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Force | Out-Null
                 }
                 # SearchboxTaskbarMode: 0 = Hidden, 1 = Show search icon, 2 = Show search box
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 2
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "SearchboxTaskbarMode" -Value 1
             }
             "disable-news-interests" {
                 Write-LogMessage "Disabling News and Interests on Windows 10..." -Level "INFO"
@@ -729,6 +753,30 @@ function Set-SystemOptimization {
                 
                 Write-LogMessage "News and Interests disabled successfully" -Level "INFO"
             }
+            "disable-auto-restart" {
+                if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU")) {
+                    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Name "NoAutoRebootWithLoggedOnUsers" -Value 1 -Type DWord
+            }
+            "disable-fast-startup" {
+                if (-not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power")) {
+                    New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Name "HiberbootEnabled" -Value 0 -Type DWord
+            }
+            "disable-lock-screen" {
+                if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization")) {
+                    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization" -Name "NoLockScreen" -Value 1 -Type DWord
+            }
+            "disable-search-highlights" {
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings" -Name "IsDynamicSearchBoxEnabled" -Value 0 -Type DWord
+            }
             
             # General interface optimizations
             "dark-theme" {
@@ -742,8 +790,9 @@ function Set-SystemOptimization {
                 if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer")) {
                     New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Force | Out-Null
                 }
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "ShowFrequent" -Value 0
-                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "ShowRecent" -Value 0
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "ShowQuickAccess" -Value 0 -Type DWord
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "ShowFrequent" -Value 0 -Type DWord
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "ShowRecent" -Value 0 -Type DWord
             }
             default {
                 Write-LogMessage "Unknown optimization key: ${OptimizationKey}" -Level "WARNING"
