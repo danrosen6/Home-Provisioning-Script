@@ -36,7 +36,7 @@
       "Win11": true,
       "PackageName": "Microsoft.People",
       "Description": "Contact management and syncing application.",
-      "Warning": "WARNING: Removing People app will break contact synchronization with Microsoft services and may cause data sync issues."
+      "Warning": "WARNING: Removing People app will disable contact synchronization with Outlook, Teams, and other Microsoft services."
     },
     {
       "Name": "Microsoft To-Do",
@@ -46,6 +46,37 @@
       "Win11": true,
       "PackageName": "Microsoft.Todos",
       "Description": "Task management and list application."
+    },
+    {
+      "Name": "Skype for Business (Office)",
+      "Key": "skype-business-office",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "SkypeforBusinessRetail",
+      "Description": "Skype for Business bundled with Microsoft Office suite.",
+      "Warning": "CRITICAL: Cannot be removed separately from Office suite. Requires Office Deployment Tool or complete Office removal.",
+      "Method": "MSI",
+      "RequiresSpecialHandling": true
+    },
+    {
+      "Name": "New Outlook for Windows",
+      "Key": "outlook-new",
+      "Default": false,
+      "Win10": false,
+      "Win11": true,
+      "PackageName": "Microsoft.OutlookForWindows",
+      "Description": "Modern Outlook replacement for Mail and Calendar apps.",
+      "Warning": "CAUTION: This is replacing the legacy Mail and Calendar apps. Consider keeping if you use Outlook."
+    },
+    {
+      "Name": "Microsoft Dev Home",
+      "Key": "ms-devhome",
+      "Default": false,
+      "Win10": false,
+      "Win11": true,
+      "PackageName": "Microsoft.DevHome",
+      "Description": "Developer dashboard and tools for Windows development."
     }
   ],
   "Windows Built-ins": [
@@ -93,7 +124,8 @@
       "Win10": true,
       "Win11": true,
       "PackageName": "Microsoft.WindowsCamera",
-      "Description": "Built-in camera application."
+      "Description": "Built-in camera application.",
+      "Warning": "CAUTION: Removing Camera will disable camera functionality system-wide and may break apps that require camera access."
     },
     {
       "Name": "Mail and Calendar",
@@ -112,7 +144,8 @@
       "Win10": true,
       "Win11": true,
       "PackageName": "Microsoft.WindowsSoundRecorder",
-      "Description": "Basic audio recording application."
+      "Description": "Basic audio recording application.",
+      "Warning": "CAUTION: This is the only built-in audio recording app in Windows."
     },
     {
       "Name": "Microsoft Wallet",
@@ -148,7 +181,18 @@
       "Win10": false,
       "Win11": true,
       "PackageName": "Clipchamp.Clipchamp",
-      "Description": "Video editing application."
+      "Description": "Video editing application.",
+      "Warning": "CAUTION: This is the default video editor in Windows 11. Consider alternatives before removal."
+    },
+    {
+      "Name": "Microsoft Media Player",
+      "Key": "media-player-new",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "PackageName": "Microsoft.MediaPlayer",
+      "Description": "Modern replacement for Windows Media Player Legacy.",
+      "Warning": "WARNING: This is the modern replacement for Windows Media Player. Removing may affect default media file associations."
     },
     {
       "Name": "Bing Weather",
@@ -184,7 +228,8 @@
       "Win10": true,
       "Win11": true,
       "PackageName": "Microsoft.WindowsAlarms",
-      "Description": "Alarm, timer, and clock application."
+      "Description": "Alarm, timer, and clock application.",
+      "Warning": "CAUTION: Removing will disable system alarms, timers, and focus assist integration."
     },
     {
       "Name": "Windows Maps",
@@ -193,7 +238,8 @@
       "Win10": true,
       "Win11": true,
       "PackageName": "Microsoft.WindowsMaps",
-      "Description": "Built-in mapping and navigation application."
+      "Description": "Built-in mapping and navigation application.",
+      "Warning": "CAUTION: Some location-based Windows features may be affected."
     },
     {
       "Name": "Windows Feedback Hub",
@@ -234,11 +280,12 @@
     {
       "Name": "Microsoft Copilot",
       "Key": "ms-copilot",
-      "Default": true,
-      "Win10": true,
+      "Default": false,
+      "Win10": false,
       "Win11": true,
       "PackageName": "Microsoft.Copilot",
-      "Description": "AI assistant and chat application."
+      "Description": "AI assistant integrated into Windows 11 for productivity tasks.",
+      "Warning": "WARNING: Removing Copilot will disable AI features and taskbar integration."
     },
     {
       "Name": "Skype App",
@@ -247,7 +294,8 @@
       "Win10": true,
       "Win11": true,
       "PackageName": "Microsoft.SkypeApp",
-      "Description": "Universal Windows Platform version of Skype."
+      "Description": "Universal Windows Platform version of Skype (consumer version).",
+      "Method": "AppX"
     }
   ],
   "Entertainment & Gaming": [
@@ -287,7 +335,7 @@
       "Win11": true,
       "PackageName": "Microsoft.XboxIdentityProvider",
       "Description": "Xbox Live authentication services.",
-      "Warning": "CRITICAL: May break Microsoft Store if removed."
+      "Warning": "WARNING: May affect Microsoft Store login and Xbox services functionality."
     },
     {
       "Name": "Xbox Speech to Text",
@@ -297,7 +345,7 @@
       "Win11": true,
       "PackageName": "Microsoft.XboxSpeechToTextOverlay",
       "Description": "Voice recognition for Xbox features.",
-      "Warning": "CRITICAL: Cannot be reinstalled once removed."
+      "Warning": "WARNING: Cannot be easily reinstalled once removed. Only remove if you don't use Xbox voice features."
     },
     {
       "Name": "Xbox TCUI",
@@ -307,7 +355,7 @@
       "Win11": true,
       "PackageName": "Microsoft.Xbox.TCUI",
       "Description": "Xbox title callable user interface.",
-      "Warning": "CRITICAL: Breaks Microsoft Store and Photos app if removed."
+      "Warning": "CRITICAL: Removing will break Microsoft Store, Photos app, and other UWP applications."
     },
     {
       "Name": "Groove Music",
@@ -402,13 +450,13 @@
       "Description": "Universal Windows Platform version of Spotify."
     },
     {
-      "Name": "Twitter",
-      "Key": "twitter",
+      "Name": "X (formerly Twitter)",
+      "Key": "twitter-x",
       "Default": true,
       "Win10": true,
       "Win11": true,
       "PackageName": "9E2F88E3.Twitter",
-      "Description": "Social media application (legacy package)."
+      "Description": "Social media application (legacy Twitter package, may be outdated)."
     },
     {
       "Name": "LinkedIn",
@@ -463,6 +511,42 @@
       "Win11": true,
       "PackageName": "PicsArt-Inc.PicsArt",
       "Description": "Photo editing and creative application."
+    },
+    {
+      "Name": "Roblox",
+      "Key": "roblox",
+      "Default": true,
+      "Win10": false,
+      "Win11": true,
+      "PackageName": "RobloxCorporation.Roblox",
+      "Description": "Online gaming platform popular with children."
+    },
+    {
+      "Name": "Adobe Photoshop Express",
+      "Key": "adobe-photoshop-express",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "AdobeSystemsIncorporated.AdobePhotoshopExpress",
+      "Description": "Simplified photo editing application."
+    },
+    {
+      "Name": "Flipboard",
+      "Key": "flipboard",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "Flipboard.Flipboard",
+      "Description": "News aggregation and magazine-style reading app."
+    },
+    {
+      "Name": "Pandora",
+      "Key": "pandora",
+      "Default": true,
+      "Win10": true,
+      "Win11": true,
+      "PackageName": "PandoraMediaInc.29680B314EFC2",
+      "Description": "Music streaming service application."
     }
   ],
   "Legacy Browsers": [

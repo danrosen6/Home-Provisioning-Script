@@ -1065,62 +1065,6 @@ function Remove-Bloatware {
         [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
     )
     
-    # Map keys to actual package names and wildcard patterns
-    $packageMap = @{
-        "ms-officehub" = "Microsoft.MicrosoftOfficeHub"
-        "ms-teams" = "Microsoft.MicrosoftTeams"
-        "ms-teams-consumer" = "MicrosoftTeams"
-        "ms-todo" = "*.Todos*"
-        "ms-3dviewer" = "Microsoft.Microsoft3DViewer"
-        "ms-mixedreality" = "Microsoft.MixedReality.Portal"
-        "ms-onenote" = "Microsoft.Office.OneNote"
-        "ms-people" = "Microsoft.People"
-        "ms-wallet" = "Microsoft.Wallet"
-        "ms-messaging" = "Microsoft.Messaging"
-        "ms-oneconnect" = "Microsoft.OneConnect"
-        "ms-skype" = "Microsoft.SkypeApp"
-        "bing-weather" = "Microsoft.BingWeather"
-        "bing-news" = "Microsoft.BingNews"
-        "bing-finance" = "Microsoft.BingFinance"
-        "win-alarms" = "Microsoft.WindowsAlarms"
-        "win-camera" = "Microsoft.WindowsCamera"
-        "win-mail" = "Microsoft.WindowsCommunicationsApps"
-        "win-maps" = "Microsoft.WindowsMaps"
-        "win-feedback" = "Microsoft.WindowsFeedbackHub"
-        "win-gethelp" = "Microsoft.GetHelp"
-        "win-getstarted" = "Microsoft.Getstarted"
-        "win-soundrec" = "Microsoft.WindowsSoundRecorder"
-        "win-yourphone" = "Microsoft.YourPhone"
-        "win-print3d" = "Microsoft.Print3D"
-        "zune-music" = "Microsoft.ZuneMusic"
-        "zune-video" = "Microsoft.ZuneVideo"
-        "solitaire" = "Microsoft.MicrosoftSolitaireCollection"
-        "gaming-app" = "Microsoft.GamingApp"
-        "xbox-gameoverlay" = "Microsoft.XboxGameOverlay"
-        "xbox-gamingoverlay" = "Microsoft.XboxGamingOverlay"
-        "xbox-identity" = "Microsoft.XboxIdentityProvider"
-        "xbox-speech" = "Microsoft.XboxSpeechToTextOverlay"
-        "xbox-tcui" = "Microsoft.Xbox.TCUI"
-        "candy-crush" = "*.CandyCrush*"
-        "spotify-store" = "*.Spotify*"
-        "facebook" = "*.Facebook*"
-        "twitter" = "*.Twitter*"
-        "netflix" = "*.Netflix*"
-        "hulu" = "*.Hulu*"
-        "picsart" = "*.PicsArt*"
-        "disney" = "*.Disney*"
-        "tiktok" = "*.TikTok*"
-        "ms-widgets" = "MicrosoftWindows.Client.WebExperience"
-        "ms-copilot" = @("Microsoft.Windows.Ai.Copilot.Provider", "Microsoft.Copilot")
-        "ms-clipchamp" = "*.ClipChamp*"
-        "linkedin" = "*.LinkedIn*"
-        "instagram" = "*.Instagram*"
-        "whatsapp" = "*.WhatsApp*"
-        "amazon-prime" = "*.AmazonPrimeVideo*"
-        "skype-app" = "Microsoft.SkypeApp"
-        "internet-explorer" = "Internet-Explorer-Optional-amd64"
-    }
-    
     Write-LogMessage "Starting bloatware removal..." -Level "INFO"
     
     # Check for cancellation
@@ -1137,12 +1081,46 @@ function Remove-Bloatware {
         
         # Handle different parameter sets
         if ($PSCmdlet.ParameterSetName -eq "Key") {
-            # Single package removal using key
-            $packageNames = $packageMap[$BloatwareKey]
+            # Try to load the bloatware item configuration first
+            $bloatwareItem = $null
+            $packageNames = $null
+            
+            try {
+                # First try to use the script-level bloatware configuration loaded by the main GUI
+                if ($script:Bloatware) {
+                    foreach ($category in $script:Bloatware.Keys) {
+                        $item = $script:Bloatware[$category] | Where-Object { $_.Key -eq $BloatwareKey }
+                        if ($item) {
+                            $bloatwareItem = $item
+                            $packageNames = $item.PackageName
+                            Write-LogMessage "Found bloatware config for $BloatwareKey with method: $($item.Method)" -Level "DEBUG"
+                            break
+                        }
+                    }
+                }
+                # Fallback to loading configuration directly if script variable not available
+                if (-not $bloatwareItem -and (Get-Command Get-ConfigurationData -ErrorAction SilentlyContinue)) {
+                    $configData = Get-ConfigurationData -ConfigType "Bloatware"
+                    foreach ($category in $configData.Keys) {
+                        $item = $configData[$category] | Where-Object { $_.Key -eq $BloatwareKey }
+                        if ($item) {
+                            $bloatwareItem = $item
+                            $packageNames = $item.PackageName
+                            Write-LogMessage "Found bloatware config for $BloatwareKey via direct load" -Level "DEBUG"
+                            break
+                        }
+                    }
+                }
+            } catch {
+                Write-LogMessage "Failed to load bloatware item configuration: $($_.Exception.Message)" -Level "DEBUG"
+            }
+            
+            
             if (-not $packageNames) {
-                Write-LogMessage "Unknown bloatware key: $BloatwareKey" -Level "WARNING"
+                Write-LogMessage "Unknown bloatware key: $BloatwareKey (not found in configuration)" -Level "WARNING"
+                Write-LogMessage "Available configuration sources: script-level=`$$($script:Bloatware -ne $null), ConfigLoader=`$$(Get-Command Get-ConfigurationData -ErrorAction SilentlyContinue -ne $null)" -Level "DEBUG"
                 Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Failed" -AdditionalData @{
-                    Error = "Unknown bloatware key"
+                    Error = "Bloatware key not found in JSON configuration"
                     Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
                 }
                 return $false
@@ -1206,6 +1184,40 @@ function Remove-Bloatware {
                     Write-LogMessage "Removed $($allProvisionedPackages.Count) AppxProvisionedPackage(s) for: $BloatwareKey" -Level "INFO"
                 } catch {
                     Write-LogMessage "Failed to remove some AppxProvisionedPackages for $BloatwareKey - ${_}" -Level "WARNING"
+                }
+            }
+            
+            # Handle MSI-based application removal
+            if ($bloatwareItem.Method -eq "MSI") {
+                Write-LogMessage "Attempting MSI removal for: $BloatwareKey" -Level "INFO"
+                try {
+                    # Try to find and remove MSI-based Skype installations
+                    $msiProducts = Get-WmiObject Win32_Product -ErrorAction SilentlyContinue | Where-Object { 
+                        $_.Name -like "*Skype*" -and $_.Name -notlike "*Skype for Business*" 
+                    }
+                    
+                    if ($msiProducts) {
+                        foreach ($product in $msiProducts) {
+                            Write-LogMessage "Found MSI product: $($product.Name)" -Level "INFO"
+                            try {
+                                $product.Uninstall() | Out-Null
+                                Write-LogMessage "Successfully uninstalled MSI product: $($product.Name)" -Level "INFO"
+                                $removedCount++
+                            } catch {
+                                Write-LogMessage "Failed to uninstall MSI product $($product.Name)`: $($_.Exception.Message)" -Level "WARNING"
+                            }
+                        }
+                    } else {
+                        Write-LogMessage "No MSI-based Skype installations found" -Level "INFO"
+                    }
+                    
+                    # For Skype for Business, provide guidance
+                    if ($BloatwareKey -eq "skype-business-office") {
+                        Write-LogMessage "Skype for Business is integrated with Office suite and cannot be removed independently" -Level "WARNING"
+                        Write-LogMessage "To remove Skype for Business, use Office Deployment Tool or remove entire Office suite" -Level "WARNING"
+                    }
+                } catch {
+                    Write-LogMessage "Error during MSI removal for $BloatwareKey`: $($_.Exception.Message)" -Level "ERROR"
                 }
             }
             
