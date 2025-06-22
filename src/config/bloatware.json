@@ -1,4 +1,119 @@
 {
+  "_metadata": {
+    "version": "2.0",
+    "last_updated": "2025-01-22",
+    "description": "Bloatware removal configuration with system optimization settings"
+  },
+  "_configuration": {
+    "windows_versions": {
+      "windows10": {
+        "major": 10,
+        "build_max": 21999
+      },
+      "windows11": {
+        "major": 10,
+        "build_min": 22000
+      }
+    },
+    "valid_removal_methods": ["AppX", "MSI", "WindowsFeature", "Registry"],
+    "special_handling": {
+      "keys": ["ms-widgets", "ms-copilot", "internet-explorer"],
+      "registry_operations": {
+        "ms-widgets": {
+          "windows11": [
+            {
+              "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+              "name": "TaskbarDa",
+              "value": 0,
+              "type": "DWord",
+              "description": "Disable Windows 11 Widgets taskbar button"
+            }
+          ],
+          "windows10": [
+            {
+              "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Feeds",
+              "name": "ShellFeedsTaskbarViewMode",
+              "value": 2,
+              "type": "DWord",
+              "description": "Disable Windows 10 News and Interests"
+            }
+          ]
+        },
+        "ms-copilot": [
+          {
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsCopilot",
+            "name": "TurnOffWindowsCopilot",
+            "value": 1,
+            "type": "DWord",
+            "description": "System-wide Copilot disable via Group Policy"
+          },
+          {
+            "path": "HKCU:\\Software\\Policies\\Microsoft\\Windows\\WindowsCopilot",
+            "name": "TurnOffWindowsCopilot",
+            "value": 1,
+            "type": "DWord",
+            "description": "User-level Copilot disable policy"
+          },
+          {
+            "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+            "name": "ShowCopilotButton",
+            "value": 0,
+            "type": "DWord",
+            "description": "Remove Copilot button from taskbar"
+          },
+          {
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Edge",
+            "name": "HubsSidebarEnabled",
+            "value": 0,
+            "type": "DWord",
+            "description": "Disable Edge Copilot/Sidebar integration"
+          },
+          {
+            "path": "HKCU:\\Software\\Policies\\Microsoft\\Windows\\Explorer",
+            "name": "DisableSearchBoxSuggestions",
+            "value": 1,
+            "type": "DWord",
+            "description": "Disable AI-powered search suggestions"
+          },
+          {
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+            "name": "AllowTelemetry",
+            "value": 0,
+            "type": "DWord",
+            "description": "Disable telemetry collection (Security-focused)"
+          },
+          {
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+            "name": "EnableActivityFeed",
+            "value": 0,
+            "type": "DWord",
+            "description": "Disable activity history collection"
+          },
+          {
+            "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\SearchSettings",
+            "name": "IsAADCloudSearchEnabled",
+            "value": 0,
+            "type": "DWord",
+            "description": "Disable cloud-powered search"
+          },
+          {
+            "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\SearchSettings",
+            "name": "IsDeviceSearchHistoryEnabled",
+            "value": 0,
+            "type": "DWord",
+            "description": "Disable search history collection"
+          }
+        ]
+      },
+      "msi_special_cases": {
+        "skype-business-office": {
+          "product_name_pattern": "*Skype for Business*",
+          "warning_message": "Skype for Business is integrated with Office suite and cannot be removed independently",
+          "guidance_message": "To remove Skype for Business, use Office Deployment Tool or remove entire Office suite"
+        }
+      }
+    }
+  },
   "Microsoft Office & Productivity": [
     {
       "Name": "Microsoft Office Hub",
@@ -16,7 +131,8 @@
       "Win10": false,
       "Win11": true,
       "PackageName": "MicrosoftTeams",
-      "Description": "Consumer version of Teams chat application."
+      "Description": "Consumer version of Teams chat application.",
+      "Warning": "Note: This only removes consumer Teams. Business/Enterprise Teams installations are separate."
     },
     {
       "Name": "OneNote (Store)",
@@ -26,7 +142,7 @@
       "Win11": true,
       "PackageName": "Microsoft.Office.OneNote",
       "Description": "Universal Windows Platform version of OneNote.",
-      "Warning": "WARNING: Removing OneNote may affect note synchronization and access to existing notebooks stored in OneDrive."
+      "Warning": "Note: Removing will disable OneNote sync. Existing notes remain accessible via web or other devices."
     },
     {
       "Name": "Microsoft People",
@@ -36,7 +152,7 @@
       "Win11": true,
       "PackageName": "Microsoft.People",
       "Description": "Contact management and syncing application.",
-      "Warning": "WARNING: Removing People app will disable contact synchronization with Outlook, Teams, and other Microsoft services."
+      "Warning": "Note: Contact sync with Microsoft services will be disabled. Contacts remain in individual apps."
     },
     {
       "Name": "Microsoft To-Do",
@@ -115,7 +231,7 @@
       "Win11": true,
       "PackageName": "Microsoft.YourPhone",
       "Description": "Phone integration and syncing application.",
-      "Warning": "WARNING: Removing Phone Link will break Android phone integration, notifications, and cross-device functionality."
+      "Warning": "Note: Removes Android phone integration features. Only affects users actively using phone sync."
     },
     {
       "Name": "Windows Camera",
@@ -135,7 +251,7 @@
       "Win11": true,
       "PackageName": "microsoft.windowscommunicationsapps",
       "Description": "Built-in email and calendar applications.",
-      "Warning": "WARNING: Removing Mail and Calendar will break default Windows email and calendar synchronization. Existing mail data may become inaccessible."
+      "Warning": "Note: Removes default email/calendar apps. Email accounts remain accessible via web or other clients."
     },
     {
       "Name": "Windows Sound Recorder",
@@ -145,7 +261,7 @@
       "Win11": true,
       "PackageName": "Microsoft.WindowsSoundRecorder",
       "Description": "Basic audio recording application.",
-      "Warning": "CAUTION: This is the only built-in audio recording app in Windows."
+      "Warning": "Note: This is Windows' built-in audio recorder. Consider alternatives like Audacity before removal."
     },
     {
       "Name": "Microsoft Wallet",
@@ -192,7 +308,7 @@
       "Win11": true,
       "PackageName": "Microsoft.MediaPlayer",
       "Description": "Modern replacement for Windows Media Player Legacy.",
-      "Warning": "WARNING: This is the modern replacement for Windows Media Player. Removing may affect default media file associations."
+      "Warning": "Note: Default media player for Windows 11. File associations may revert to legacy apps after removal."
     },
     {
       "Name": "Bing Weather",
@@ -229,7 +345,7 @@
       "Win11": true,
       "PackageName": "Microsoft.WindowsAlarms",
       "Description": "Alarm, timer, and clock application.",
-      "Warning": "CAUTION: Removing will disable system alarms, timers, and focus assist integration."
+      "Warning": "Note: Removes built-in alarms and timers. Phone or third-party apps provide alternatives."
     },
     {
       "Name": "Windows Maps",
@@ -239,7 +355,7 @@
       "Win11": true,
       "PackageName": "Microsoft.WindowsMaps",
       "Description": "Built-in mapping and navigation application.",
-      "Warning": "CAUTION: Some location-based Windows features may be affected."
+      "Warning": "Note: May affect some location features. Most location services remain functional."
     },
     {
       "Name": "Windows Feedback Hub",
@@ -281,11 +397,14 @@
       "Name": "Microsoft Copilot",
       "Key": "ms-copilot",
       "Default": false,
-      "Win10": false,
+      "Win10": true,
       "Win11": true,
       "PackageName": "Microsoft.Copilot",
-      "Description": "AI assistant integrated into Windows 11 for productivity tasks.",
-      "Warning": "WARNING: Removing Copilot will disable AI features and taskbar integration."
+      "Method": "AppX",
+      "RequiresSpecialHandling": true,
+      "Description": "AI assistant integrated into Windows. SECURITY FOCUS: Comprehensive removal includes AppX package uninstall + aggressive privacy settings to stop data collection and network activity.",
+      "Warning": "PRIVACY: This applies security-focused settings including disabling telemetry, search history, and cloud integrations. Some Windows functionality may be affected.",
+      "TechnicalNote": "Complete approach: 1) Removes AppX package 2) Disables via Group Policy 3) Blocks telemetry 4) Disables cloud search 5) Stops activity tracking. More comprehensive than standard 'disable' methods."
     },
     {
       "Name": "Skype App",
@@ -335,7 +454,7 @@
       "Win11": true,
       "PackageName": "Microsoft.XboxIdentityProvider",
       "Description": "Xbox Live authentication services.",
-      "Warning": "WARNING: May affect Microsoft Store login and Xbox services functionality."
+      "Warning": "Note: May affect Xbox Live features. Microsoft Store typically unaffected."
     },
     {
       "Name": "Xbox Speech to Text",
@@ -345,7 +464,7 @@
       "Win11": true,
       "PackageName": "Microsoft.XboxSpeechToTextOverlay",
       "Description": "Voice recognition for Xbox features.",
-      "Warning": "WARNING: Cannot be easily reinstalled once removed. Only remove if you don't use Xbox voice features."
+      "Warning": "Note: Difficult to reinstall. Only needed for Xbox voice commands."
     },
     {
       "Name": "Xbox TCUI",

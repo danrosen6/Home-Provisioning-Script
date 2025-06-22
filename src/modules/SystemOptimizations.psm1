@@ -962,11 +962,20 @@ function Set-SystemOptimization {
             
             # General interface optimizations
             "dark-theme" {
+                Write-LogMessage "Applying dark theme for applications and system UI" -Level "INFO"
                 if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")) {
                     New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Force | Out-Null
                 }
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme" -Value 0
                 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "SystemUsesLightTheme" -Value 0
+            }
+            "light-theme" {
+                Write-LogMessage "Applying light theme for applications and system UI" -Level "INFO"
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme" -Value 1
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "SystemUsesLightTheme" -Value 1
             }
             "disable-quickaccess" {
                 if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer")) {
@@ -1051,7 +1060,531 @@ function Set-SystemOptimization {
     }
 }
 
-# Unified Remove-Bloatware function that handles both direct calls and batch removals
+# Enhanced helper function to build configuration lookup table with metadata
+function Build-BloatwareConfigLookup {
+    [CmdletBinding()]
+    param()
+    
+    $configLookup = @{}
+    $configMetadata = $null
+    
+    try {
+        # Try to use script-level configuration first
+        if ($script:Bloatware) {
+            # Extract metadata and configuration settings
+            if ($script:Bloatware._metadata) {
+                $configMetadata = $script:Bloatware._metadata
+                Write-LogMessage "Loaded bloatware config version: $($configMetadata.version)" -Level "DEBUG"
+            }
+            
+            # Store configuration settings globally for use by other functions
+            if ($script:Bloatware._configuration) {
+                $script:BloatwareConfiguration = $script:Bloatware._configuration
+                Write-LogMessage "Loaded bloatware configuration settings" -Level "DEBUG"
+            }
+            
+            # Build lookup table excluding metadata
+            foreach ($category in $script:Bloatware.Keys) {
+                if ($category -notlike "_*") {  # Skip metadata keys
+                    foreach ($item in $script:Bloatware[$category]) {
+                        if ($item.Key) {
+                            $configLookup[$item.Key] = $item
+                        }
+                    }
+                }
+            }
+            Write-LogMessage "Built config lookup from script variable: $($configLookup.Count) items" -Level "DEBUG"
+        }
+        # Fallback to direct config loading
+        elseif (Get-Command Get-ConfigurationData -ErrorAction SilentlyContinue) {
+            $configData = Get-ConfigurationData -ConfigType "Bloatware"
+            
+            # Extract metadata and configuration settings
+            if ($configData._metadata) {
+                $configMetadata = $configData._metadata
+                Write-LogMessage "Loaded bloatware config version: $($configMetadata.version)" -Level "DEBUG"
+            }
+            
+            if ($configData._configuration) {
+                $script:BloatwareConfiguration = $configData._configuration
+                Write-LogMessage "Loaded bloatware configuration settings" -Level "DEBUG"
+            }
+            
+            # Build lookup table excluding metadata
+            foreach ($category in $configData.Keys) {
+                if ($category -notlike "_*") {  # Skip metadata keys
+                    foreach ($item in $configData[$category]) {
+                        if ($item.Key) {
+                            $configLookup[$item.Key] = $item
+                        }
+                    }
+                }
+            }
+            Write-LogMessage "Built config lookup from direct load: $($configLookup.Count) items" -Level "DEBUG"
+        }
+    } catch {
+        Write-LogMessage "Failed to build config lookup: $($_.Exception.Message)" -Level "ERROR"
+    }
+    
+    return $configLookup
+}
+
+# Helper function to validate removal method using JSON configuration
+function Test-RemovalMethod {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Method
+    )
+    
+    # Use configuration from JSON if available, fallback to defaults
+    $validMethods = if ($script:BloatwareConfiguration -and $script:BloatwareConfiguration.valid_removal_methods) {
+        $script:BloatwareConfiguration.valid_removal_methods
+    } else {
+        @("AppX", "MSI", "WindowsFeature", "Registry")  # Fallback defaults
+    }
+    
+    $isValid = $Method -in $validMethods
+    if (-not $isValid) {
+        Write-LogMessage "Invalid removal method '$Method'. Valid methods: $($validMethods -join ', ')" -Level "WARNING"
+    }
+    
+    return $isValid
+}
+
+# Enhanced helper function to remove AppX packages with optimized discovery
+function Remove-AppXPackages {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string[]]$PackageNames,
+        [Parameter(Mandatory=$true)]
+        [string]$BloatwareKey,
+        [Parameter(Mandatory=$false)]
+        [switch]$DryRun
+    )
+    
+    $removedCount = 0
+    $errors = @()
+    
+    try {
+        Write-LogMessage "Starting AppX package discovery for: $BloatwareKey" -Level "DEBUG"
+        
+        # Optimized batch discovery - get all packages once instead of individual queries
+        $allInstalledPackages = @()
+        $allProvisionedPackages = @()
+        
+        # Get all packages once for better performance
+        Write-LogMessage "Discovering all installed AppX packages..." -Level "DEBUG"
+        $installedPackageCache = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+        
+        Write-LogMessage "Discovering all provisioned AppX packages..." -Level "DEBUG"
+        $provisionedPackageCache = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+        
+        # Filter packages based on the provided names/patterns
+        foreach ($packageName in $PackageNames) {
+            Write-LogMessage "Filtering packages for pattern: $packageName" -Level "DEBUG"
+            
+            if ($packageName -like "*`**") {
+                # Wildcard pattern matching
+                $matchingInstalled = $installedPackageCache | Where-Object { $_.Name -like $packageName }
+                $matchingProvisioned = $provisionedPackageCache | Where-Object { $_.DisplayName -like $packageName }
+            } else {
+                # Exact name matching
+                $matchingInstalled = $installedPackageCache | Where-Object { $_.Name -eq $packageName }
+                $matchingProvisioned = $provisionedPackageCache | Where-Object { $_.DisplayName -eq $packageName }
+            }
+            
+            if ($matchingInstalled) {
+                $allInstalledPackages += $matchingInstalled
+                Write-LogMessage "Found $($matchingInstalled.Count) installed package(s) for pattern: $packageName" -Level "DEBUG"
+            }
+            if ($matchingProvisioned) {
+                $allProvisionedPackages += $matchingProvisioned
+                Write-LogMessage "Found $($matchingProvisioned.Count) provisioned package(s) for pattern: $packageName" -Level "DEBUG"
+            }
+        }
+        
+        Write-LogMessage "Package discovery completed: $($allInstalledPackages.Count) installed, $($allProvisionedPackages.Count) provisioned" -Level "DEBUG"
+        
+        # Remove installed packages with improved error handling
+        if ($allInstalledPackages -and $allInstalledPackages.Count -gt 0) {
+            Write-LogMessage "Found $($allInstalledPackages.Count) total installed package(s) for: $BloatwareKey" -Level "INFO"
+            
+            if ($DryRun) {
+                Write-LogMessage "[DRY RUN] Would remove $($allInstalledPackages.Count) installed packages" -Level "INFO"
+                foreach ($pkg in $allInstalledPackages) {
+                    Write-LogMessage "[DRY RUN] Would remove: $($pkg.Name) ($($pkg.Version))" -Level "INFO"
+                }
+                $removedCount += $allInstalledPackages.Count
+            } else {
+                $failedRemovals = @()
+                foreach ($pkg in $allInstalledPackages) {
+                    try {
+                        $pkg | Remove-AppxPackage -ErrorAction Stop
+                        $removedCount++
+                        Write-LogMessage "Removed installed package: $($pkg.Name)" -Level "DEBUG"
+                    } catch {
+                        $failedRemovals += $pkg.Name
+                        $errors += "Failed to remove $($pkg.Name): $($_.Exception.Message)"
+                        Write-LogMessage "Failed to remove $($pkg.Name): $($_.Exception.Message)" -Level "WARNING"
+                    }
+                }
+                
+                if ($removedCount -gt 0) {
+                    Write-LogMessage "Successfully removed $removedCount AppxPackage(s) for: $BloatwareKey" -Level "SUCCESS"
+                }
+                if ($failedRemovals.Count -gt 0) {
+                    Write-LogMessage "Failed to remove $($failedRemovals.Count) packages: $($failedRemovals -join ', ')" -Level "WARNING"
+                }
+            }
+        }
+        
+        # Remove provisioned packages with improved error handling
+        if ($allProvisionedPackages -and $allProvisionedPackages.Count -gt 0) {
+            Write-LogMessage "Found $($allProvisionedPackages.Count) total provisioned package(s) for: $BloatwareKey" -Level "INFO"
+            
+            if ($DryRun) {
+                Write-LogMessage "[DRY RUN] Would remove $($allProvisionedPackages.Count) provisioned packages" -Level "INFO"
+                foreach ($pkg in $allProvisionedPackages) {
+                    Write-LogMessage "[DRY RUN] Would remove provisioned: $($pkg.DisplayName) ($($pkg.Version))" -Level "INFO"
+                }
+                $removedCount += $allProvisionedPackages.Count
+            } else {
+                $failedProvisionedRemovals = @()
+                foreach ($pkg in $allProvisionedPackages) {
+                    try {
+                        $pkg | Remove-AppxProvisionedPackage -Online -ErrorAction Stop
+                        $removedCount++
+                        Write-LogMessage "Removed provisioned package: $($pkg.DisplayName)" -Level "DEBUG"
+                    } catch {
+                        $failedProvisionedRemovals += $pkg.DisplayName
+                        $errors += "Failed to remove provisioned $($pkg.DisplayName): $($_.Exception.Message)"
+                        Write-LogMessage "Failed to remove provisioned $($pkg.DisplayName): $($_.Exception.Message)" -Level "WARNING"
+                    }
+                }
+                
+                if (($removedCount - $allInstalledPackages.Count) -gt 0) {
+                    Write-LogMessage "Successfully removed $(($removedCount - $allInstalledPackages.Count)) AppxProvisionedPackage(s) for: $BloatwareKey" -Level "SUCCESS"
+                }
+                if ($failedProvisionedRemovals.Count -gt 0) {
+                    Write-LogMessage "Failed to remove $($failedProvisionedRemovals.Count) provisioned packages: $($failedProvisionedRemovals -join ', ')" -Level "WARNING"
+                }
+            }
+        }
+        
+    } catch {
+        $errors += "Error during AppX package removal: $($_.Exception.Message)"
+        Write-LogMessage "Error during AppX package removal for $BloatwareKey`: $($_.Exception.Message)" -Level "ERROR"
+    }
+    
+    # Return results with error information
+    return @{
+        RemovedCount = $removedCount
+        Errors = $errors
+    }
+}
+
+# Enhanced helper function to remove MSI packages with improved generalization
+function Remove-MSIPackages {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string[]]$PackageNames,
+        [Parameter(Mandatory=$true)]
+        [string]$BloatwareKey,
+        [Parameter(Mandatory=$false)]
+        [switch]$DryRun
+    )
+    
+    $removedCount = 0
+    $errors = @()
+    
+    Write-LogMessage "Attempting MSI removal for: $BloatwareKey" -Level "INFO"
+    
+    try {
+        # Get all MSI products once for better performance
+        Write-LogMessage "Discovering MSI products..." -Level "DEBUG"
+        $allMsiProducts = @()
+        
+        # Use CIM instead of WMI for better performance and reliability
+        $installedProducts = Get-CimInstance -ClassName Win32_Product -ErrorAction SilentlyContinue
+        
+        if (-not $installedProducts) {
+            Write-LogMessage "No MSI products found or WMI/CIM access failed" -Level "WARNING"
+            return @{ RemovedCount = 0; Errors = @("Unable to access MSI product information") }
+        }
+        
+        # Match products against package names
+        foreach ($packageName in $PackageNames) {
+            Write-LogMessage "Searching for MSI products matching: $packageName" -Level "DEBUG"
+            
+            try {
+                if ($packageName -like "*`**") {
+                    # Wildcard pattern matching
+                    $matchingProducts = $installedProducts | Where-Object { $_.Name -like $packageName }
+                } else {
+                    # Exact name matching
+                    $matchingProducts = $installedProducts | Where-Object { $_.Name -eq $packageName }
+                }
+                
+                if ($matchingProducts) {
+                    $allMsiProducts += $matchingProducts
+                    Write-LogMessage "Found $($matchingProducts.Count) MSI product(s) for pattern: $packageName" -Level "DEBUG"
+                }
+            } catch {
+                $errors += "Error searching for MSI products with pattern $packageName`: $($_.Exception.Message)"
+                Write-LogMessage "Error searching for MSI products with pattern $packageName`: $($_.Exception.Message)" -Level "WARNING"
+            }
+        }
+        
+        # Remove or simulate removal of found products
+        if ($allMsiProducts -and $allMsiProducts.Count -gt 0) {
+            Write-LogMessage "Found $($allMsiProducts.Count) total MSI product(s) for: $BloatwareKey" -Level "INFO"
+            
+            if ($DryRun) {
+                Write-LogMessage "[DRY RUN] Would remove $($allMsiProducts.Count) MSI products" -Level "INFO"
+                foreach ($product in $allMsiProducts) {
+                    Write-LogMessage "[DRY RUN] Would remove: $($product.Name) (Version: $($product.Version))" -Level "INFO"
+                }
+                $removedCount = $allMsiProducts.Count
+            } else {
+                $failedRemovals = @()
+                foreach ($product in $allMsiProducts) {
+                    try {
+                        Write-LogMessage "Uninstalling MSI product: $($product.Name)" -Level "INFO"
+                        
+                        # Handle special cases with JSON-driven guidance
+                        $skipRemoval = $false
+                        if ($script:BloatwareConfiguration -and $script:BloatwareConfiguration.special_handling.msi_special_cases) {
+                            $specialCases = $script:BloatwareConfiguration.special_handling.msi_special_cases
+                            if ($specialCases.$BloatwareKey) {
+                                $specialCase = $specialCases.$BloatwareKey
+                                if ($product.Name -like $specialCase.product_name_pattern) {
+                                    Write-LogMessage $specialCase.warning_message -Level "WARNING"
+                                    if ($specialCase.guidance_message) {
+                                        Write-LogMessage $specialCase.guidance_message -Level "WARNING"
+                                    }
+                                    $errors += $specialCase.warning_message
+                                    $skipRemoval = $true
+                                }
+                            }
+                        }
+                        
+                        if ($skipRemoval) {
+                            continue
+                        }
+                        
+                        # Attempt uninstallation
+                        $uninstallResult = Invoke-CimMethod -InputObject $product -MethodName Uninstall -ErrorAction Stop
+                        
+                        if ($uninstallResult.ReturnValue -eq 0) {
+                            $removedCount++
+                            Write-LogMessage "Successfully uninstalled MSI product: $($product.Name)" -Level "SUCCESS"
+                        } else {
+                            $failedRemovals += $product.Name
+                            $errors += "MSI uninstall failed for $($product.Name): Return code $($uninstallResult.ReturnValue)"
+                            Write-LogMessage "MSI uninstall failed for $($product.Name): Return code $($uninstallResult.ReturnValue)" -Level "WARNING"
+                        }
+                    } catch {
+                        $failedRemovals += $product.Name
+                        $errors += "Failed to uninstall MSI product $($product.Name): $($_.Exception.Message)"
+                        Write-LogMessage "Failed to uninstall MSI product $($product.Name): $($_.Exception.Message)" -Level "WARNING"
+                    }
+                }
+                
+                if ($removedCount -gt 0) {
+                    Write-LogMessage "Successfully removed $removedCount MSI product(s) for: $BloatwareKey" -Level "SUCCESS"
+                }
+                if ($failedRemovals.Count -gt 0) {
+                    Write-LogMessage "Failed to remove $($failedRemovals.Count) MSI products: $($failedRemovals -join ', ')" -Level "WARNING"
+                }
+            }
+        } else {
+            Write-LogMessage "No MSI products found matching the specified patterns for: $BloatwareKey" -Level "INFO"
+        }
+        
+    } catch {
+        $errors += "Error during MSI removal for $BloatwareKey`: $($_.Exception.Message)"
+        Write-LogMessage "Error during MSI removal for $BloatwareKey`: $($_.Exception.Message)" -Level "ERROR"
+    }
+    
+    return @{
+        RemovedCount = $removedCount
+        Errors = $errors
+    }
+}
+
+# Helper function to remove Windows Features
+function Remove-WindowsFeatures {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string[]]$FeatureNames,
+        [Parameter(Mandatory=$true)]
+        [string]$BloatwareKey,
+        [Parameter(Mandatory=$false)]
+        [switch]$DryRun
+    )
+    
+    $removedCount = 0
+    
+    Write-LogMessage "Attempting Windows Feature removal for: $BloatwareKey" -Level "INFO"
+    
+    foreach ($featureName in $FeatureNames) {
+        Write-LogMessage "Processing Windows Feature: $featureName" -Level "DEBUG"
+        
+        try {
+            # Check if feature exists and is enabled
+            $feature = Get-WindowsOptionalFeature -Online -FeatureName $featureName -ErrorAction SilentlyContinue
+            
+            if (-not $feature) {
+                Write-LogMessage "Windows Feature not found: $featureName" -Level "WARNING"
+                continue
+            }
+            
+            if ($feature.State -eq "Disabled") {
+                Write-LogMessage "Windows Feature already disabled: $featureName" -Level "INFO"
+                continue
+            }
+            
+            Write-LogMessage "Found enabled Windows Feature: $featureName" -Level "INFO"
+            
+            if ($DryRun) {
+                Write-LogMessage "[DRY RUN] Would disable Windows Feature: $featureName" -Level "INFO"
+            } else {
+                try {
+                    # Try DISM first (more reliable)
+                    Write-LogMessage "Disabling Windows Feature via DISM: $featureName" -Level "DEBUG"
+                    $dismResult = & dism /online /Disable-Feature /FeatureName:$featureName /NoRestart /Quiet
+                    
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-LogMessage "Successfully disabled Windows Feature via DISM: $featureName" -Level "SUCCESS"
+                        $removedCount++
+                    } else {
+                        throw "DISM failed with exit code: $LASTEXITCODE"
+                    }
+                } catch {
+                    Write-LogMessage "DISM method failed: $($_.Exception.Message). Trying PowerShell method..." -Level "WARNING"
+                    
+                    try {
+                        Disable-WindowsOptionalFeature -FeatureName $featureName -Online -NoRestart -ErrorAction Stop
+                        Write-LogMessage "Successfully disabled Windows Feature via PowerShell: $featureName" -Level "SUCCESS"
+                        $removedCount++
+                    } catch {
+                        Write-LogMessage "PowerShell method also failed: $($_.Exception.Message)" -Level "ERROR"
+                    }
+                }
+                
+                # Add restart requirement if feature was disabled
+                if ($removedCount -gt 0) {
+                    $script:RestartRequired = $true
+                    if (Get-Command Add-RestartRegistryChange -ErrorAction SilentlyContinue) {
+                        Add-RestartRegistryChange -ChangeDescription "Disable Windows Feature: $featureName"
+                    }
+                }
+            }
+        } catch {
+            Write-LogMessage "Error processing Windows Feature $featureName`: $($_.Exception.Message)" -Level "ERROR"
+        }
+    }
+    
+    return $removedCount
+}
+
+# Helper function to remove applications via Registry manipulation
+function Remove-RegistryPackages {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string[]]$RegistryPaths,
+        [Parameter(Mandatory=$true)]
+        [string]$BloatwareKey,
+        [Parameter(Mandatory=$false)]
+        [switch]$DryRun
+    )
+    
+    $removedCount = 0
+    $errors = @()
+    
+    Write-LogMessage "Attempting Registry-based removal for: $BloatwareKey" -Level "INFO"
+    
+    try {
+        foreach ($registryPath in $RegistryPaths) {
+            Write-LogMessage "Processing registry path: $registryPath" -Level "DEBUG"
+            
+            try {
+                # Validate registry path format
+                if (-not ($registryPath -match '^HK(LM|CU|CR|U|CC):\\')) {
+                    $errors += "Invalid registry path format: $registryPath"
+                    Write-LogMessage "Invalid registry path format: $registryPath" -Level "WARNING"
+                    continue
+                }
+                
+                # Check if registry key exists
+                if (-not (Test-Path $registryPath)) {
+                    Write-LogMessage "Registry path does not exist: $registryPath" -Level "INFO"
+                    continue
+                }
+                
+                # Get registry key information for logging
+                $regKey = Get-Item $registryPath -ErrorAction SilentlyContinue
+                if ($regKey) {
+                    Write-LogMessage "Found registry key: $registryPath" -Level "DEBUG"
+                    
+                    if ($DryRun) {
+                        Write-LogMessage "[DRY RUN] Would remove registry key: $registryPath" -Level "INFO"
+                        $removedCount++
+                    } else {
+                        # Backup registry key before removal (if backup system is available)
+                        if (Get-Command Backup-RegistryKey -ErrorAction SilentlyContinue) {
+                            try {
+                                Backup-RegistryKey -RegistryPath $registryPath -BackupName "BloatwareRemoval_$BloatwareKey"
+                                Write-LogMessage "Registry key backed up: $registryPath" -Level "DEBUG"
+                            } catch {
+                                Write-LogMessage "Failed to backup registry key $registryPath`: $($_.Exception.Message)" -Level "WARNING"
+                            }
+                        }
+                        
+                        # Remove registry key
+                        try {
+                            Remove-Item $registryPath -Recurse -Force -ErrorAction Stop
+                            Write-LogMessage "Successfully removed registry key: $registryPath" -Level "SUCCESS"
+                            $removedCount++
+                        } catch {
+                            $errors += "Failed to remove registry key $registryPath`: $($_.Exception.Message)"
+                            Write-LogMessage "Failed to remove registry key $registryPath`: $($_.Exception.Message)" -Level "WARNING"
+                        }
+                    }
+                }
+            } catch {
+                $errors += "Error processing registry path $registryPath`: $($_.Exception.Message)"
+                Write-LogMessage "Error processing registry path $registryPath`: $($_.Exception.Message)" -Level "WARNING"
+            }
+        }
+        
+        if ($removedCount -gt 0 -and -not $DryRun) {
+            Write-LogMessage "Successfully processed $removedCount registry path(s) for: $BloatwareKey" -Level "SUCCESS"
+            
+            # Mark that registry changes were made (may require restart/explorer restart)
+            $script:ExplorerRestartRequired = $true
+            if (Get-Command Add-RestartRegistryChange -ErrorAction SilentlyContinue) {
+                Add-RestartRegistryChange -ChangeDescription "Registry-based bloatware removal: $BloatwareKey"
+            }
+        }
+        
+    } catch {
+        $errors += "Error during registry removal for $BloatwareKey`: $($_.Exception.Message)"
+        Write-LogMessage "Error during registry removal for $BloatwareKey`: $($_.Exception.Message)" -Level "ERROR"
+    }
+    
+    return @{
+        RemovedCount = $removedCount
+        Errors = $errors
+    }
+}
+
+# Improved main Remove-Bloatware function
 function Remove-Bloatware {
     [CmdletBinding()]
     param(
@@ -1062,10 +1595,13 @@ function Remove-Bloatware {
         [string[]]$Bloatware,
         
         [Parameter(Mandatory=$false)]
-        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None
+        [System.Threading.CancellationToken]$CancellationToken = [System.Threading.CancellationToken]::None,
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$DryRun
     )
     
-    Write-LogMessage "Starting bloatware removal..." -Level "INFO"
+    Write-LogMessage "Starting bloatware removal$(if($DryRun){' (DRY RUN)'})..." -Level "INFO"
     
     # Check for cancellation
     if ($CancellationToken -and $CancellationToken.IsCancellationRequested) {
@@ -1074,405 +1610,395 @@ function Remove-Bloatware {
     }
     
     try {
-        # Track operation in recovery system
         if ($PSCmdlet.ParameterSetName -eq "Key") {
+            return Remove-SingleBloatware -BloatwareKey $BloatwareKey -DryRun:$DryRun -CancellationToken $CancellationToken
+        } else {
+            return Remove-MultipleBloatware -BloatwareKeys $Bloatware -DryRun:$DryRun -CancellationToken $CancellationToken
+        }
+    } catch {
+        Write-LogMessage "Failed to remove bloatware: $($_.Exception.Message)" -Level "ERROR"
+        return $false
+    }
+}
+
+# Enhanced single bloatware removal (JSON-driven with improved error handling)
+function Remove-SingleBloatware {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$BloatwareKey,
+        [Parameter(Mandatory=$false)]
+        [switch]$DryRun,
+        [Parameter(Mandatory=$false)]
+        [System.Threading.CancellationToken]$CancellationToken
+    )
+    
+    $totalRemovedCount = 0
+    $allErrors = @()
+    
+    try {
+        # Check for cancellation
+        if ($CancellationToken -and $CancellationToken.IsCancellationRequested) {
+            Write-LogMessage "Bloatware removal cancelled for: $BloatwareKey" -Level "WARNING"
+            return $false
+        }
+        
+        # Track operation in recovery system
+        if (-not $DryRun) {
             Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "InProgress"
         }
         
-        # Handle different parameter sets
-        if ($PSCmdlet.ParameterSetName -eq "Key") {
-            # Try to load the bloatware item configuration first
-            $bloatwareItem = $null
-            $packageNames = $null
+        # Load bloatware item configuration
+        $bloatwareItem = $null
+        
+        try {
+            # Build configuration lookup
+            $configLookup = Build-BloatwareConfigLookup
             
-            try {
-                # First try to use the script-level bloatware configuration loaded by the main GUI
-                if ($script:Bloatware) {
-                    foreach ($category in $script:Bloatware.Keys) {
-                        $item = $script:Bloatware[$category] | Where-Object { $_.Key -eq $BloatwareKey }
-                        if ($item) {
-                            $bloatwareItem = $item
-                            $packageNames = $item.PackageName
-                            Write-LogMessage "Found bloatware config for $BloatwareKey with method: $($item.Method)" -Level "DEBUG"
-                            break
-                        }
-                    }
-                }
-                # Fallback to loading configuration directly if script variable not available
-                if (-not $bloatwareItem -and (Get-Command Get-ConfigurationData -ErrorAction SilentlyContinue)) {
-                    $configData = Get-ConfigurationData -ConfigType "Bloatware"
-                    foreach ($category in $configData.Keys) {
-                        $item = $configData[$category] | Where-Object { $_.Key -eq $BloatwareKey }
-                        if ($item) {
-                            $bloatwareItem = $item
-                            $packageNames = $item.PackageName
-                            Write-LogMessage "Found bloatware config for $BloatwareKey via direct load" -Level "DEBUG"
-                            break
-                        }
-                    }
-                }
-            } catch {
-                Write-LogMessage "Failed to load bloatware item configuration: $($_.Exception.Message)" -Level "DEBUG"
+            if ($configLookup.ContainsKey($BloatwareKey)) {
+                $bloatwareItem = $configLookup[$BloatwareKey]
+                Write-LogMessage "Found bloatware config for $BloatwareKey with method: $($bloatwareItem.Method)" -Level "DEBUG"
             }
-            
-            
-            if (-not $packageNames) {
-                Write-LogMessage "Unknown bloatware key: $BloatwareKey (not found in configuration)" -Level "WARNING"
-                Write-LogMessage "Available configuration sources: script-level=`$$($script:Bloatware -ne $null), ConfigLoader=`$$(Get-Command Get-ConfigurationData -ErrorAction SilentlyContinue -ne $null)" -Level "DEBUG"
+        } catch {
+            Write-LogMessage "Failed to load bloatware item configuration: $($_.Exception.Message)" -Level "DEBUG"
+        }
+        
+        if (-not $bloatwareItem) {
+            Write-LogMessage "Unknown bloatware key: $BloatwareKey (not found in configuration)" -Level "WARNING"
+            if (-not $DryRun) {
                 Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Failed" -AdditionalData @{
                     Error = "Bloatware key not found in JSON configuration"
                     Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
                 }
+            }
+            return $false
+        }
+        
+        # Get package names and method
+        $packageNames = $bloatwareItem.PackageName
+        $method = $bloatwareItem.Method
+        
+        # Validate removal method
+        if (-not (Test-RemovalMethod -Method $method)) {
+            Write-LogMessage "Invalid removal method: $method for $BloatwareKey" -Level "ERROR"
+            return $false
+        }
+        
+        # Normalize package names to array
+        if ($packageNames -is [string]) {
+            $packageNames = @($packageNames)
+        }
+        
+        Write-LogMessage "Removing bloatware: $BloatwareKey using method: $method" -Level "INFO"
+        
+        # Apply appropriate removal method
+        switch ($method) {
+            "AppX" {
+                $result = Remove-AppXPackages -PackageNames $packageNames -BloatwareKey $BloatwareKey -DryRun:$DryRun
+                $totalRemovedCount += $result.RemovedCount
+                $allErrors += $result.Errors
+            }
+            "MSI" {
+                $result = Remove-MSIPackages -PackageNames $packageNames -BloatwareKey $BloatwareKey -DryRun:$DryRun
+                $totalRemovedCount += $result.RemovedCount
+                $allErrors += $result.Errors
+            }
+            "WindowsFeature" {
+                # For backwards compatibility, WindowsFeatures function returns count directly
+                $removedCount = Remove-WindowsFeatures -FeatureNames $packageNames -BloatwareKey $BloatwareKey -DryRun:$DryRun
+                $totalRemovedCount += $removedCount
+            }
+            "Registry" {
+                # Use RegistryPaths property if available, fallback to PackageName
+                $registryPaths = if ($bloatwareItem.RegistryPaths) { $bloatwareItem.RegistryPaths } else { $packageNames }
+                $result = Remove-RegistryPackages -RegistryPaths $registryPaths -BloatwareKey $BloatwareKey -DryRun:$DryRun
+                $totalRemovedCount += $result.RemovedCount
+                $allErrors += $result.Errors
+            }
+            default {
+                Write-LogMessage "Unknown removal method: $method for $BloatwareKey" -Level "ERROR"
                 return $false
             }
-            
-            # Normalize to array for consistent processing
-            if ($packageNames -is [string]) {
-                $packageNames = @($packageNames)
-            }
-            
-            Write-LogMessage "Removing bloatware: $BloatwareKey" -Level "INFO"
-            
-            $allInstalledPackages = @()
-            $allProvisionedPackages = @()
-            
-            # Process each package name/pattern
-            foreach ($packageName in $packageNames) {
-                Write-LogMessage "Searching for packages matching: $packageName" -Level "DEBUG"
-                
-                # Check if packages exist first (handle both exact names and wildcard patterns)
-                if ($packageName -like "*`**") {
-                    # Wildcard pattern - use -like matching
-                    $installedPackages = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Where-Object { $_.Name -like $packageName }
-                    $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -like $packageName }
-                } else {
-                    # Exact name matching
-                    $installedPackages = Get-AppxPackage -Name $packageName -AllUsers -ErrorAction SilentlyContinue
-                    $provisionedPackages = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $packageName }
-                }
-                
-                if ($installedPackages) {
-                    $allInstalledPackages += $installedPackages
-                    Write-LogMessage "Found $($installedPackages.Count) installed package(s) for pattern: $packageName" -Level "DEBUG"
-                }
-                if ($provisionedPackages) {
-                    $allProvisionedPackages += $provisionedPackages
-                    Write-LogMessage "Found $($provisionedPackages.Count) provisioned package(s) for pattern: $packageName" -Level "DEBUG"
-                }
-            }
-            
-            $removedCount = 0
-            
-            # Remove installed packages for all users (using proven method from independent scripts)
-            if ($allInstalledPackages -and $allInstalledPackages.Count -gt 0) {
-                Write-LogMessage "Found $($allInstalledPackages.Count) total installed package(s) for: $BloatwareKey" -Level "INFO"
-                try {
-                    $allInstalledPackages | Remove-AppxPackage -ErrorAction SilentlyContinue
-                    $removedCount += $allInstalledPackages.Count
-                    Write-LogMessage "Removed $($allInstalledPackages.Count) AppxPackage(s) for: $BloatwareKey" -Level "INFO"
-                } catch {
-                    Write-LogMessage "Failed to remove some AppxPackages for $BloatwareKey - ${_}" -Level "WARNING"
-                }
-            }
-            
-            # Remove provisioned packages (using proven method from independent scripts)
-            if ($allProvisionedPackages -and $allProvisionedPackages.Count -gt 0) {
-                Write-LogMessage "Found $($allProvisionedPackages.Count) total provisioned package(s) for: $BloatwareKey" -Level "INFO"
-                try {
-                    $allProvisionedPackages | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
-                    $removedCount += $allProvisionedPackages.Count
-                    Write-LogMessage "Removed $($allProvisionedPackages.Count) AppxProvisionedPackage(s) for: $BloatwareKey" -Level "INFO"
-                } catch {
-                    Write-LogMessage "Failed to remove some AppxProvisionedPackages for $BloatwareKey - ${_}" -Level "WARNING"
-                }
-            }
-            
-            # Handle MSI-based application removal
-            if ($bloatwareItem.Method -eq "MSI") {
-                Write-LogMessage "Attempting MSI removal for: $BloatwareKey" -Level "INFO"
-                try {
-                    # Try to find and remove MSI-based Skype installations
-                    $msiProducts = Get-WmiObject Win32_Product -ErrorAction SilentlyContinue | Where-Object { 
-                        $_.Name -like "*Skype*" -and $_.Name -notlike "*Skype for Business*" 
-                    }
-                    
-                    if ($msiProducts) {
-                        foreach ($product in $msiProducts) {
-                            Write-LogMessage "Found MSI product: $($product.Name)" -Level "INFO"
-                            try {
-                                $product.Uninstall() | Out-Null
-                                Write-LogMessage "Successfully uninstalled MSI product: $($product.Name)" -Level "INFO"
-                                $removedCount++
-                            } catch {
-                                Write-LogMessage "Failed to uninstall MSI product $($product.Name)`: $($_.Exception.Message)" -Level "WARNING"
-                            }
-                        }
-                    } else {
-                        Write-LogMessage "No MSI-based Skype installations found" -Level "INFO"
-                    }
-                    
-                    # For Skype for Business, provide guidance
-                    if ($BloatwareKey -eq "skype-business-office") {
-                        Write-LogMessage "Skype for Business is integrated with Office suite and cannot be removed independently" -Level "WARNING"
-                        Write-LogMessage "To remove Skype for Business, use Office Deployment Tool or remove entire Office suite" -Level "WARNING"
-                    }
-                } catch {
-                    Write-LogMessage "Error during MSI removal for $BloatwareKey`: $($_.Exception.Message)" -Level "ERROR"
-                }
-            }
-            
-            # Special handling for Widgets/Weather/News (Windows 10 & 11)
-            if ($BloatwareKey -eq "ms-widgets") {
-                Write-LogMessage "Applying Widgets/Weather/News removal tweaks..." -Level "INFO"
-                try {
-                    # Detect Windows version for proper handling
-                    $windowsVersion = [System.Environment]::OSVersion.Version
-                    $isWindows10 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -lt 22000
-                    $isWindows11 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -ge 22000
-                    
-                    Write-LogMessage "Detected Windows version: Build $($windowsVersion.Build) $(if($isWindows10){'(Windows 10)'}else{'(Windows 11)'})" -Level "INFO"
-                    
-                    if ($isWindows11) {
-                        # Windows 11 Widgets handling
-                        Write-LogMessage "Applying Windows 11 Widgets disable..." -Level "INFO"
-                        
-                        # Disable Widgets in taskbar (Windows 11 specific)
-                        if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                            New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
-                        }
-                        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -Type DWord -Force
-                        Write-LogMessage "Disabled Windows 11 Widgets taskbar button" -Level "INFO"
-                    }
-                    
-                    if ($isWindows10) {
-                        # Windows 10 News and Interests handling
-                        Write-LogMessage "Applying Windows 10 News and Interests disable..." -Level "INFO"
-                        
-                        # Method 1: Disable News and Interests via user preferences
-                        if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds")) {
-                            New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Force | Out-Null
-                        }
-                        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force
-                        Write-LogMessage "Disabled News and Interests user preference" -Level "INFO"
-                        
-                        # Method 2: System-wide News and Interests disable
-                        try {
-                            if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests")) {
-                                New-Item -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Force | Out-Null
-                            }
-                            Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests" -Name "value" -Value 0 -Type DWord -Force
-                            Write-LogMessage "Applied system-wide News and Interests disable" -Level "INFO"
-                        } catch {
-                            Write-LogMessage "Could not apply system-wide News and Interests disable (may require higher privileges): $_" -Level "DEBUG"
-                        }
-                        
-                        # Method 3: Disable weather location services
-                        try {
-                            if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds\DSB")) {
-                                New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds\DSB" -Force | Out-Null
-                            }
-                            Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds\DSB" -Name "ShowDynamicContent" -Value 0 -Type DWord -Force
-                            Write-LogMessage "Disabled dynamic weather content" -Level "INFO"
-                        } catch {
-                            Write-LogMessage "Could not disable dynamic weather content: $_" -Level "DEBUG"
-                        }
-                    }
-                    
-                    # Common methods for both Windows 10 and 11
-                    
-                    # Disable News and Interests system-wide via Group Policy
-                    if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh")) {
-                        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Force | Out-Null
-                    }
-                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" -Name "AllowNewsAndInterests" -Value 0 -Type DWord -Force
-                    Write-LogMessage "Applied News and Interests Group Policy disable" -Level "INFO"
-                    
-                    # Disable Windows Feeds
-                    if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds")) {
-                        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Force | Out-Null
-                    }
-                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" -Name "EnableFeeds" -Value 0 -Type DWord -Force
-                    Write-LogMessage "Applied Windows Feeds disable" -Level "INFO"
-                    
-                    # Disable web search in feeds
-                    try {
-                        if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings")) {
-                            New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings" -Force | Out-Null
-                        }
-                        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings" -Name "IsAADCloudSearchEnabled" -Value 0 -Type DWord -Force
-                        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings" -Name "IsDeviceSearchHistoryEnabled" -Value 0 -Type DWord -Force
-                        Write-LogMessage "Disabled web search in feeds" -Level "INFO"
-                    } catch {
-                        Write-LogMessage "Could not disable web search in feeds: $_" -Level "DEBUG"
-                    }
-                    
-                    Write-LogMessage "Widgets/Weather/News removal tweaks applied successfully" -Level "SUCCESS"
-                    $removedCount++
-                } catch {
-                    Write-LogMessage "Failed to apply Widgets/Weather/News removal tweaks: $_" -Level "WARNING"
-                }
-            }
-            
-            # Special handling for Internet Explorer (Windows 10 only)
-            if ($BloatwareKey -eq "internet-explorer") {
-                Write-LogMessage "Applying Internet Explorer disable (Windows Feature)..." -Level "INFO"
-                try {
-                    # Check Windows version - IE should only be handled on Windows 10
-                    $windowsVersion = [System.Environment]::OSVersion.Version
-                    $isWindows10 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -lt 22000
-                    $isWindows11 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -ge 22000
-                    
-                    if ($isWindows11) {
-                        Write-LogMessage "Internet Explorer is not available on Windows 11 - skipping" -Level "WARNING"
-                        Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Skipped" -AdditionalData @{
-                            Reason = "Not available on Windows 11"
-                            WindowsVersion = $windowsVersion.Build
-                        }
-                        return $true
-                    }
-                    
-                    Write-LogMessage "Proceeding with Internet Explorer disable..." -Level "INFO"
-                    
-                    # Method 1: Disable via DISM (most reliable)
-                    Write-LogMessage "Disabling Internet Explorer via DISM..." -Level "INFO"
-                    try {
-                        $dismResult = & dism /online /Disable-Feature /FeatureName:Internet-Explorer-Optional-amd64 /NoRestart /Quiet
-                        if ($LASTEXITCODE -eq 0) {
-                            Write-LogMessage "Successfully disabled Internet Explorer via DISM" -Level "SUCCESS"
-                            $removedCount++
-                        } else {
-                            Write-LogMessage "DISM command failed with exit code: $LASTEXITCODE" -Level "WARNING"
-                            # Fall back to PowerShell method
-                            throw "DISM method failed, trying PowerShell method"
-                        }
-                    } catch {
-                        Write-LogMessage "DISM method failed: $($_). Trying PowerShell method..." -Level "WARNING"
-                        
-                        # Method 2: PowerShell fallback
-                        try {
-                            Write-LogMessage "Disabling Internet Explorer via PowerShell..." -Level "INFO"
-                            Disable-WindowsOptionalFeature -FeatureName Internet-Explorer-Optional-amd64 -Online -NoRestart -ErrorAction Stop
-                            Write-LogMessage "Successfully disabled Internet Explorer via PowerShell" -Level "SUCCESS"
-                            $removedCount++
-                        } catch {
-                            Write-LogMessage "PowerShell method also failed: $_" -Level "ERROR"
-                            throw $_
-                        }
-                    }
-                    
-                    # Add restart requirement
-                    $script:RestartRequired = $true
-                    Add-RestartRegistryChange -ChangeDescription "Disable Internet Explorer 11"
-                    
-                    Write-LogMessage "Internet Explorer has been disabled. System restart required for changes to take effect." -Level "SUCCESS"
-                    Write-LogMessage "WARNING: IE Mode in Microsoft Edge will no longer function." -Level "WARNING"
-                    
-                } catch {
-                    Write-LogMessage "Failed to disable Internet Explorer: $_" -Level "ERROR"
-                    Write-LogMessage "You can manually disable IE through: Control Panel > Programs > Turn Windows features on or off > Uncheck Internet Explorer 11" -Level "INFO"
-                }
-            }
-            
-            # Special handling for Windows Copilot (both Win10 and Win11)
-            if ($BloatwareKey -eq "ms-copilot") {
-                Write-LogMessage "Applying Windows Copilot removal and registry tweaks..." -Level "INFO"
-                try {
-                    # Detect Windows version for proper handling
-                    $windowsVersion = [System.Environment]::OSVersion.Version
-                    $isWindows10 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -lt 22000
-                    $isWindows11 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -ge 22000
-                    
-                    Write-LogMessage "Detected Windows version: Build $($windowsVersion.Build) $(if($isWindows10){'(Windows 10)'}else{'(Windows 11)'})" -Level "INFO"
-                    
-                    # Method 1: System-wide Copilot disable via Group Policy (Both Win10 & Win11)
-                    if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot")) {
-                        New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Force | Out-Null
-                    }
-                    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1 -Type DWord -Force
-                    Write-LogMessage "Applied system-wide Copilot disable policy" -Level "INFO"
-                    
-                    # Method 2: User-level Copilot disable (Critical for Windows 10)
-                    if (-not (Test-Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot")) {
-                        New-Item -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" -Force | Out-Null
-                    }
-                    Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1 -Type DWord -Force
-                    Write-LogMessage "Applied user-level Copilot disable policy" -Level "INFO"
-                    
-                    # Method 3: Remove Copilot button from taskbar
-                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
-                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
-                    }
-                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowCopilotButton" -Value 0 -Type DWord -Force
-                    Write-LogMessage "Disabled Copilot button on taskbar" -Level "INFO"
-                    
-                    # Method 4: Windows 10 specific - Disable AI features
-                    if ($isWindows10) {
-                        # Disable Windows AI Platform (Windows 10 2024 H2)
-                        try {
-                            if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AI")) {
-                                New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AI" -Force | Out-Null
-                            }
-                            Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AI" -Name "DisableAIDataAnalysis" -Value 1 -Type DWord -Force
-                            Write-LogMessage "Disabled Windows 10 AI features" -Level "INFO"
-                        } catch {
-                            Write-LogMessage "Could not disable AI features (may not be available): $_" -Level "DEBUG"
-                        }
-                        
-                        # Windows 10 Copilot context menu disable
-                        try {
-                            if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\Shell\Copilot")) {
-                                New-Item -Path "HKCU:\Software\Microsoft\Windows\Shell\Copilot" -Force | Out-Null
-                            }
-                            Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\Copilot" -Name "IsCopilotAvailable" -Value 0 -Type DWord -Force
-                            Write-LogMessage "Disabled Windows 10 Copilot context integration" -Level "INFO"
-                        } catch {
-                            Write-LogMessage "Could not disable Copilot context integration: $_" -Level "DEBUG"
-                        }
-                    }
-                    
-                    Write-LogMessage "Windows Copilot removal and registry tweaks applied successfully" -Level "SUCCESS"
-                    $removedCount++
-                } catch {
-                    Write-LogMessage "Failed to apply Copilot removal tweaks: $_" -Level "WARNING"
-                }
-            }
-            
-            if ($removedCount -gt 0) {
-                Write-LogMessage "Successfully removed $removedCount package(s) for: $BloatwareKey" -Level "SUCCESS"
+        }
+        
+        # Apply special handling if defined (JSON-driven)
+        $requiresSpecialHandling = $false
+        if ($script:BloatwareConfiguration -and $script:BloatwareConfiguration.special_handling.keys) {
+            $requiresSpecialHandling = $BloatwareKey -in $script:BloatwareConfiguration.special_handling.keys
+        } else {
+            # Fallback to hardcoded list if configuration not available
+            $requiresSpecialHandling = $BloatwareKey -in @("ms-widgets", "ms-copilot", "internet-explorer")
+        }
+        
+        if ($bloatwareItem.RequiresSpecialHandling -or $requiresSpecialHandling) {
+            if (-not $DryRun) {
+                $specialCount = Invoke-ConfigurableSpecialHandling -BloatwareKey $BloatwareKey
+                $totalRemovedCount += $specialCount
             } else {
-                Write-LogMessage "No packages found matching patterns for: $BloatwareKey (patterns: $($packageNames -join ', '))" -Level "WARNING"
+                Write-LogMessage "[DRY RUN] Would apply special handling for: $BloatwareKey" -Level "INFO"
             }
-            Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Completed"
-            return $true
         }
-        else {
-            # Multiple package removal from list
-            foreach ($app in $Bloatware) {
-                if ($CancellationToken -and $CancellationToken.IsCancellationRequested) {
-                    Write-LogMessage "Bloatware removal cancelled" -Level "WARNING"
-                    return $false
+        
+        # Report results
+        if ($allErrors.Count -gt 0) {
+            Write-LogMessage "Encountered $($allErrors.Count) errors during removal of $BloatwareKey" -Level "WARNING"
+            foreach ($error in $allErrors) {
+                Write-LogMessage "Error: $error" -Level "WARNING"
+            }
+        }
+        
+        if ($totalRemovedCount -gt 0) {
+            Write-LogMessage "Successfully $(if($DryRun){'would remove'}else{'removed'}) $totalRemovedCount item(s) for: $BloatwareKey" -Level "SUCCESS"
+            if (-not $DryRun) {
+                Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Completed" -AdditionalData @{
+                    RemovedCount = $totalRemovedCount
+                    Errors = $allErrors
+                    Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
                 }
-                
-                Write-LogMessage "Removing $app..." -Level "INFO"
-                Get-AppxPackage -Name $app -AllUsers | Remove-AppxPackage -ErrorAction SilentlyContinue
-                Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $app | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
-                Write-LogMessage "Removed $app" -Level "SUCCESS"
             }
-            
-            Write-LogMessage "Bloatware removal completed successfully!" -Level "SUCCESS"
             return $true
+        } else {
+            Write-LogMessage "No items found or removed for: $BloatwareKey" -Level "WARNING"
+            if (-not $DryRun) {
+                Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Completed" -AdditionalData @{
+                    RemovedCount = 0
+                    Errors = $allErrors
+                    Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+                }
+            }
+            return $allErrors.Count -eq 0  # Return true if no errors, even if nothing was removed
         }
-    }
-    catch {
-        if ($PSCmdlet.ParameterSetName -eq "Key") {
+        
+    } catch {
+        $allErrors += "Exception in Remove-SingleBloatware: $($_.Exception.Message)"
+        Write-LogMessage "Failed to remove bloatware $BloatwareKey`: $($_.Exception.Message)" -Level "ERROR"
+        if (-not $DryRun) {
             Save-OperationState -OperationType "RemoveBloatware" -ItemKey $BloatwareKey -Status "Failed" -AdditionalData @{
                 Error = $_.Exception.Message
+                Errors = $allErrors
                 Time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
             }
         }
-        Write-LogMessage "Failed to remove bloatware: $_" -Level "ERROR"
         return $false
     }
+}
+
+# JSON-driven special handling function for configurable operations
+function Invoke-ConfigurableSpecialHandling {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$BloatwareKey
+    )
+    
+    $handledCount = 0
+    
+    try {
+        # Check if we have JSON configuration for special handling
+        if ($script:BloatwareConfiguration -and $script:BloatwareConfiguration.special_handling.registry_operations) {
+            $registryOps = $script:BloatwareConfiguration.special_handling.registry_operations
+            
+            if ($registryOps.$BloatwareKey) {
+                Write-LogMessage "Applying JSON-configured special handling for: $BloatwareKey" -Level "INFO"
+                
+                # Determine Windows version for version-specific operations
+                $windowsVersion = [System.Environment]::OSVersion.Version
+                $windowsVersions = $script:BloatwareConfiguration.windows_versions
+                
+                $isWindows10 = $false
+                $isWindows11 = $false
+                
+                if ($windowsVersions) {
+                    $isWindows10 = $windowsVersion.Major -eq $windowsVersions.windows10.major -and $windowsVersion.Build -le $windowsVersions.windows10.build_max
+                    $isWindows11 = $windowsVersion.Major -eq $windowsVersions.windows11.major -and $windowsVersion.Build -ge $windowsVersions.windows11.build_min
+                } else {
+                    # Fallback to hardcoded values if configuration not available
+                    $isWindows10 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -lt 22000
+                    $isWindows11 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -ge 22000
+                }
+                
+                Write-LogMessage "Detected Windows version: Build $($windowsVersion.Build) $(if($isWindows10){'(Windows 10)'}elseif($isWindows11){'(Windows 11)'}else{'(Unknown)'})" -Level "DEBUG"
+                
+                $operations = $registryOps.$BloatwareKey
+                
+                # Handle version-specific operations (like widgets)
+                if ($operations.windows10 -and $isWindows10) {
+                    foreach ($op in $operations.windows10) {
+                        $handledCount += Invoke-RegistryOperation -Operation $op
+                    }
+                }
+                
+                if ($operations.windows11 -and $isWindows11) {
+                    foreach ($op in $operations.windows11) {
+                        $handledCount += Invoke-RegistryOperation -Operation $op
+                    }
+                }
+                
+                # Handle general operations (like copilot - array format)
+                if ($operations -is [array]) {
+                    foreach ($op in $operations) {
+                        $handledCount += Invoke-RegistryOperation -Operation $op
+                    }
+                }
+                
+                Write-LogMessage "Completed special handling for $BloatwareKey`: $handledCount operations" -Level "SUCCESS"
+            } else {
+                Write-LogMessage "No JSON configuration found for special handling: $BloatwareKey" -Level "DEBUG"
+            }
+        } else {
+            Write-LogMessage "No special handling configuration available, falling back to legacy method" -Level "DEBUG"
+            $handledCount = Invoke-LegacySpecialHandling -BloatwareKey $BloatwareKey
+        }
+    } catch {
+        Write-LogMessage "Error in special handling for $BloatwareKey`: $($_.Exception.Message)" -Level "ERROR"
+    }
+    
+    return $handledCount
+}
+
+# Helper function to execute registry operations from JSON configuration
+function Invoke-RegistryOperation {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Operation
+    )
+    
+    try {
+        $path = $Operation.path
+        $name = $Operation.name
+        $value = $Operation.value
+        $type = $Operation.type
+        $description = $Operation.description
+        
+        Write-LogMessage "Applying registry operation: $description" -Level "DEBUG"
+        
+        # Ensure registry path exists
+        if (-not (Test-Path $path)) {
+            New-Item -Path $path -Force | Out-Null
+            Write-LogMessage "Created registry path: $path" -Level "DEBUG"
+        }
+        
+        # Set registry value
+        Set-ItemProperty -Path $path -Name $name -Value $value -Type $type -Force
+        Write-LogMessage "Set registry value: $path\$name = $value ($type)" -Level "DEBUG"
+        
+        return 1
+    } catch {
+        Write-LogMessage "Failed to apply registry operation '$($Operation.description)': $($_.Exception.Message)" -Level "WARNING"
+        return 0
+    }
+}
+
+# Legacy special handling function for backwards compatibility
+function Invoke-LegacySpecialHandling {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$BloatwareKey
+    )
+    
+    $handledCount = 0
+    
+    switch ($BloatwareKey) {
+        "ms-widgets" {
+            # Widgets/Weather/News special handling
+            try {
+                $windowsVersion = [System.Environment]::OSVersion.Version
+                $isWindows10 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -lt 22000
+                $isWindows11 = $windowsVersion.Major -eq 10 -and $windowsVersion.Build -ge 22000
+                
+                if ($isWindows11) {
+                    # Windows 11 Widgets disable
+                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarDa" -Value 0 -Type DWord -Force
+                    Write-LogMessage "Disabled Windows 11 Widgets taskbar button" -Level "INFO"
+                    $handledCount++
+                }
+                
+                if ($isWindows10) {
+                    # Windows 10 News and Interests disable
+                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds")) {
+                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Force | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarViewMode" -Value 2 -Type DWord -Force
+                    Write-LogMessage "Disabled Windows 10 News and Interests" -Level "INFO"
+                    $handledCount++
+                }
+            } catch {
+                Write-LogMessage "Failed to apply Widgets special handling: $_" -Level "WARNING"
+            }
+        }
+        "ms-copilot" {
+            # Copilot special handling
+            try {
+                # System-wide Copilot disable
+                if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot")) {
+                    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1 -Type DWord -Force
+                
+                # User-level Copilot disable
+                if (-not (Test-Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot")) {
+                    New-Item -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -Value 1 -Type DWord -Force
+                
+                # Remove Copilot button from taskbar
+                if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced")) {
+                    New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Force | Out-Null
+                }
+                Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowCopilotButton" -Value 0 -Type DWord -Force
+                
+                Write-LogMessage "Applied Copilot special handling" -Level "INFO"
+                $handledCount++
+            } catch {
+                Write-LogMessage "Failed to apply Copilot special handling: $_" -Level "WARNING"
+            }
+        }
+        default {
+            Write-LogMessage "No special handling defined for: $BloatwareKey" -Level "DEBUG"
+        }
+    }
+    
+    return $handledCount
+}
+
+# Multiple bloatware removal (enhanced with parallel processing)
+function Remove-MultipleBloatware {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string[]]$BloatwareKeys,
+        [Parameter(Mandatory=$false)]
+        [switch]$DryRun,
+        [Parameter(Mandatory=$false)]
+        [System.Threading.CancellationToken]$CancellationToken
+    )
+    
+    $successCount = 0
+    $totalCount = $BloatwareKeys.Count
+    
+    Write-LogMessage "Starting batch bloatware removal: $totalCount items$(if($DryRun){' (DRY RUN)'})" -Level "INFO"
+    
+    foreach ($key in $BloatwareKeys) {
+        if ($CancellationToken -and $CancellationToken.IsCancellationRequested) {
+            Write-LogMessage "Batch bloatware removal cancelled" -Level "WARNING"
+            break
+        }
+        
+        Write-LogMessage "Processing bloatware key: $key ($($successCount + 1)/$totalCount)" -Level "INFO"
+        
+        $result = Remove-SingleBloatware -BloatwareKey $key -DryRun:$DryRun -CancellationToken $CancellationToken
+        if ($result) {
+            $successCount++
+        }
+    }
+    
+    Write-LogMessage "Batch bloatware removal completed: $successCount/$totalCount successful$(if($DryRun){' (DRY RUN)'})" -Level "SUCCESS"
+    return $successCount -eq $totalCount
 }
 
 function Optimize-System {
