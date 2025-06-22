@@ -286,7 +286,19 @@
       "RegistryKey": "AppsUseLightTheme",
       "RegistryValue": 0,
       "RegistryType": "DWORD",
-      "Description": "Enables dark mode for applications and system UI."
+      "Description": "Enables dark mode for both applications and system UI (complete dark theme)."
+    },
+    {
+      "Name": "Light theme",
+      "Key": "light-theme",
+      "Default": false,
+      "Win10": true,
+      "Win11": true,
+      "RegistryPath": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+      "RegistryKey": "AppsUseLightTheme",
+      "RegistryValue": 1,
+      "RegistryType": "DWORD",
+      "Description": "Forces light mode for both applications and system UI (complete light theme)."
     },
     {
       "Name": "Disable tips and suggestions",
